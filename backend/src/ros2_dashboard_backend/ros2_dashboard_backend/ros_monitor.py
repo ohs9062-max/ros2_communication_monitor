@@ -1,0 +1,1124 @@
+"""ROS 2 graph monitoring utilities for the dashboard backend."""
+
+from __future__ import annotations
+
+import logging
+from importlib import import_module
+from threading import Lock, Thread
+from time import time
+from typing import Any
+
+import rclpy
+from rclpy.action.graph import (
+    get_action_client_names_and_types_by_node,
+    get_action_names_and_types,
+    get_action_server_names_and_types_by_node,
+)
+from rclpy.node import Node
+from rclpy.qos import QoSProfile, qos_profile_sensor_data
+
+from ros2_dashboard_backend.action.alerts import build_action_alerts
+from ros2_dashboard_backend.action.discovery import build_action_item
+from ros2_dashboard_backend.action.filters import is_action_included
+from ros2_dashboard_backend.action.models import action_meta
+from ros2_dashboard_backend.action.result_runtime import ActionResultRuntime
+from ros2_dashboard_backend.action.subscriptions import (
+    action_entry_matches,
+    build_action_subscription_entry,
+    load_feedback_message_class,
+    load_status_message_class,
+    runtime_snapshot,
+    update_feedback_runtime,
+    update_status_runtime,
+)
+from ros2_dashboard_backend.config_loader import MonitorConfig
+from ros2_dashboard_backend.service.active_check_runtime import (
+    ServiceActiveCheckRuntime,
+)
+from ros2_dashboard_backend.service.alerts import build_service_alerts
+from ros2_dashboard_backend.service.discovery import build_service_item
+from ros2_dashboard_backend.service.filters import (
+    is_service_included,
+    is_supported_type as is_supported_service_type,
+)
+from ros2_dashboard_backend.service.models import service_meta
+from ros2_dashboard_backend.topic.alerts import build_alert_meta, build_alerts
+from ros2_dashboard_backend.topic.discovery import build_topic_item
+from ros2_dashboard_backend.topic.filters import (
+    is_supported_type,
+    is_topic_included,
+    should_deep_monitor,
+)
+from ros2_dashboard_backend.topic.hz import (
+    build_hz_snapshot,
+    recent_timestamps,
+)
+from ros2_dashboard_backend.topic.models import (
+    SENSOR_PREVIEW_TYPES,
+    copy_message_preview,
+)
+from ros2_dashboard_backend.topic.preview import (
+    build_message_preview,
+)
+from ros2_dashboard_backend.topic.subscriptions import (
+    DEFAULT_SUBSCRIPTION_CLEANUP_AFTER_SEC,
+    build_subscription_entry,
+    cleanup_candidates,
+    has_subscription,
+    remove_subscription_entry,
+    update_subscription_entry,
+)
+
+
+LOGGER = logging.getLogger(__name__)
+
+
+class TopicMonitor:
+    """Collect topic metadata from the ROS 2 graph on a fixed interval."""
+
+    def __init__(self, config: MonitorConfig | None = None) -> None:
+        """Initialize the monitor without starting ROS 2 resources."""
+        self._config = config or MonitorConfig()
+        self._node: Node | None = None
+        self._thread: Thread | None = None
+        self._lock = Lock()
+        self._topics: list[dict[str, Any]] = []
+        self._services: list[dict[str, Any]] = []
+        self._actions: list[dict[str, Any]] = []
+        self._last_updated = 0.0
+        self._services_last_updated = 0.0
+        self._actions_last_updated = 0.0
+        self._subscriptions: dict[str, dict[str, Any]] = {}
+        self._action_subscriptions: dict[str, dict[str, Any]] = {}
+        self._service_active_checks = ServiceActiveCheckRuntime(
+            active_check_config=self._config.services_active_check,
+            lock=self._lock,
+            node_getter=lambda: self._node,
+        )
+        self._action_results = ActionResultRuntime(
+            action_subscriptions=self._action_subscriptions,
+            auto_fetch_result_for_observed_goals=(
+                self._config.actions_auto_fetch_result_for_observed_goals
+            ),
+            lock=self._lock,
+            node_getter=lambda: self._node,
+        )
+
+    def start(self) -> None:
+        """Start rclpy, create the monitor node, and spin in the background."""
+        if self._thread and self._thread.is_alive():
+            return
+
+        rclpy.init(args=None)
+        self._node = Node('ros2_dashboard_topic_monitor')
+        self._node.create_timer(
+            self._config.poll_interval_sec,
+            self._update_graph,
+        )
+        self._update_graph()
+
+        self._thread = Thread(target=self._spin, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        """Stop spinning and release ROS 2 resources."""
+        node = self._node
+
+        if rclpy.ok():
+            rclpy.shutdown()
+
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+
+        if node is not None:
+            node.destroy_node()
+
+        self._thread = None
+        self._node = None
+        with self._lock:
+            self._subscriptions = {}
+            self._action_subscriptions = {}
+            self._action_results.bind_action_subscriptions(
+                self._action_subscriptions,
+            )
+        self._action_results.clear()
+        self._service_active_checks.clear()
+
+    def snapshot(self) -> dict[str, Any]:
+        """Return a thread-safe snapshot of the cached topic list."""
+        with self._lock:
+            topics = [topic.copy() for topic in self._topics]
+            last_updated = self._last_updated
+
+        return {
+            'topics': topics,
+            'count': len(topics),
+            'last_updated': last_updated,
+        }
+
+    def service_snapshot(
+        self,
+        *,
+        include_hidden: bool = False,
+    ) -> dict[str, Any]:
+        """Return a thread-safe snapshot of the cached service list."""
+        with self._lock:
+            all_services = [service.copy() for service in self._services]
+            last_updated = self._services_last_updated
+
+        if include_hidden:
+            services = all_services
+        else:
+            services = [
+                service for service in all_services
+                if service.get('hidden_by_default') is not True
+            ]
+
+        return {
+            'services': services,
+            'meta': service_meta(
+                services=services,
+                all_services=all_services,
+                last_updated=last_updated,
+            ),
+        }
+
+    def action_snapshot(self) -> dict[str, Any]:
+        """Return a thread-safe snapshot of the cached action list."""
+        with self._lock:
+            actions = [action.copy() for action in self._actions]
+            last_updated = self._actions_last_updated
+
+        return {
+            'actions': actions,
+            'meta': action_meta(
+                actions=actions,
+                last_updated=last_updated,
+            ),
+        }
+
+    def latest_message(self, name: str) -> dict[str, Any]:
+        """Return the cached latest message preview for a topic."""
+        if self._node is None:
+            return self._latest_response(
+                success=False,
+                name=name,
+                message='ROS2 monitor is not running',
+            )
+
+        topic_type = self._topic_type(name)
+        if topic_type is None:
+            return self._latest_response(
+                success=False,
+                name=name,
+                message='Topic not found',
+            )
+
+        if not self._is_supported_type(topic_type):
+            return self._latest_response(
+                success=False,
+                name=name,
+                topic_type=topic_type,
+                message='unsupported topic type',
+            )
+
+        message_class = self._message_class(topic_type)
+        if message_class is None:
+            return self._latest_response(
+                success=False,
+                name=name,
+                topic_type=topic_type,
+                message='Failed to import topic message class',
+            )
+
+        self._ensure_subscription(name, topic_type, message_class)
+
+        with self._lock:
+            entry = self._subscriptions.get(name, {})
+            message_preview = entry.get('message_preview')
+            last_received_at = entry.get('last_received_at')
+
+        return self._latest_response(
+            success=True,
+            name=name,
+            topic_type=topic_type,
+            received=message_preview is not None,
+            last_received_at=last_received_at,
+            message_preview=message_preview,
+            message='Latest topic message fetched successfully',
+        )
+
+    def topic_hz(self, name: str) -> dict[str, Any]:
+        """Return the recent message frequency for a topic."""
+        if self._node is None:
+            return self._hz_response(
+                success=False,
+                name=name,
+                message='ROS2 monitor is not running',
+            )
+
+        topic_type = self._topic_type(name)
+        if topic_type is None:
+            return self._hz_response(
+                success=False,
+                name=name,
+                message='Topic not found',
+            )
+
+        if not self._is_supported_type(topic_type):
+            return self._hz_response(
+                success=False,
+                name=name,
+                topic_type=topic_type,
+                message='unsupported topic type',
+            )
+
+        message_class = self._message_class(topic_type)
+        if message_class is None:
+            return self._hz_response(
+                success=False,
+                name=name,
+                topic_type=topic_type,
+                message='Failed to import topic message class',
+            )
+
+        self._ensure_subscription(name, topic_type, message_class)
+        return self._topic_hz_snapshot(name, topic_type)
+
+    def alerts(self) -> dict[str, Any]:
+        """Return current ROS 2 monitoring alerts."""
+        detected_at = time()
+        with self._lock:
+            topics = [topic.copy() for topic in self._topics]
+            services = [service.copy() for service in self._services]
+            actions = [action.copy() for action in self._actions]
+            subscriptions = {
+                name: {
+                    'last_received_at': entry.get('last_received_at'),
+                    'message_preview': copy_message_preview(
+                        entry.get('message_preview'),
+                    ),
+                }
+                for name, entry in self._subscriptions.items()
+            }
+
+        alerts = build_alerts(
+            topics=topics,
+            subscriptions=subscriptions,
+            detected_at=detected_at,
+            stale_timeout_sec=self._config.stale_timeout_sec,
+        )
+        alerts.extend(
+            build_service_alerts(
+                services=services,
+                detected_at=detected_at,
+            ),
+        )
+        alerts.extend(
+            build_action_alerts(
+                actions=actions,
+                detected_at=detected_at,
+            ),
+        )
+
+        return {
+            'success': True,
+            'data': alerts,
+            'meta': build_alert_meta(alerts),
+            'message': 'ROS2 alerts fetched successfully',
+        }
+
+    def _spin(self) -> None:
+        if self._node is None:
+            return
+
+        try:
+            rclpy.spin(self._node)
+        except rclpy.executors.ExternalShutdownException:
+            pass
+        except Exception:
+            if rclpy.ok():
+                raise
+
+    def _update_graph(self) -> None:
+        self._update_topics()
+        services = self._update_services()
+        actions = self._update_actions()
+        self._action_results.update(actions)
+        self._service_active_checks.update(services)
+
+    def _update_topics(self) -> None:
+        if self._node is None:
+            return
+
+        topics = []
+        updated_at = time()
+        topic_names_and_types = self._node.get_topic_names_and_types()
+        graph_topic_names = {
+            name for name, _types in topic_names_and_types
+        }
+
+        for name, types in topic_names_and_types:
+            if not self._is_topic_included(name):
+                continue
+
+            topic_type = types[0] if types else None
+            supported_type = self._is_supported_type(topic_type)
+            deep_monitoring = self._auto_subscribe_topic(
+                name,
+                topic_type,
+                supported_type,
+            )
+            publisher_count = self._node.count_publishers(name)
+            raw_subscriber_count = self._node.count_subscribers(name)
+            monitor_subscriber_count = self._monitor_subscriber_count(
+                name,
+                topic_type,
+            )
+            external_subscriber_count = max(
+                0,
+                raw_subscriber_count - monitor_subscriber_count,
+            )
+            topics.append(
+                build_topic_item(
+                    name=name,
+                    types=list(types),
+                    publisher_count=publisher_count,
+                    raw_subscriber_count=raw_subscriber_count,
+                    monitor_subscriber_count=monitor_subscriber_count,
+                    external_subscriber_count=external_subscriber_count,
+                    updated_at=updated_at,
+                    supported_type=supported_type,
+                    deep_monitoring=deep_monitoring,
+                ),
+            )
+
+        topics.sort(key=lambda topic: topic['name'])
+
+        with self._lock:
+            self._topics = topics
+            self._last_updated = updated_at
+
+        self._cleanup_disappeared_subscriptions(
+            graph_topic_names,
+            updated_at,
+        )
+
+    def _update_services(self) -> list[dict[str, Any]]:
+        if self._node is None:
+            return []
+
+        services = []
+        updated_at = time()
+        active_check_cache = self._service_active_checks.cache_snapshot()
+
+        for name, types in self._node.get_service_names_and_types():
+            if not is_service_included(
+                name,
+                include_names=self._config.services_include,
+                exclude_names=self._config.services_exclude,
+            ):
+                continue
+
+            service_type = types[0] if types else None
+            services.append(
+                build_service_item(
+                    name=name,
+                    service_type=service_type,
+                    server_count=self._node.count_services(name),
+                    client_count=self._service_client_count(name),
+                    supported_type=is_supported_service_type(service_type),
+                    updated_at=updated_at,
+                    active_check_config=(
+                        self._config.services_active_check
+                    ),
+                    active_check_allowlist=(
+                        self._service_active_checks.allowlist
+                    ),
+                    active_check_cache=active_check_cache,
+                ),
+            )
+
+        services.sort(key=lambda service: service['name'])
+
+        with self._lock:
+            self._services = services
+            self._services_last_updated = updated_at
+
+        return services
+
+    def _update_actions(self) -> list[dict[str, Any]]:
+        if self._node is None:
+            return []
+
+        actions = []
+        updated_at = time()
+        action_names_and_types = self._action_names_and_types()
+        server_counts, client_counts = self._action_count_maps()
+
+        for name, types in action_names_and_types:
+            if not is_action_included(
+                name,
+                include_names=self._config.actions_include,
+                exclude_names=self._config.actions_exclude,
+                exclude_prefixes=self._config.actions_exclude_prefixes,
+            ):
+                continue
+
+            action_type = types[0] if types else None
+            capabilities = (
+                self._ensure_action_subscriptions(
+                    name=name,
+                    action_type=action_type,
+                )
+            )
+            runtime = self._action_runtime(name)
+            actions.append(
+                build_action_item(
+                    name=name,
+                    action_type=action_type,
+                    server_count=server_counts.get(name, 0),
+                    client_count=client_counts.get(name, 0),
+                    updated_at=updated_at,
+                    status_supported=capabilities['status_supported'],
+                    feedback_supported=capabilities['feedback_supported'],
+                    feedback_reason=capabilities['feedback_reason'],
+                    result_supported=capabilities['result_supported'],
+                    result_policy=capabilities['result_policy'],
+                    result_reason=capabilities['result_reason'],
+                    runtime=runtime,
+                ),
+            )
+
+        actions.sort(key=lambda action: action['name'])
+
+        with self._lock:
+            self._actions = actions
+            self._actions_last_updated = updated_at
+
+        self._cleanup_disappeared_action_subscriptions(
+            {action['name'] for action in actions},
+        )
+
+        return actions
+
+    def _action_names_and_types(self) -> list[tuple[str, list[str]]]:
+        if self._node is None:
+            return []
+
+        try:
+            return get_action_names_and_types(self._node)
+        except Exception as exc:  # pragma: no cover
+            LOGGER.warning('Failed to read action graph: %s', exc)
+            return []
+
+    def _action_count_maps(self) -> tuple[dict[str, int], dict[str, int]]:
+        if self._node is None:
+            return {}, {}
+
+        server_counts: dict[str, int] = {}
+        client_counts: dict[str, int] = {}
+        try:
+            node_names = self._node.get_node_names_and_namespaces()
+        except Exception as exc:  # pragma: no cover
+            LOGGER.warning('Failed to read ROS2 node graph: %s', exc)
+            return server_counts, client_counts
+
+        for node_name, namespace in node_names:
+            self._merge_action_counts(
+                counts=server_counts,
+                names_and_types=self._action_servers_by_node(
+                    node_name,
+                    namespace,
+                ),
+            )
+            self._merge_action_counts(
+                counts=client_counts,
+                names_and_types=self._action_clients_by_node(
+                    node_name,
+                    namespace,
+                ),
+            )
+
+        return server_counts, client_counts
+
+    def _action_servers_by_node(
+        self,
+        node_name: str,
+        namespace: str,
+    ) -> list[tuple[str, list[str]]]:
+        if self._node is None:
+            return []
+
+        try:
+            return get_action_server_names_and_types_by_node(
+                self._node,
+                node_name,
+                namespace,
+            )
+        except Exception as exc:  # pragma: no cover
+            LOGGER.debug(
+                'Failed to read action servers for %s%s: %s',
+                namespace,
+                node_name,
+                exc,
+            )
+            return []
+
+    def _action_clients_by_node(
+        self,
+        node_name: str,
+        namespace: str,
+    ) -> list[tuple[str, list[str]]]:
+        if self._node is None:
+            return []
+
+        try:
+            return get_action_client_names_and_types_by_node(
+                self._node,
+                node_name,
+                namespace,
+            )
+        except Exception as exc:  # pragma: no cover
+            LOGGER.debug(
+                'Failed to read action clients for %s%s: %s',
+                namespace,
+                node_name,
+                exc,
+            )
+            return []
+
+    @staticmethod
+    def _merge_action_counts(
+        *,
+        counts: dict[str, int],
+        names_and_types: list[tuple[str, list[str]]],
+    ) -> None:
+        for name, _types in names_and_types:
+            counts[name] = counts.get(name, 0) + 1
+
+    def _ensure_action_subscriptions(
+        self,
+        *,
+        name: str,
+        action_type: str | None,
+    ) -> dict[str, Any]:
+        if self._node is None:
+            return self._action_capabilities(None)
+
+        with self._lock:
+            entry = self._action_subscriptions.get(name)
+            if action_entry_matches(entry, action_type=action_type):
+                return self._action_capabilities(entry)
+
+            if entry is not None:
+                self._destroy_action_entry_subscriptions(entry)
+
+            entry = build_action_subscription_entry(
+                action_type=action_type,
+            )
+            self._action_subscriptions[name] = entry
+
+        status_supported = self._maybe_create_action_status_subscription(
+            name,
+            entry,
+        )
+        feedback_supported = self._maybe_create_action_feedback_subscription(
+            name,
+            action_type,
+            entry,
+        )
+        result_supported, result_policy, result_reason = (
+            self._action_results.support(action_type)
+        )
+
+        with self._lock:
+            current = self._action_subscriptions.get(name)
+            if current is entry:
+                current['status_supported'] = status_supported
+                current['feedback_supported'] = feedback_supported
+                current['result_supported'] = result_supported
+                current['result_policy'] = result_policy
+                current['result_reason'] = result_reason
+
+        return self._action_capabilities(entry)
+
+    @staticmethod
+    def _action_capabilities(entry: dict[str, Any] | None) -> dict[str, Any]:
+        if entry is None:
+            return {
+                'status_supported': False,
+                'feedback_supported': False,
+                'feedback_reason': 'action monitor is not running',
+                'result_supported': False,
+                'result_policy': None,
+                'result_reason': 'action monitor is not running',
+            }
+
+        return {
+            'status_supported': bool(entry.get('status_supported')),
+            'feedback_supported': bool(entry.get('feedback_supported')),
+            'feedback_reason': entry.get('feedback_reason'),
+            'result_supported': bool(entry.get('result_supported')),
+            'result_policy': entry.get('result_policy'),
+            'result_reason': entry.get('result_reason'),
+        }
+
+    def _maybe_create_action_status_subscription(
+        self,
+        name: str,
+        entry: dict[str, Any],
+    ) -> bool:
+        if self._node is None:
+            return False
+
+        if not self._config.actions_auto_monitor_status:
+            return False
+
+        message_class = load_status_message_class()
+        if message_class is None:
+            return False
+
+        try:
+            subscription = self._node.create_subscription(
+                message_class,
+                f'{name}/_action/status',
+                self._action_status_callback(name),
+                QoSProfile(depth=10),
+            )
+        except Exception as exc:  # pragma: no cover
+            LOGGER.warning(
+                'Failed to subscribe action status topic %s: %s',
+                name,
+                exc,
+            )
+            return False
+
+        entry['status_subscription'] = subscription
+        return True
+
+    def _maybe_create_action_feedback_subscription(
+        self,
+        name: str,
+        action_type: str | None,
+        entry: dict[str, Any],
+    ) -> bool:
+        if self._node is None:
+            return False
+
+        if not self._config.actions_auto_monitor_feedback:
+            entry['feedback_reason'] = 'feedback monitoring disabled'
+            return False
+
+        message_class = load_feedback_message_class(action_type)
+        if message_class is None:
+            entry['feedback_reason'] = (
+                'failed to import feedback message class'
+            )
+            return False
+
+        try:
+            subscription = self._node.create_subscription(
+                message_class,
+                f'{name}/_action/feedback',
+                self._action_feedback_callback(name),
+                QoSProfile(depth=10),
+            )
+        except Exception as exc:  # pragma: no cover
+            LOGGER.warning(
+                'Failed to subscribe action feedback topic %s: %s',
+                name,
+                exc,
+            )
+            return False
+
+        entry['feedback_subscription'] = subscription
+        entry['feedback_reason'] = None
+        return True
+
+    def _action_runtime(self, name: str) -> dict[str, Any]:
+        with self._lock:
+            return runtime_snapshot(self._action_subscriptions.get(name))
+
+    def _action_status_callback(self, name: str):
+        def callback(message: Any) -> None:
+            received_at = time()
+            with self._lock:
+                entry = self._action_subscriptions.get(name)
+                if entry is None:
+                    return
+
+                update_status_runtime(
+                    entry,
+                    message=message,
+                    received_at=received_at,
+                )
+
+        return callback
+
+    def _action_feedback_callback(self, name: str):
+        def callback(message: Any) -> None:
+            received_at = time()
+            with self._lock:
+                entry = self._action_subscriptions.get(name)
+                if entry is None:
+                    return
+
+                update_feedback_runtime(
+                    entry,
+                    message=message,
+                    received_at=received_at,
+                )
+
+        return callback
+
+    def _cleanup_disappeared_action_subscriptions(
+        self,
+        action_names: set[str],
+    ) -> None:
+        if self._node is None:
+            return
+
+        with self._lock:
+            stale_names = [
+                name for name in self._action_subscriptions
+                if name not in action_names
+            ]
+            stale_entries = [
+                self._action_subscriptions.pop(name)
+                for name in stale_names
+            ]
+
+        self._action_results.cleanup_actions(stale_names)
+
+        for entry in stale_entries:
+            self._destroy_action_entry_subscriptions(entry)
+
+    def _destroy_action_entry_subscriptions(
+        self,
+        entry: dict[str, Any],
+    ) -> None:
+        if self._node is None:
+            return
+
+        for key in ('status_subscription', 'feedback_subscription'):
+            subscription = entry.get(key)
+            if subscription is None:
+                continue
+
+            try:
+                self._node.destroy_subscription(subscription)
+            except Exception as exc:  # pragma: no cover
+                LOGGER.warning(
+                    'Failed to destroy action subscription: %s',
+                    exc,
+                )
+
+    def _service_client_count(self, name: str) -> int:
+        if self._node is None:
+            return 0
+
+        count_clients = getattr(self._node, 'count_clients', None)
+        if count_clients is None:
+            return 0
+
+        try:
+            return count_clients(name)
+        except (AttributeError, NotImplementedError):
+            return 0
+        except Exception as exc:  # pragma: no cover
+            LOGGER.warning(
+                'Failed to count clients for service %s: %s',
+                name,
+                exc,
+            )
+            return 0
+
+    def _is_topic_included(self, name: str) -> bool:
+        return is_topic_included(
+            name,
+            include_names=self._config.topics_include,
+            exclude_names=self._config.topics_exclude,
+        )
+
+    def _topic_type(self, name: str) -> str | None:
+        with self._lock:
+            for topic in self._topics:
+                if topic.get('name') != name:
+                    continue
+
+                topic_types = topic.get('types')
+                if isinstance(topic_types, list) and topic_types:
+                    return topic_types[0]
+
+        # FastAPI request paths should use the monitor cache.
+        # If the cache has not observed the topic yet, treat it as not found.
+
+        return None
+
+    def _is_supported_type(self, topic_type: str | None) -> bool:
+        return is_supported_type(
+            topic_type,
+            supported_types=self._config.topics_supported_types,
+        )
+
+    def _auto_subscribe_topic(
+        self,
+        name: str,
+        topic_type: str | None,
+        supported_type: bool,
+    ) -> bool:
+        if not should_deep_monitor(
+            auto_discover=self._config.topics_auto_discover,
+            auto_subscribe_supported_types=(
+                self._config.topics_auto_subscribe_supported_types
+            ),
+            topic_type=topic_type,
+            supported_type=supported_type,
+        ):
+            return False
+
+        message_class = self._message_class(topic_type)
+        if message_class is None:
+            return False
+
+        self._ensure_subscription(name, topic_type, message_class)
+        return self._has_subscription(name, topic_type)
+
+    def _ensure_subscription(
+        self,
+        name: str,
+        topic_type: str,
+        message_class: type,
+    ) -> None:
+        if self._node is None:
+            return
+
+        with self._lock:
+            entry = self._subscriptions.get(name)
+            if has_subscription(entry, topic_type=topic_type):
+                return
+
+            if entry is not None:
+                self._node.destroy_subscription(entry['subscription'])
+
+            subscription = self._node.create_subscription(
+                message_class,
+                name,
+                self._latest_message_callback(name, topic_type),
+                self._qos_profile(topic_type),
+            )
+            self._subscriptions[name] = build_subscription_entry(
+                topic_type=topic_type,
+                subscription=subscription,
+            )
+
+    def _has_subscription(self, name: str, topic_type: str) -> bool:
+        with self._lock:
+            entry = self._subscriptions.get(name)
+            return has_subscription(entry, topic_type=topic_type)
+
+    def _monitor_subscriber_count(
+        self,
+        name: str,
+        topic_type: str | None,
+    ) -> int:
+        if topic_type is None:
+            return 0
+
+        with self._lock:
+            entry = self._subscriptions.get(name)
+
+        if has_subscription(entry, topic_type=topic_type):
+            return 1 + self._action_monitor_subscriber_count(name)
+
+        return self._action_monitor_subscriber_count(name)
+
+    def _action_monitor_subscriber_count(self, topic_name: str) -> int:
+        count = 0
+        with self._lock:
+            entries = list(self._action_subscriptions.items())
+
+        for action_name, entry in entries:
+            if (
+                topic_name == f'{action_name}/_action/status'
+                and entry.get('status_subscription') is not None
+            ):
+                count += 1
+            if (
+                topic_name == f'{action_name}/_action/feedback'
+                and entry.get('feedback_subscription') is not None
+            ):
+                count += 1
+
+        return count
+
+    def _cleanup_disappeared_subscriptions(
+        self,
+        graph_topic_names: set[str],
+        now: float,
+    ) -> None:
+        if self._node is None:
+            return
+
+        with self._lock:
+            candidates = cleanup_candidates(
+                self._subscriptions,
+                graph_topic_names=graph_topic_names,
+                now=now,
+                cleanup_after_sec=(
+                    DEFAULT_SUBSCRIPTION_CLEANUP_AFTER_SEC
+                ),
+            )
+
+        for name, subscription in candidates:
+            try:
+                self._node.destroy_subscription(subscription)
+            except Exception as exc:  # pragma: no cover
+                LOGGER.warning(
+                    'Failed to destroy subscription for disappeared topic '
+                    '%s: %s',
+                    name,
+                    exc,
+                )
+                continue
+
+            with self._lock:
+                remove_subscription_entry(
+                    self._subscriptions,
+                    name=name,
+                    subscription=subscription,
+                )
+
+    def _latest_message_callback(self, name: str, topic_type: str):
+        def callback(message: Any) -> None:
+            received_at = time()
+            preview = build_message_preview(topic_type, message)
+            with self._lock:
+                entry = self._subscriptions.get(name)
+                if entry is None:
+                    return
+
+                update_subscription_entry(
+                    entry,
+                    message_preview=preview,
+                    received_at=received_at,
+                    window_sec=self._config.hz_window_sec,
+                )
+
+        return callback
+
+    def _topic_hz_snapshot(
+        self,
+        name: str,
+        topic_type: str,
+    ) -> dict[str, Any]:
+        now = time()
+        with self._lock:
+            entry = self._subscriptions.get(name, {})
+            timestamps = recent_timestamps(
+                entry.get('timestamps', []),
+                now=now,
+                window_sec=self._config.hz_window_sec,
+            )
+            entry['timestamps'] = timestamps
+            last_received_at = entry.get('last_received_at')
+
+        snapshot = build_hz_snapshot(
+            timestamps=timestamps,
+            last_received_at=last_received_at,
+            window_sec=self._config.hz_window_sec,
+            stale_timeout_sec=self._config.stale_timeout_sec,
+            now=now,
+        )
+
+        return self._hz_response(
+            success=True,
+            name=name,
+            topic_type=topic_type,
+            received=snapshot['received'],
+            message_count=snapshot['message_count'],
+            window_sec=snapshot['window_sec'],
+            hz=snapshot['hz'],
+            last_received_at=snapshot['last_received_at'],
+            age_sec=snapshot['age_sec'],
+            is_stale=snapshot['is_stale'],
+            status=snapshot['status'],
+            message='Topic Hz fetched successfully',
+        )
+
+    @staticmethod
+    def _message_class(topic_type: str) -> type | None:
+        parts = topic_type.split('/')
+        if len(parts) != 3 or parts[1] != 'msg':
+            return None
+
+        try:
+            module = import_module(f'{parts[0]}.msg')
+        except ImportError:
+            return None
+
+        return getattr(module, parts[2], None)
+
+    @staticmethod
+    def _qos_profile(topic_type: str):
+        if topic_type in SENSOR_PREVIEW_TYPES:
+            return qos_profile_sensor_data
+
+        return QoSProfile(depth=10)
+
+    @staticmethod
+    def _latest_response(
+        *,
+        success: bool,
+        name: str,
+        message: str,
+        topic_type: str | None = None,
+        received: bool = False,
+        last_received_at: float | None = None,
+        message_preview: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            'success': success,
+            'data': {
+                'name': name,
+                'type': topic_type,
+                'received': received,
+                'last_received_at': last_received_at,
+                'message_preview': message_preview,
+            },
+            'message': message,
+        }
+
+    @staticmethod
+    def _hz_response(
+        *,
+        success: bool,
+        name: str,
+        message: str,
+        topic_type: str | None = None,
+        received: bool = False,
+        message_count: int = 0,
+        window_sec: float = 5.0,
+        hz: float = 0.0,
+        last_received_at: float | None = None,
+        age_sec: float | None = None,
+        is_stale: bool = False,
+        status: str = 'never_received',
+    ) -> dict[str, Any]:
+        return {
+            'success': success,
+            'data': {
+                'name': name,
+                'type': topic_type,
+                'received': received,
+                'message_count': message_count,
+                'window_sec': window_sec,
+                'hz': hz,
+                'last_received_at': last_received_at,
+                'age_sec': age_sec,
+                'is_stale': is_stale,
+                'status': status,
+            },
+            'message': message,
+        }

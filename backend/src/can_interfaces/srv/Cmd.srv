@@ -1,0 +1,8 @@
+#request 클라이언트 -> 서버 요청
+uint8 cmd
+uint8 node_id
+uint8 port
+---
+#response 서버 -> 클라이언트 응답
+bool success
+string message

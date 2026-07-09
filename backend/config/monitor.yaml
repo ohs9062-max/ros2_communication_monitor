@@ -1,0 +1,61 @@
+monitor:
+  poll_interval_sec: 1.0
+  stale_timeout_sec: 3.0
+  hz_window_sec: 5.0
+
+topics:
+  auto_discover: true
+  auto_subscribe_supported_types: true
+
+  include_names: []
+
+  exclude_names: []
+
+  exclude_prefixes: []
+
+  exclude_types:
+    - rosgraph_msgs/msg/Clock
+    - rcl_interfaces/msg/ParameterEvent
+    - rcl_interfaces/msg/Log
+    - tf2_msgs/msg/TFMessage
+
+  supported_types:
+    - sensor_msgs/msg/LaserScan
+    - nav_msgs/msg/Odometry
+    - sensor_msgs/msg/Imu
+    - geometry_msgs/msg/Twist
+    - geometry_msgs/msg/TwistStamped
+    - sensor_msgs/msg/JointState
+    - ros2_dashboard_interfaces/msg/MonitorStatus
+
+services:
+  include_names: []
+  exclude_names: []
+  exclude_prefixes: []
+
+  active_check:
+    enabled: true
+    interval_sec: 5.0
+    default_timeout_sec: 2.0
+    allowlist:
+      - name: /introspection_add_two_ints
+        type: example_interfaces/srv/AddTwoInts
+        timeout_sec: 2.0
+        request:
+          a: 1
+          b: 2
+        success_field: null
+
+      - name: /health_check
+        type: std_srvs/srv/Trigger
+        timeout_sec: 2.0
+        request: {}
+        success_field: success
+
+actions:
+  include_names: []
+  exclude_names: []
+  exclude_prefixes: []
+  auto_monitor_status: true
+  auto_monitor_feedback: true
+  auto_fetch_result_for_observed_goals: true

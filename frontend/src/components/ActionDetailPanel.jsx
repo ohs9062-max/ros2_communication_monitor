@@ -123,7 +123,7 @@ export function ActionDetailPanel({ action, participants }) {
           피드백 미리보기에서 확인합니다.
         </p>
         <DetailLine
-          label="Status 구독"
+          label="상태 구독"
           value={action.status_supported ? '지원' : '미지원'}
         />
         <DetailLine

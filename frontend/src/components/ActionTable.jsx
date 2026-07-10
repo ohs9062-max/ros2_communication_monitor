@@ -19,11 +19,11 @@ const ACTION_SORT_COLUMNS = {
   last_goal_status: { value: (action) => action.runtime?.last_goal_status },
   feedback_supported: {
     defaultDirection: 'desc',
-    value: (action) => (action.feedback_supported ? 1 : 0),
+    value: (action) => feedbackDisplay(action).sortValue,
   },
   result_supported: {
     defaultDirection: 'desc',
-    value: (action) => resultLabel(action),
+    value: (action) => resultDisplay(action).sortValue,
   },
   elapsed_time_ms: {
     defaultDirection: 'desc',
@@ -37,6 +37,7 @@ const ACTION_SORT_COLUMNS = {
 
 export function ActionTable({
   actions,
+  emptyMessage = '표시할 Action이 없습니다',
   onSelectAction,
   selectedActionName,
 }) {
@@ -50,7 +51,7 @@ export function ActionTable({
   )
 
   if (!actions.length) {
-    return <div className="empty-state">표시할 Action이 없습니다</div>
+    return <div className="empty-state">{emptyMessage}</div>
   }
 
   return (
@@ -77,6 +78,7 @@ export function ActionTable({
             return (
               <tr
                 className={selected ? 'selected' : ''}
+                data-monitor-name={action.name}
                 key={action.name}
                 onClick={() => onSelectAction(action.name)}
               >
@@ -97,7 +99,7 @@ export function ActionTable({
                   />
                 </td>
                 <td>
-                  <SupportBadge supported={action.feedback_supported} />
+                  <FeedbackBadge action={action} />
                 </td>
                 <td>
                   <ResultBadge action={action} />
@@ -113,26 +115,85 @@ export function ActionTable({
   )
 }
 
-function SupportBadge({ supported }) {
-  return <StatusBadge value={supported ? 'supported' : 'unsupported'} />
+function FeedbackBadge({ action }) {
+  const display = feedbackDisplay(action)
+  return <StatusBadge label={display.label} value={display.value} />
+}
+
+function feedbackDisplay(action) {
+  const runtime = action.runtime ?? {}
+  const lastGoalStatus = String(runtime.last_goal_status || '').toLowerCase()
+
+  if (runtime.feedback_error) {
+    return resultState('feedback_error', '수신 오류', 1)
+  }
+  if (runtime.feedback_preview) {
+    return resultState('feedback_received', '수신됨', 8)
+  }
+  if (['executing', 'accepted', 'canceling'].includes(lastGoalStatus)) {
+    return resultState('feedback_waiting', '대기 중', 5)
+  }
+  if ((runtime.observed_goal_count ?? 0) === 0) {
+    return resultState('goal_unobserved', 'Goal 미관찰', 0)
+  }
+  if (action.feedback_supported === false) {
+    return resultState('feedback_unsupported', '미지원', 0)
+  }
+
+  return resultState('feedback_none', '수신 없음', 0)
 }
 
 function ResultBadge({ action }) {
-  if (action.result_supported !== true) {
-    return <StatusBadge value="unsupported" />
-  }
-
-  if (action.result_policy === 'observed_goal_only') {
-    return <StatusBadge value="observed_goal_only" />
-  }
-
-  return <StatusBadge value="supported" />
+  const display = resultDisplay(action)
+  return <StatusBadge label={display.label} value={display.value} />
 }
 
-function resultLabel(action) {
-  if (action.result_supported !== true) {
-    return 'unsupported'
+function resultDisplay(action) {
+  const runtime = action.runtime ?? {}
+  const resultStatus = String(runtime.result_status || '').toLowerCase()
+  const lastGoalStatus = String(runtime.last_goal_status || '').toLowerCase()
+
+  if (resultStatus) {
+    if (resultStatus === 'success' || resultStatus === 'succeeded') {
+      return resultState('success', '성공', 8)
+    }
+    if (resultStatus === 'aborted') {
+      return resultState('aborted', '실패 종료', 1)
+    }
+    if (resultStatus === 'canceled') {
+      return resultState('result_canceled', '취소됨', 4)
+    }
+    if (resultStatus === 'timeout') {
+      return resultState('timeout', 'Timeout', 2)
+    }
+    if (resultStatus === 'error') {
+      return resultState('result_error', '결과 조회 오류', 2)
+    }
+    if (resultStatus === 'unavailable') {
+      return resultState('result_none', '결과 없음', 0)
+    }
   }
 
-  return action.result_policy ?? 'supported'
+  if (runtime.result_error) {
+    return resultState('result_error', '결과 조회 오류', 2)
+  }
+
+  if (lastGoalStatus === 'executing') {
+    return resultState('result_waiting', '결과 대기', 6)
+  }
+  if (lastGoalStatus === 'accepted') {
+    return resultState('accepted', 'Goal 수락', 5)
+  }
+  if (lastGoalStatus === 'canceling') {
+    return resultState('result_canceled', '취소 중', 4)
+  }
+  if ((runtime.observed_goal_count ?? 0) === 0) {
+    return resultState('goal_unobserved', 'Goal 미관찰', 0)
+  }
+
+  return resultState('result_none', '결과 없음', 0)
+}
+
+function resultState(value, label, sortValue) {
+  return { label, sortValue, value }
 }

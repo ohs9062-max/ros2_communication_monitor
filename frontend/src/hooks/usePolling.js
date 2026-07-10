@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 export function usePolling(fetcher, intervalMs, options = {}) {
   const { enabled = true, initialData = null } = options
@@ -6,6 +6,24 @@ export function usePolling(fetcher, intervalMs, options = {}) {
   const [error, setError] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [loading, setLoading] = useState(Boolean(enabled))
+
+  const refresh = useCallback(async () => {
+    if (!enabled) {
+      return
+    }
+
+    setLoading(true)
+    try {
+      const result = await fetcher()
+      setData(result)
+      setError(null)
+      setLastUpdated(new Date())
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Request failed')
+    } finally {
+      setLoading(false)
+    }
+  }, [enabled, fetcher])
 
   useEffect(() => {
     if (!enabled) {
@@ -45,5 +63,5 @@ export function usePolling(fetcher, intervalMs, options = {}) {
     }
   }, [enabled, fetcher, intervalMs])
 
-  return { data, error, lastUpdated, loading }
+  return { data, error, lastUpdated, loading, refresh }
 }

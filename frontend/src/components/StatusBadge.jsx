@@ -5,6 +5,7 @@ function statusClass(value) {
     status === 'connected' ||
     status === 'success' ||
     status === 'succeeded' ||
+    status === 'feedback_received' ||
     status === 'supported'
   ) {
     return 'badge green'
@@ -23,7 +24,13 @@ function statusClass(value) {
   ) {
     return 'badge yellow'
   }
-  if (status === 'accepted' || status === 'executing') {
+  if (
+    status === 'accepted' ||
+    status === 'executing' ||
+    status === 'result_waiting' ||
+    status === 'feedback_waiting' ||
+    status === 'feedback_supported'
+  ) {
     return 'badge blue'
   }
   if (
@@ -34,15 +41,17 @@ function statusClass(value) {
     status === 'unavailable' ||
     status === 'timeout' ||
     status === 'never_received' ||
-    status === 'zero_hz'
+    status === 'zero_hz' ||
+    status === 'result_error' ||
+    status === 'feedback_error'
   ) {
     return 'badge red'
   }
   return 'badge gray'
 }
 
-export function StatusBadge({ value }) {
-  return <span className={statusClass(value)}>{statusLabel(value)}</span>
+export function StatusBadge({ label, value }) {
+  return <span className={statusClass(value)}>{label ?? statusLabel(value)}</span>
 }
 
 function statusLabel(value) {
@@ -70,6 +79,12 @@ function statusLabel(value) {
     disabled: '비활성',
     not_supported: '안전 호출 미등록',
     supported: '지원',
+    feedback_supported: '수신 가능',
+    feedback_unsupported: '해석 불가',
+    feedback_received: '수신됨',
+    feedback_waiting: '대기 중',
+    feedback_error: '수신 오류',
+    feedback_none: '수신 없음',
     observed_goal_only: '관찰된 Goal만 조회',
     user: '사용자',
     parameter: '파라미터',
@@ -85,6 +100,10 @@ function statusLabel(value) {
     low_hz: '낮은 Hz',
     normal_hz: '정상 Hz',
     goal_unobserved: 'Goal 미관찰',
+    result_waiting: '결과 대기',
+    result_none: '결과 없음',
+    result_error: '결과 조회 오류',
+    result_canceled: '취소됨',
   }
   return labels[status] ?? value ?? '알 수 없음'
 }

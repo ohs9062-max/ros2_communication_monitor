@@ -6,6 +6,7 @@ const ACTION_POLL_INTERVAL_MS = 3000
 const ALERT_POLL_INTERVAL_MS = 3000
 
 export function useActionDashboard() {
+  const [includeIdleActions, setIncludeIdleActions] = useState(false)
   const [selectedActionName, setSelectedActionName] = useState('')
 
   const actionsState = usePolling(fetchActions, ACTION_POLL_INTERVAL_MS, {
@@ -47,11 +48,13 @@ export function useActionDashboard() {
     actions,
     alerts: alertsState,
     error: actionsState.error,
+    includeIdleActions,
     loading: actionsState.loading,
     meta,
     refresh: actionsState.refresh,
     selectedAction,
     selectedActionName,
+    setIncludeIdleActions,
     setSelectedActionName,
   }
 }

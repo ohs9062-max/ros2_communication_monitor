@@ -1,5 +1,6 @@
 export { AlertsPage } from './AlertsPage.jsx'
 export { ActionsPage } from './ActionsPage.jsx'
+export { NodesPage } from './NodesPage.jsx'
 export { OverviewPage } from './OverviewPage.jsx'
 export { PlaceholderPage } from './PlaceholderPage.jsx'
 export { ServicesPage } from './ServicesPage.jsx'

@@ -76,6 +76,10 @@ class MonitorConfig:
     services_active_check: ServiceActiveCheckConfig = field(
         default_factory=ServiceActiveCheckConfig,
     )
+    nodes_include: tuple[str, ...] = ()
+    nodes_exclude: tuple[str, ...] = ()
+    nodes_exclude_prefixes: tuple[str, ...] = ()
+    nodes_stale_timeout_sec: float = 5.0
     actions_include: tuple[str, ...] = ()
     actions_exclude: tuple[str, ...] = ()
     actions_exclude_prefixes: tuple[str, ...] = ()
@@ -178,6 +182,7 @@ def _monitor_config(data: dict[str, Any]) -> MonitorConfig:
     monitor = _mapping(data.get('monitor'))
     topics = _mapping(data.get('topics'))
     services = _mapping(data.get('services'))
+    nodes = _mapping(data.get('nodes'))
     actions = _mapping(data.get('actions'))
 
     return MonitorConfig(
@@ -215,6 +220,16 @@ def _monitor_config(data: dict[str, Any]) -> MonitorConfig:
         services_exclude=_config_string_tuple(services, 'exclude'),
         services_active_check=_service_active_check_config(
             services.get('active_check'),
+        ),
+        nodes_include=_config_string_tuple(nodes, 'include'),
+        nodes_exclude=_config_string_tuple(nodes, 'exclude'),
+        nodes_exclude_prefixes=_config_string_tuple(
+            nodes,
+            'exclude_prefixes',
+        ),
+        nodes_stale_timeout_sec=_float_value(
+            nodes.get('stale_timeout_sec'),
+            default=5.0,
         ),
         actions_include=_config_string_tuple(actions, 'include'),
         actions_exclude=_config_string_tuple(actions, 'exclude'),

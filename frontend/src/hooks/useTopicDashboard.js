@@ -12,6 +12,7 @@ import { usePolling } from './usePolling.js'
 const POLL_INTERVAL_MS = 1000
 
 export function useTopicDashboard() {
+  const [includeAllTopics, setIncludeAllTopics] = useState(false)
   const [selectedTopicName, setSelectedTopicName] = useState('')
   const [topicHzByName, setTopicHzByName] = useState({})
 
@@ -115,10 +116,12 @@ export function useTopicDashboard() {
     alerts,
     health,
     hz,
+    includeAllTopics,
     latest,
     lastUpdated,
     selectedTopic,
     selectedTopicName,
+    setIncludeAllTopics,
     setSelectedTopicName,
     topicHzByName,
     topicItems,

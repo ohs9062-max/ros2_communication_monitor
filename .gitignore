@@ -23,6 +23,7 @@ dist/
 *.key
 *.pem
 *.crt
+*.p12
 
 # Logs
 *.log

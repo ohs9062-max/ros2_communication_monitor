@@ -1,5 +1,24 @@
 # ROS2 Communication Monitor Dashboard 프로젝트 개요
 
+## Server
+ python3 -m uvicorn ros2_dashboard_backend.main:app --host 127.0.0.1 --port 8000 --reload
+ npm run dev
+
+  ##GAzebo
+  source /opt/ros/jazzy/setup.bash
+  export TURTLEBOT3_MODEL=burger
+  ros2 launch turtlebot3_gazebo \
+    turtlebot3_world.launch.py
+ ros2 run turtlebot3_teleop teleop_keyboard
+
+##  Nav2
+ source /opt/ros/jazzy/setup.bash
+ export TURTLEBOT3_MODEL=burger
+ ros2 launch turtlebot3_navigation2 \
+   navigation2.launch.py \
+   use_sim_time:=True
+
+
 ## 1. 프로젝트 한 줄 정의
 
 ROS2에서 실행 중인 Node, Topic, Service, Action의 통신 상태를 수집하고,

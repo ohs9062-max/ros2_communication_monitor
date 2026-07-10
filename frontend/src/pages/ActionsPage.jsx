@@ -1,30 +1,52 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ActionDetailPanel } from '../components/ActionDetailPanel.jsx'
 import { ActionSummaryCards } from '../components/ActionSummaryCards.jsx'
 import { ActionTable } from '../components/ActionTable.jsx'
 import { AlertsPreview } from '../components/AlertsPreview.jsx'
 
+const ACTION_FILTERS = [
+  { id: 'all', label: '상태 전체' },
+  { id: 'running', label: '실행 중' },
+  { id: 'succeeded', label: '성공' },
+  { id: 'failed', label: '실패/취소' },
+  { id: 'waiting_server', label: '서버 대기' },
+]
+
 export function ActionsPage({ dashboard }) {
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
   const {
     actionAlerts,
     actions,
     alerts,
     error,
+    includeIdleActions,
     loading,
     meta,
     selectedAction,
     selectedActionName,
+    setIncludeIdleActions,
     setSelectedActionName,
   } = dashboard
 
+  const activeActions = useMemo(
+    () => actions.filter((action) => isActiveAction(action)),
+    [actions],
+  )
+
   const filteredActions = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
-    if (!normalizedSearch) {
-      return actions
-    }
+    const baseActions = includeIdleActions ? actions : activeActions
 
-    return actions.filter((action) => {
+    return baseActions.filter((action) => {
+      if (!matchesActionStatusFilter(action, statusFilter)) {
+        return false
+      }
+
+      if (!normalizedSearch) {
+        return true
+      }
+
       const runtime = action.runtime ?? {}
       const fields = [
         action.name,
@@ -38,16 +60,38 @@ export function ActionsPage({ dashboard }) {
         String(field ?? '').toLowerCase().includes(normalizedSearch),
       )
     })
-  }, [actions, search])
+  }, [actions, activeActions, includeIdleActions, search, statusFilter])
+
+  useEffect(() => {
+    if (filteredActions.some((action) => action.name === selectedActionName)) {
+      return
+    }
+
+    setSelectedActionName(filteredActions[0]?.name ?? '')
+  }, [filteredActions, selectedActionName, setSelectedActionName])
+
+  const detailAction = filteredActions.some(
+    (action) => action.name === selectedActionName,
+  )
+    ? selectedAction
+    : null
+  const openActionAlert = (alert) => {
+    setIncludeIdleActions(true)
+    setSearch('')
+    setStatusFilter('all')
+    setSelectedActionName(alert.name)
+    focusMonitorRow(alert.name, setSelectedActionName)
+  }
 
   return (
     <main className="topics-page">
       <section className="main-panel">
-        <ActionSummaryCards meta={meta} />
+        <ActionSummaryCards actions={actions} activeActions={activeActions} meta={meta} />
         <AlertsPreview
           alerts={actionAlerts}
           emptyMessage="Action 알림 없음"
           error={alerts.error}
+          onAlertClick={openActionAlert}
           title="Action Alert"
         />
 
@@ -72,17 +116,124 @@ export function ActionsPage({ dashboard }) {
               type="search"
               value={search}
             />
+            <div className="service-filter-actions">
+              <button
+                className={includeIdleActions ? 'filter active' : 'filter'}
+                onClick={() => setIncludeIdleActions(!includeIdleActions)}
+                type="button"
+              >
+                대기 Action 포함
+              </button>
+              <div
+                aria-label="Action 상태 필터"
+                className="filter-buttons"
+                role="group"
+              >
+                {ACTION_FILTERS.map((filter) => (
+                  <button
+                    className={
+                      statusFilter === filter.id ? 'filter active' : 'filter'
+                    }
+                    key={filter.id}
+                    onClick={() => setStatusFilter(filter.id)}
+                    type="button"
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <ActionTable
             actions={filteredActions}
+            emptyMessage={
+              includeIdleActions
+                ? '표시할 Action이 없습니다'
+                : "현재 관찰된 Action Goal이 없습니다. 대기 Action을 보려면 '대기 Action 포함'을 켜세요."
+            }
             onSelectAction={setSelectedActionName}
             selectedActionName={selectedActionName}
           />
         </section>
       </section>
 
-      <ActionDetailPanel action={selectedAction} />
+      <ActionDetailPanel action={detailAction} />
     </main>
+  )
+}
+
+function isActiveAction(action) {
+  const runtime = action.runtime ?? {}
+  const observedGoalCount =
+    Number(runtime.observed_goal_count ?? action.observed_goal_count ?? 0)
+  const lastGoalStatus = String(
+    runtime.last_goal_status ?? action.last_goal_status ?? '',
+  ).toLowerCase()
+
+  return (
+    observedGoalCount > 0 ||
+    Boolean(lastGoalStatus && lastGoalStatus !== 'unknown') ||
+    Boolean(runtime.feedback_preview) ||
+    Boolean(runtime.result_preview) ||
+    Boolean(runtime.result_status) ||
+    Boolean(runtime.result_error)
+  )
+}
+
+function matchesActionStatusFilter(action, statusFilter) {
+  if (statusFilter === 'all') {
+    return true
+  }
+
+  const runtime = action.runtime ?? {}
+  const lastGoalStatus = String(
+    runtime.last_goal_status ?? action.last_goal_status ?? '',
+  ).toLowerCase()
+  const resultStatus = String(runtime.result_status ?? '').toLowerCase()
+
+  if (statusFilter === 'running') {
+    return ['accepted', 'executing', 'canceling'].includes(lastGoalStatus)
+  }
+  if (statusFilter === 'succeeded') {
+    return lastGoalStatus === 'succeeded' || resultStatus === 'succeeded'
+  }
+  if (statusFilter === 'failed') {
+    return (
+      ['aborted', 'canceled'].includes(lastGoalStatus) ||
+      ['aborted', 'canceled', 'error', 'timeout'].includes(resultStatus) ||
+      Boolean(runtime.result_error)
+    )
+  }
+  if (statusFilter === 'waiting_server') {
+    return action.status === 'waiting_server'
+  }
+
+  return true
+}
+
+function focusMonitorRow(name, select) {
+  window.setTimeout(() => focusMonitorRowAttempt(name, select, 0), 50)
+}
+
+function focusMonitorRowAttempt(name, select, attempt) {
+  select(name)
+  const row = findMonitorRow(name)
+  if (row) {
+    row.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    })
+    return
+  }
+
+  if (attempt < 6) {
+    window.setTimeout(() => focusMonitorRowAttempt(name, select, attempt + 1), 80)
+  }
+}
+
+function findMonitorRow(name) {
+  return [...document.querySelectorAll('[data-monitor-name]')].find(
+    (row) => row.getAttribute('data-monitor-name') === name,
   )
 }

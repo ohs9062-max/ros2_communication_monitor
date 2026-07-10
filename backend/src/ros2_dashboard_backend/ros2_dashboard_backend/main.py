@@ -1,17 +1,21 @@
 """FastAPI entry point for the ROS 2 dashboard backend."""
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from ros2_dashboard_backend.config_loader import load_backend_config
 from ros2_dashboard_backend.ros_monitor import TopicMonitor
+from ros2_dashboard_backend.websocket_manager import WebSocketManager
 
 
+WEBSOCKET_INTERVAL_SEC = 1.0
 backend_config = load_backend_config()
 topic_monitor = TopicMonitor(backend_config.monitor)
+websocket_manager = WebSocketManager()
 
 
 @asynccontextmanager
@@ -104,7 +108,40 @@ def get_ros_actions() -> dict[str, Any]:
     }
 
 
+@app.get('/ros/nodes')
+def get_ros_nodes() -> dict[str, Any]:
+    """Return the cached ROS 2 node snapshot."""
+    snapshot = topic_monitor.node_snapshot()
+    return {
+        'ok': True,
+        'data': {
+            'nodes': snapshot['nodes'],
+            'meta': snapshot['meta'],
+        },
+    }
+
+
 @app.get('/ros/alerts')
 def get_ros_alerts() -> dict[str, Any]:
     """Return current ROS 2 monitoring alerts."""
     return topic_monitor.alerts()
+
+
+@app.websocket('/ws/monitor')
+async def monitor_websocket(websocket: WebSocket) -> None:
+    """Stream lightweight ROS 2 monitor snapshots to one WebSocket client."""
+    await websocket_manager.connect(websocket)
+    try:
+        while True:
+            sent = await websocket_manager.send_json(
+                websocket,
+                topic_monitor.websocket_snapshot(),
+            )
+            if not sent:
+                break
+
+            await asyncio.sleep(WEBSOCKET_INTERVAL_SEC)
+    except WebSocketDisconnect:
+        websocket_manager.disconnect(websocket)
+    finally:
+        websocket_manager.disconnect(websocket)

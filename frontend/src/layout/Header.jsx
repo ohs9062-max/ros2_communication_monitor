@@ -1,7 +1,8 @@
 import { formatTime } from '../utils/format.js'
 
-export function Header({ health, lastUpdated, onNavigate }) {
+export function Header({ health, lastUpdated, onNavigate, websocket }) {
   const connected = Boolean(health.data?.success) && !health.error
+  const realtime = websocketStatus(websocket?.status)
 
   return (
     <header className="header">
@@ -16,9 +17,40 @@ export function Header({ health, lastUpdated, onNavigate }) {
       <div className="header-status">
         <span className={connected ? 'dot connected' : 'dot disconnected'} />
         <span>백엔드: {connected ? '연결됨' : '연결 끊김'}</span>
+        <span className={`ws-status ${realtime.tone}`}>
+          <span className={`dot ${realtime.dot}`} />
+          {realtime.label}
+        </span>
         <span className="muted">마지막 갱신: {formatTime(lastUpdated)}</span>
-        <span className="muted">1초마다 자동 갱신</span>
+        <span className="muted">
+          {websocket?.connected
+            ? `실시간 갱신: ${formatTime(websocket.lastUpdatedAt)}`
+            : 'REST polling 사용 중'}
+        </span>
       </div>
     </header>
   )
+}
+
+function websocketStatus(status) {
+  if (status === 'connected') {
+    return {
+      dot: 'connected',
+      label: '실시간 연결됨',
+      tone: 'connected',
+    }
+  }
+  if (status === 'connecting') {
+    return {
+      dot: 'connecting',
+      label: '실시간 연결 중',
+      tone: 'connecting',
+    }
+  }
+
+  return {
+    dot: 'fallback',
+    label: '실시간 끊김',
+    tone: 'fallback',
+  }
 }

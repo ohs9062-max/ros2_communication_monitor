@@ -1,9 +1,9 @@
 const NAV_ITEMS = [
   { id: 'overview', label: 'Total' },
-  { id: 'nodes', label: 'Node', comingSoon: true },
   { id: 'topics', label: 'Topic' },
   { id: 'services', label: 'Service' },
   { id: 'actions', label: 'Action' },
+  { id: 'nodes', label: 'Nodes' },
   { id: 'alerts', label: 'Alert' },
 ]
 

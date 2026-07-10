@@ -1,5 +1,5 @@
 const FILTERS = [
-  { id: 'all', label: '전체' },
+  { id: 'all', label: '상태 전체' },
   { id: 'active', label: '정상' },
   { id: 'warning', label: '주의' },
   { id: 'error', label: '오류' },
@@ -9,10 +9,10 @@ const FILTERS = [
 ]
 
 export function FilterToolbar({
-  includeInternalTopics = false,
+  includeAllTopics = false,
   search,
   statusFilter,
-  onIncludeInternalTopicsChange,
+  onIncludeAllTopicsChange,
   onSearchChange,
   onStatusFilterChange,
 }) {
@@ -27,11 +27,11 @@ export function FilterToolbar({
       />
       <div className="service-filter-actions">
         <button
-          className={includeInternalTopics ? 'filter active' : 'filter'}
-          onClick={() => onIncludeInternalTopicsChange?.(!includeInternalTopics)}
+          className={includeAllTopics ? 'filter active' : 'filter'}
+          onClick={() => onIncludeAllTopicsChange?.(!includeAllTopics)}
           type="button"
         >
-          내부 Topic 포함
+          숨김 Topic 포함
         </button>
         <div className="filter-buttons" role="group" aria-label="상태 필터">
           {FILTERS.map((filter) => (

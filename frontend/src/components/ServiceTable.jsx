@@ -33,6 +33,7 @@ const SERVICE_SORT_COLUMNS = {
 }
 
 export function ServiceTable({
+  emptyMessage = '표시할 Service가 없습니다',
   onSelectService,
   selectedServiceName,
   services,
@@ -47,7 +48,7 @@ export function ServiceTable({
   )
 
   if (!services.length) {
-    return <div className="empty-state">표시할 Service가 없습니다</div>
+    return <div className="empty-state">{emptyMessage}</div>
   }
 
   return (
@@ -74,6 +75,7 @@ export function ServiceTable({
             return (
               <tr
                 className={selected ? 'selected' : ''}
+                data-monitor-name={service.name}
                 key={service.name}
                 onClick={() => onSelectService(service.name)}
               >
@@ -104,7 +106,7 @@ export function ServiceTable({
 
 function ActiveCheckBadge({ service }) {
   if (service.active_check_supported === false) {
-    return <StatusBadge value="not_supported" />
+    return <StatusBadge label="상태만 표시" value="not_supported" />
   }
 
   return <StatusBadge value={service.active_check?.last_status ?? 'unknown'} />

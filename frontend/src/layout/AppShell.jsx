@@ -2,7 +2,13 @@ import { Header } from './Header.jsx'
 import { Sidebar } from './Sidebar.jsx'
 import { useState } from 'react'
 
-export function AppShell({ activePage, children, dashboard, onNavigate }) {
+export function AppShell({
+  activePage,
+  children,
+  dashboard,
+  onNavigate,
+  websocket,
+}) {
   const [sidebarExpanded, setSidebarExpanded] = useState(false)
 
   return (
@@ -18,6 +24,7 @@ export function AppShell({ activePage, children, dashboard, onNavigate }) {
           health={dashboard.health}
           lastUpdated={dashboard.lastUpdated}
           onNavigate={onNavigate}
+          websocket={websocket}
         />
         {children}
       </div>

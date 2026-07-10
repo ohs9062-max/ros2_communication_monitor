@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertsPreview } from '../components/AlertsPreview.jsx'
 import { FilterToolbar } from '../components/FilterToolbar.jsx'
 import { SummaryCard } from '../components/SummaryCard.jsx'
@@ -13,14 +13,15 @@ import {
 export function TopicsPage({ dashboard }) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [includeInternalTopics, setIncludeInternalTopics] = useState(false)
   const {
     alerts,
     health,
     hz,
+    includeAllTopics,
     latest,
     selectedTopic,
     selectedTopicName,
+    setIncludeAllTopics,
     setSelectedTopicName,
     topicHzByName,
     topicItems,
@@ -28,6 +29,13 @@ export function TopicsPage({ dashboard }) {
   } = dashboard
 
   const summary = getTopicSummary(topicItems)
+  const activeTopics = useMemo(
+    () =>
+      topicItems.filter((topic) =>
+        isActiveTopic(topic, topicHzByName[topic.name]),
+      ),
+    [topicItems, topicHzByName],
+  )
   const warningCount = alerts.data?.meta?.warning_count ?? 0
   const errorCount =
     (alerts.data?.meta?.error_count ?? 0) +
@@ -48,9 +56,9 @@ export function TopicsPage({ dashboard }) {
   )
   const filteredTopics = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
-    return sortTopicsByHealth(topicItems).filter((topic) => {
+    const baseTopics = includeAllTopics ? topicItems : activeTopics
+    return sortTopicsByHealth(baseTopics).filter((topic) => {
       const type = topic.types?.[0] ?? ''
-      const isInternal = isInternalTopic(topic.name)
       const matchesSearch =
         !normalizedSearch ||
         topic.name.toLowerCase().includes(normalizedSearch) ||
@@ -61,20 +69,45 @@ export function TopicsPage({ dashboard }) {
           : matchesStatusFilter(topic, statusFilter)
       return (
         matchesSearch &&
-        matchesStatus &&
-        (includeInternalTopics || !isInternal)
+        matchesStatus
       )
     })
-  }, [includeInternalTopics, search, statusFilter, topicHzByName, topicItems])
+  }, [activeTopics, includeAllTopics, search, statusFilter, topicHzByName, topicItems])
+
+  useEffect(() => {
+    if (filteredTopics.some((topic) => topic.name === selectedTopicName)) {
+      return
+    }
+
+    setSelectedTopicName(filteredTopics[0]?.name ?? '')
+  }, [filteredTopics, selectedTopicName, setSelectedTopicName])
+
+  const detailTopic = filteredTopics.some(
+    (topic) => topic.name === selectedTopicName,
+  )
+    ? selectedTopic
+    : null
+  const openTopicAlert = (alert) => {
+    setIncludeAllTopics(true)
+    setSearch('')
+    setStatusFilter('all')
+    setSelectedTopicName(alert.name)
+    focusMonitorRow(alert.name, setSelectedTopicName)
+  }
+
   return (
     <main className="topics-page">
       <section className="main-panel">
         <div className="summary-grid">
-          <SummaryCard label="Topic" value={summary.total} />
+          <SummaryCard label="전체 Topic" value={summary.total} />
+          <SummaryCard label="활동 Topic" value={activeTopics.length} tone="good" />
           <SummaryCard label="정상" value={summary.active} tone="good" />
           <SummaryCard label="상세 감시" value={summary.deep} />
-          <SummaryCard label="주의" value={warningCount} tone="warn" />
-          <SummaryCard label="오류" value={errorCount} tone="bad" />
+          <SummaryCard
+            label="주의/오류"
+            value={warningCount + errorCount}
+            tone={warningCount + errorCount ? 'warn' : 'default'}
+          />
           <SummaryCard
             label="미수신"
             tone={missedCount ? 'bad' : 'default'}
@@ -86,6 +119,7 @@ export function TopicsPage({ dashboard }) {
           alerts={topicAlerts}
           emptyMessage="Topic 알림 없음"
           error={alerts.error}
+          onAlertClick={openTopicAlert}
           title="Topic Alert"
         />
 
@@ -93,7 +127,10 @@ export function TopicsPage({ dashboard }) {
           <div className="section-heading">
             <div>
               <h2>Topic 상세</h2>
-              <p className="muted">1초마다 자동 갱신</p>
+              <p className="muted">
+                기본 화면은 현재 활동 중이거나 최근 상태 변화가 관찰된 Topic만
+                표시합니다.
+              </p>
             </div>
             {topics.error && <span className="error-text">{topics.error}</span>}
             {health.error && (
@@ -101,14 +138,19 @@ export function TopicsPage({ dashboard }) {
             )}
           </div>
           <FilterToolbar
-            includeInternalTopics={includeInternalTopics}
-            onIncludeInternalTopicsChange={setIncludeInternalTopics}
+            includeAllTopics={includeAllTopics}
+            onIncludeAllTopicsChange={setIncludeAllTopics}
             onSearchChange={setSearch}
             onStatusFilterChange={setStatusFilter}
             search={search}
             statusFilter={statusFilter}
           />
           <TopicTable
+            emptyMessage={
+              includeAllTopics
+                ? '표시할 Topic이 없습니다'
+                : "현재 활동 중인 Topic이 없습니다. 숨김 Topic을 보려면 '숨김 Topic 포함'을 켜세요."
+            }
             hzByTopic={topicHzByName}
             onSelectTopic={setSelectedTopicName}
             selectedTopicName={selectedTopicName}
@@ -120,9 +162,35 @@ export function TopicsPage({ dashboard }) {
       <TopicDetailPanel
         hz={hz}
         latest={latest}
-        topic={selectedTopic}
+        topic={detailTopic}
       />
     </main>
+  )
+}
+
+function focusMonitorRow(name, select) {
+  window.setTimeout(() => focusMonitorRowAttempt(name, select, 0), 50)
+}
+
+function focusMonitorRowAttempt(name, select, attempt) {
+  select(name)
+  const row = findMonitorRow(name)
+  if (row) {
+    row.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    })
+    return
+  }
+
+  if (attempt < 6) {
+    window.setTimeout(() => focusMonitorRowAttempt(name, select, attempt + 1), 80)
+  }
+}
+
+function findMonitorRow(name) {
+  return [...document.querySelectorAll('[data-monitor-name]')].find(
+    (row) => row.getAttribute('data-monitor-name') === name,
   )
 }
 
@@ -140,6 +208,36 @@ function isInternalTopic(name) {
     name.endsWith('/_action/status') ||
     name.endsWith('/_action/feedback') ||
     name.endsWith('/_service_event')
+  )
+}
+
+function isActiveTopic(topic, hzEntry) {
+  if (isInternalTopic(topic.name)) {
+    return false
+  }
+
+  const hzData = hzEntry?.data
+  const hz = Number(hzData?.hz)
+  const messageCount = Number(
+    hzData?.message_count ?? topic.message_count ?? topic.received_count ?? 0,
+  )
+  const hasPreview = Boolean(
+    topic.message_preview ?? topic.latest_message ?? topic.preview,
+  )
+
+  return (
+    topic.status === 'active' ||
+    topic.received === true ||
+    hzData?.received === true ||
+    messageCount > 0 ||
+    (Number.isFinite(hz) && hz > 0) ||
+    (
+      (topic.external_subscriber_count ?? 0) > 0 &&
+      (topic.publisher_count ?? 0) > 0
+    ) ||
+    topic.detailed_monitoring === true ||
+    topic.deep_monitoring === true ||
+    hasPreview
   )
 }
 

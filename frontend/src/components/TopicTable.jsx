@@ -37,6 +37,7 @@ const TOPIC_SORT_COLUMNS = {
 
 export function TopicTable({
   topics,
+  emptyMessage = '표시할 Topic이 없습니다',
   selectedTopicName,
   onSelectTopic,
   hzByTopic = {},
@@ -56,7 +57,7 @@ export function TopicTable({
   )
 
   if (!topics.length) {
-    return <div className="empty-state">표시할 Topic이 없습니다</div>
+    return <div className="empty-state">{emptyMessage}</div>
   }
 
   return (
@@ -86,6 +87,7 @@ export function TopicTable({
                   selected ? 'selected' : '',
                   missing ? 'message-missing' : '',
                 ].join(' ')}
+                data-monitor-name={topic.name}
                 key={topic.name}
                 onClick={() => onSelectTopic(topic.name)}
               >

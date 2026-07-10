@@ -32,6 +32,8 @@ from ros2_dashboard_backend.action.subscriptions import (
     update_status_runtime,
 )
 from ros2_dashboard_backend.config_loader import MonitorConfig
+from ros2_dashboard_backend.node.alerts import build_node_alerts
+from ros2_dashboard_backend.node.runtime import NodeRuntime
 from ros2_dashboard_backend.service.active_check_runtime import (
     ServiceActiveCheckRuntime,
 )
@@ -90,6 +92,14 @@ class TopicMonitor:
         self._actions_last_updated = 0.0
         self._subscriptions: dict[str, dict[str, Any]] = {}
         self._action_subscriptions: dict[str, dict[str, Any]] = {}
+        self._node_runtime = NodeRuntime(
+            exclude_names=self._config.nodes_exclude,
+            exclude_prefixes=self._config.nodes_exclude_prefixes,
+            include_names=self._config.nodes_include,
+            lock=self._lock,
+            node_getter=lambda: self._node,
+            stale_timeout_sec=self._config.nodes_stale_timeout_sec,
+        )
         self._service_active_checks = ServiceActiveCheckRuntime(
             active_check_config=self._config.services_active_check,
             lock=self._lock,
@@ -143,6 +153,7 @@ class TopicMonitor:
             )
         self._action_results.clear()
         self._service_active_checks.clear()
+        self._node_runtime.clear()
 
     def snapshot(self) -> dict[str, Any]:
         """Return a thread-safe snapshot of the cached topic list."""
@@ -195,6 +206,41 @@ class TopicMonitor:
                 actions=actions,
                 last_updated=last_updated,
             ),
+        }
+
+    def node_snapshot(self) -> dict[str, Any]:
+        """Return a thread-safe snapshot of the cached node list."""
+        return self._node_runtime.snapshot()
+
+    def websocket_snapshot(self) -> dict[str, Any]:
+        """Return a lightweight monitor snapshot for WebSocket clients."""
+        timestamp = time()
+        topic_snapshot = self.snapshot()
+        service_snapshot = self.service_snapshot()
+        action_snapshot = self.action_snapshot()
+        node_snapshot = self.node_snapshot()
+        alerts = self.alerts()
+
+        return {
+            'type': 'monitor_snapshot',
+            'timestamp': timestamp,
+            'data': {
+                'topics': self._websocket_topic_meta(
+                    topic_snapshot['topics'],
+                ),
+                'services': self._websocket_service_meta(
+                    service_snapshot['meta'],
+                ),
+                'actions': self._websocket_action_meta(
+                    action_snapshot['actions'],
+                    action_snapshot['meta'],
+                ),
+                'nodes': self._websocket_node_meta(
+                    node_snapshot['nodes'],
+                    node_snapshot['meta'],
+                ),
+                'alerts': alerts['data'],
+            },
         }
 
     def latest_message(self, name: str) -> dict[str, Any]:
@@ -301,6 +347,8 @@ class TopicMonitor:
                 }
                 for name, entry in self._subscriptions.items()
             }
+        node_snapshot = self._node_runtime.snapshot()
+        nodes = node_snapshot['nodes']
 
         alerts = build_alerts(
             topics=topics,
@@ -320,12 +368,113 @@ class TopicMonitor:
                 detected_at=detected_at,
             ),
         )
+        alerts.extend(
+            build_node_alerts(
+                nodes=nodes,
+                detected_at=detected_at,
+            ),
+        )
 
         return {
             'success': True,
             'data': alerts,
             'meta': build_alert_meta(alerts),
             'message': 'ROS2 alerts fetched successfully',
+        }
+
+    @staticmethod
+    def _websocket_topic_meta(
+        topics: list[dict[str, Any]],
+    ) -> dict[str, int]:
+        return {
+            'count': len(topics),
+            'active_count': sum(
+                1 for topic in topics
+                if topic.get('status') == 'active'
+            ),
+            'warning_count': sum(
+                1 for topic in topics
+                if topic.get('status') in (
+                    'warning',
+                    'stale',
+                    'no_subscriber',
+                    'waiting_publisher',
+                )
+            ),
+            'error_count': sum(
+                1 for topic in topics
+                if topic.get('status') in ('error', 'critical')
+            ),
+            'deep_monitoring_count': sum(
+                1 for topic in topics
+                if topic.get('deep_monitoring') is True
+            ),
+            'stale_count': sum(
+                1 for topic in topics
+                if topic.get('status') == 'stale'
+            ),
+        }
+
+    @staticmethod
+    def _websocket_service_meta(meta: dict[str, Any]) -> dict[str, int]:
+        active_check_problem_count = sum(
+            int(meta.get(key) or 0)
+            for key in (
+                'active_check_failed_count',
+                'active_check_timeout_count',
+                'active_check_error_count',
+            )
+        )
+        return {
+            'count': int(meta.get('count') or meta.get('visible_count') or 0),
+            'active_count': int(meta.get('active_count') or 0),
+            'warning_count': int(meta.get('warning_count') or 0),
+            'error_count': int(meta.get('error_count') or 0),
+            'active_check_supported_count': int(
+                meta.get('active_check_supported_count') or 0,
+            ),
+            'active_check_problem_count': active_check_problem_count,
+        }
+
+    @staticmethod
+    def _websocket_action_meta(
+        actions: list[dict[str, Any]],
+        meta: dict[str, Any],
+    ) -> dict[str, int]:
+        return {
+            'count': int(meta.get('count') or 0),
+            'active_count': int(meta.get('active_count') or 0),
+            'warning_count': int(meta.get('warning_count') or 0),
+            'error_count': int(meta.get('error_count') or 0),
+            'observed_goal_count': int(
+                meta.get('observed_goal_count') or 0,
+            ),
+            'executing_count': sum(
+                1 for action in actions
+                if action.get('runtime', {}).get('last_goal_status')
+                == 'executing'
+            ),
+            'failed_count': sum(
+                1 for action in actions
+                if action.get('runtime', {}).get('last_goal_status')
+                == 'aborted'
+            ),
+        }
+
+    @staticmethod
+    def _websocket_node_meta(
+        nodes: list[dict[str, Any]],
+        meta: dict[str, Any],
+    ) -> dict[str, int]:
+        return {
+            'count': int(meta.get('count') or len(nodes)),
+            'active_count': int(meta.get('active_count') or 0),
+            'warning_count': int(meta.get('warning_count') or 0),
+            'error_count': int(meta.get('error_count') or 0),
+            'stale_count': sum(
+                1 for node in nodes
+                if node.get('status') == 'stale'
+            ),
         }
 
     def _spin(self) -> None:
@@ -341,6 +490,7 @@ class TopicMonitor:
                 raise
 
     def _update_graph(self) -> None:
+        self._node_runtime.update()
         self._update_topics()
         services = self._update_services()
         actions = self._update_actions()

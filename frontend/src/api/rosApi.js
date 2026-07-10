@@ -1,5 +1,14 @@
-const API_BASE_URL =
+export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000'
+
+export function monitorWebSocketUrl() {
+  const url = new URL(API_BASE_URL, window.location.origin)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  url.pathname = '/ws/monitor'
+  url.search = ''
+  url.hash = ''
+  return url.toString()
+}
 
 async function requestJson(path) {
   const response = await fetch(`${API_BASE_URL}${path}`)
@@ -37,4 +46,8 @@ export function fetchServices({ includeHidden = false } = {}) {
 
 export function fetchActions() {
   return requestJson('/ros/actions')
+}
+
+export function fetchNodes() {
+  return requestJson('/ros/nodes')
 }

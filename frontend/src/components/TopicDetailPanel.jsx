@@ -40,29 +40,32 @@ export function TopicDetailPanel({ topic, latest, hz }) {
 
       <section className="detail-section">
         <h3>상태 요약</h3>
-        <div className="detail-line">
-          <span>상태</span>
-          <strong>{topic.status ?? '-'}</strong>
-        </div>
-        <div className="detail-line">
-          <span>상태 이유</span>
-          <strong>{topic.reason ?? '-'}</strong>
-        </div>
-        <div className="detail-line">
-          <span>타입</span>
-          <strong>{topic.types?.[0] ?? '-'}</strong>
-        </div>
+        <DetailLine label="상태" tone={statusTone(topic.status)} value={topic.status ?? '-'} />
+        <DetailLine label="상태 이유" value={topic.reason ?? '-'} />
+        <DetailLine label="타입" value={topic.types?.[0] ?? '-'} />
       </section>
 
       <section className="detail-section">
         <h3>수신 정보</h3>
         <div className="metric-grid">
           <Metric label="Hz" value={formatNumber(hzData?.hz)} />
-          <Metric label="수신 여부" value={hzData?.received ? '예' : '아니오'} />
+          <Metric
+            label="수신 여부"
+            tone={hzData?.received ? 'good' : 'muted'}
+            value={hzData?.received ? '예' : '아니오'}
+          />
           <Metric label="메시지 수" value={hzData?.message_count ?? '-'} />
           <Metric label="경과 시간" value={formatAge(hzData?.age_sec)} />
-          <Metric label="오래됨" value={hzData?.is_stale ? '예' : '아니오'} />
-          <Metric label="상태" value={hzData?.status ?? '-'} />
+          <Metric
+            label="오래됨"
+            tone={hzData?.is_stale ? 'warn' : 'good'}
+            value={hzData?.is_stale ? '예' : '아니오'}
+          />
+          <Metric
+            label="상태"
+            tone={statusTone(hzData?.status)}
+            value={hzData?.status ?? '-'}
+          />
         </div>
       </section>
 
@@ -84,7 +87,9 @@ export function TopicDetailPanel({ topic, latest, hz }) {
         </div>
         <div className="detail-line">
           <span>상세 감시</span>
-          <strong>{topic.deep_monitoring ? '예' : '아니오'}</strong>
+          <strong className={topic.deep_monitoring ? 'detail-value-good' : 'detail-value-muted'}>
+            {topic.deep_monitoring ? '예' : '아니오'}
+          </strong>
         </div>
       </section>
 
@@ -92,7 +97,9 @@ export function TopicDetailPanel({ topic, latest, hz }) {
         <h3>최신 메시지</h3>
         <div className="detail-line">
           <span>수신 여부</span>
-          <strong>{latestData?.received ? '예' : '아니오'}</strong>
+          <strong className={latestData?.received ? 'detail-value-good' : 'detail-value-muted'}>
+            {latestData?.received ? '예' : '아니오'}
+          </strong>
         </div>
         <div className="detail-line">
           <span>마지막 수신</span>
@@ -117,11 +124,62 @@ export function TopicDetailPanel({ topic, latest, hz }) {
   )
 }
 
-function Metric({ label, value }) {
+function DetailLine({ label, tone, value }) {
+  return (
+    <div className="detail-line">
+      <span>{label}</span>
+      <strong className={detailValueClass(tone)}>{value}</strong>
+    </div>
+  )
+}
+
+function Metric({ label, tone, value }) {
   return (
     <div className="metric">
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong className={detailValueClass(tone)}>{value}</strong>
     </div>
   )
+}
+
+function detailValueClass(tone) {
+  return tone ? `detail-value-${tone}` : undefined
+}
+
+function statusTone(status) {
+  const value = String(status || '').toLowerCase()
+  if (['active', 'success', 'succeeded', 'normal_hz'].includes(value)) {
+    return 'good'
+  }
+  if (
+    [
+      'warning',
+      'stale',
+      'waiting_publisher',
+      'waiting_server',
+      'pending',
+      'canceling',
+      'canceled',
+      'low_hz',
+    ].includes(value)
+  ) {
+    return 'warn'
+  }
+  if (
+    [
+      'error',
+      'critical',
+      'failed',
+      'aborted',
+      'timeout',
+      'never_received',
+      'zero_hz',
+    ].includes(value)
+  ) {
+    return 'bad'
+  }
+  if (['accepted', 'executing', 'result_waiting'].includes(value)) {
+    return 'info'
+  }
+  return 'muted'
 }

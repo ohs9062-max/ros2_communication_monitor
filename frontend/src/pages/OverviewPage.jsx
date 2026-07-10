@@ -12,6 +12,7 @@ import {
 export function OverviewPage({
   actionDashboard,
   dashboard,
+  nodeDashboard,
   onNavigate,
   serviceDashboard,
 }) {
@@ -26,6 +27,10 @@ export function OverviewPage({
     actionDashboard.actions,
     actionDashboard.meta,
   )
+  const nodeSummary = getNodeSummary(
+    nodeDashboard.nodes,
+    nodeDashboard.meta,
+  )
   const alertMeta = alerts.data?.meta ?? {}
   const alertItems = alerts.data?.data ?? []
   const alertSummary = getAlertSummary(alertMeta, alertItems)
@@ -34,8 +39,12 @@ export function OverviewPage({
     {
       id: 'nodes',
       label: 'Node',
-      total: '--',
-      summary: emptyResourceSummary(),
+      total: nodeSummary.total,
+      summary: {
+        green: nodeSummary.active,
+        yellow: nodeSummary.warning,
+        red: nodeSummary.error + nodeSummary.inactive,
+      },
     },
     {
       id: 'topics',
@@ -105,11 +114,15 @@ export function OverviewPage({
           onAlertClick={openAlert}
         />
         <PreviewCard
-          metrics={[{ label: '상태', value: '준비 중' }]}
+          metrics={[
+            { label: '실행 중', value: nodeSummary.active },
+            { label: '주의/오류', value: nodeSummary.warning + nodeSummary.error },
+            { label: 'Pub/Sub', value: nodeSummary.pubSub },
+          ]}
           onClick={() => onNavigate('nodes')}
-          status="unknown"
+          status={resourceStatus(nodeSummary)}
           title="Node 미리보기"
-          total="--"
+          total={nodeSummary.total}
         />
         <PreviewCard
           metrics={[
@@ -337,14 +350,6 @@ function resourceStatus(summary) {
   return 'active'
 }
 
-function emptyResourceSummary() {
-  return {
-    green: 0,
-    yellow: 0,
-    red: 0,
-  }
-}
-
 function getAlertSummary(meta, alerts) {
   const warning = meta.warning_count ?? countAlertsByLevel(alerts, 'warning')
   const error = meta.error_count ?? countAlertsByLevel(alerts, 'error')
@@ -357,6 +362,34 @@ function getAlertSummary(meta, alerts) {
     error,
     critical,
   }
+}
+
+function getNodeSummary(nodes, meta = {}) {
+  const total = meta.count ?? nodes.length
+  const active = meta.active_count ?? countNodesByStatus(nodes, 'active')
+  const warning = meta.warning_count ?? countNodesByStatus(nodes, 'stale')
+  const error = meta.error_count ?? countNodesByStatus(nodes, 'unknown')
+  const inactive = Math.max(total - active - warning - error, 0)
+  const pubSub =
+    (meta.publisher_count ?? sumNodeCount(nodes, 'publisher_count')) +
+    (meta.subscriber_count ?? sumNodeCount(nodes, 'subscriber_count'))
+
+  return {
+    total,
+    active,
+    warning,
+    error,
+    inactive,
+    pubSub,
+  }
+}
+
+function countNodesByStatus(nodes, expectedStatus) {
+  return nodes.filter((node) => node.status === expectedStatus).length
+}
+
+function sumNodeCount(nodes, key) {
+  return nodes.reduce((sum, node) => sum + (node[key] ?? 0), 0)
 }
 
 function countAlertsByLevel(alerts, expectedLevel) {

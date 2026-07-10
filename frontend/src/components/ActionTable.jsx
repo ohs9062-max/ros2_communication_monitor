@@ -65,9 +65,9 @@ export function ActionTable({
             <SortableHeader columnKey="server_count" label="서버" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="client_count" label="클라이언트" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="last_goal_status" label="마지막 Goal" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="feedback_supported" label="Feedback" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="result_supported" label="Result" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="elapsed_time_ms" label="Elapsed" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="feedback_supported" label="피드백" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="result_supported" label="결과" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="elapsed_time_ms" label="실행 시간" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="observed_goal_count" label="관찰 Goal" onSort={onSort} sort={sort} />
           </tr>
         </thead>

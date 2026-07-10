@@ -13,6 +13,7 @@ import {
   OverviewPage,
   ServicesPage,
   TopicsPage,
+  VisualizationPage,
 } from './pages/index.js'
 
 function App() {
@@ -56,6 +57,9 @@ function App() {
       )}
       {activePage === 'actions' && (
         <ActionsPage dashboard={actionDashboard} />
+      )}
+      {activePage === 'visualization' && (
+        <VisualizationPage websocket={monitorWebSocket} />
       )}
     </AppShell>
   )

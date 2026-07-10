@@ -1,8 +1,9 @@
 import { formatAge, formatNumber, formatTime } from '../utils/format.js'
+import { ConnectionNodeList } from './ConnectionNodeList.jsx'
 import { KeyValueTable } from './KeyValueTable.jsx'
 import { StatusBadge } from './StatusBadge.jsx'
 
-export function TopicDetailPanel({ topic, latest, hz }) {
+export function TopicDetailPanel({ topic, latest, hz, participants }) {
   if (!topic) {
     return (
       <aside className="detail-panel">
@@ -33,7 +34,7 @@ export function TopicDetailPanel({ topic, latest, hz }) {
       {hz.error && <p className="error-text">{hz.error}</p>}
       {neverReceived && (
         <p className="notice-text warning">
-          이 Topic은 아직 메시지를 수신하지 않았습니다. Publisher가 메시지를
+          이 Topic은 아직 메시지를 수신하지 않았습니다. 발행자가 메시지를
           발행 중인지 확인하세요.
         </p>
       )}
@@ -94,6 +95,23 @@ export function TopicDetailPanel({ topic, latest, hz }) {
       </section>
 
       <section className="detail-section">
+        <h3>연결 Node</h3>
+        <p className="detail-help-text">
+          표시된 Node 목록은 ROS2 Graph에서 확인된 Node 기준입니다.
+        </p>
+        <ConnectionNodeList
+          emptyText="발행자 Node 없음"
+          items={participants?.publishers ?? []}
+          title="발행자 Node"
+        />
+        <ConnectionNodeList
+          emptyText="구독자 Node 없음"
+          items={participants?.subscribers ?? []}
+          title="구독자 Node"
+        />
+      </section>
+
+      <section className="detail-section">
         <h3>최신 메시지</h3>
         <div className="detail-line">
           <span>수신 여부</span>
@@ -114,7 +132,7 @@ export function TopicDetailPanel({ topic, latest, hz }) {
 
       <section className="detail-section">
         <details>
-          <summary>원본 메시지 preview JSON</summary>
+          <summary>원본 메시지 JSON</summary>
           <pre className="preview-json">
             {preview ? JSON.stringify(preview, null, 2) : 'preview 없음'}
           </pre>

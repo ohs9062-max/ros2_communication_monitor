@@ -1,7 +1,8 @@
 import { formatMs, formatRelativeTime, formatTime } from '../utils/format.js'
+import { ConnectionNodeList } from './ConnectionNodeList.jsx'
 import { StatusBadge } from './StatusBadge.jsx'
 
-export function ServiceDetailPanel({ service }) {
+export function ServiceDetailPanel({ participants, service }) {
   if (!service) {
     return (
       <aside className="detail-panel">
@@ -57,6 +58,19 @@ export function ServiceDetailPanel({ service }) {
         <h3>연결 정보</h3>
         <DetailLine label="서버 수" value={service.server_count ?? 0} />
         <DetailLine label="클라이언트 수" value={service.client_count ?? 0} />
+        <p className="detail-help-text">
+          요청자 Node는 요청을 보내고, 응답자 Node는 요청을 받아 응답합니다.
+        </p>
+        <ConnectionNodeList
+          emptyText="응답자 Node 없음"
+          items={participants?.servers ?? []}
+          title="응답자 Node"
+        />
+        <ConnectionNodeList
+          emptyText="요청자 Node 없음"
+          items={participants?.clients ?? []}
+          title="요청자 Node"
+        />
       </section>
 
       <section className="detail-section">
@@ -85,7 +99,7 @@ export function ServiceDetailPanel({ service }) {
       </section>
 
       <section className="detail-section">
-        <details open>
+        <details>
           <summary>응답 미리보기 JSON</summary>
           <pre className="preview-json">
             {activeCheck.response_preview

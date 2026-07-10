@@ -18,6 +18,25 @@
    navigation2.launch.py \
    use_sim_time:=True
 
+## venv
+cd ~/rang/ros2_dashboard/backend
+source /opt/ros/jazzy/setup.bash
+source .venv/bin/activate
+source install/setup.bash
+
+python3 -m uvicorn ros2_dashboard_backend.main:app \
+  --host 127.0.0.1 \
+  --port 8000 \
+  --reload
+
+## build
+cd ~/rang/ros2_dashboard/backend
+source /opt/ros/jazzy/setup.bash
+source .venv/bin/activate
+colcon build --symlink-install
+source install/setup.bash
+
+deactivate
 
 ## 1. 프로젝트 한 줄 정의
 

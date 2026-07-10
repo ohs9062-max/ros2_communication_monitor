@@ -5,18 +5,20 @@ import { ActionTable } from '../components/ActionTable.jsx'
 import { AlertsPreview } from '../components/AlertsPreview.jsx'
 
 const ACTION_FILTERS = [
-  { id: 'all', label: '상태 전체' },
+  { id: 'primary', label: '주요 항목' },
+  { id: 'all', label: '전체' },
   { id: 'running', label: '실행 중' },
   { id: 'succeeded', label: '성공' },
   { id: 'failed', label: '실패/취소' },
-  { id: 'waiting_server', label: '서버 대기' },
+  { id: 'unobserved', label: 'Goal 미관찰' },
 ]
 
 export function ActionsPage({ dashboard }) {
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('primary')
   const {
     actionAlerts,
+    actionParticipants,
     actions,
     alerts,
     error,
@@ -36,7 +38,12 @@ export function ActionsPage({ dashboard }) {
 
   const filteredActions = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
-    const baseActions = includeIdleActions ? actions : activeActions
+    const baseActions =
+      includeIdleActions ||
+      statusFilter === 'all' ||
+      statusFilter === 'unobserved'
+      ? actions
+      : activeActions
 
     return baseActions.filter((action) => {
       if (!matchesActionStatusFilter(action, statusFilter)) {
@@ -158,7 +165,10 @@ export function ActionsPage({ dashboard }) {
         </section>
       </section>
 
-      <ActionDetailPanel action={detailAction} />
+      <ActionDetailPanel
+        action={detailAction}
+        participants={actionParticipants[detailAction?.name] ?? null}
+      />
     </main>
   )
 }
@@ -182,7 +192,7 @@ function isActiveAction(action) {
 }
 
 function matchesActionStatusFilter(action, statusFilter) {
-  if (statusFilter === 'all') {
+  if (statusFilter === 'primary' || statusFilter === 'all') {
     return true
   }
 
@@ -205,8 +215,11 @@ function matchesActionStatusFilter(action, statusFilter) {
       Boolean(runtime.result_error)
     )
   }
-  if (statusFilter === 'waiting_server') {
-    return action.status === 'waiting_server'
+  if (statusFilter === 'unobserved') {
+    return (
+      (runtime.observed_goal_count ?? 0) === 0 &&
+      (!lastGoalStatus || lastGoalStatus === 'unknown')
+    )
   }
 
   return true

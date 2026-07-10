@@ -1,10 +1,11 @@
 const NAV_ITEMS = [
-  { id: 'overview', label: 'Total' },
-  { id: 'topics', label: 'Topic' },
-  { id: 'services', label: 'Service' },
-  { id: 'actions', label: 'Action' },
+  { id: 'overview', label: 'Overview' },
+  { id: 'topics', label: 'Topics' },
+  { id: 'services', label: 'Services' },
+  { id: 'actions', label: 'Actions' },
   { id: 'nodes', label: 'Nodes' },
-  { id: 'alerts', label: 'Alert' },
+  { id: 'visualization', label: 'Visualization' },
+  { id: 'alerts', label: 'Alerts' },
 ]
 
 export function Sidebar({
@@ -42,7 +43,7 @@ export function Sidebar({
         type="button"
       >
         <span className="brand-mark">R2</span>
-        <span className="nav-label">통신 관제</span>
+        <span className="nav-label">ROS2 Monitor</span>
       </button>
       <nav className="nav-list" aria-label="대시보드 메뉴">
         {NAV_ITEMS.map((item) => (
@@ -55,7 +56,7 @@ export function Sidebar({
           >
             <span className="nav-icon">{item.label.slice(0, 1)}</span>
             <span className="nav-label">{item.label}</span>
-            {item.comingSoon && <small>준비 중</small>}
+            {item.comingSoon && <small>Soon</small>}
           </button>
         ))}
       </nav>

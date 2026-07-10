@@ -2,14 +2,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   fetchAlerts,
   fetchHealth,
+  fetchNodes,
   fetchTopicHz,
   fetchTopicLatest,
   fetchTopics,
 } from '../api/rosApi.js'
+import { buildParticipantMaps } from '../utils/participants.js'
 import { sortTopicsByHealth } from '../utils/status.js'
 import { usePolling } from './usePolling.js'
 
 const POLL_INTERVAL_MS = 1000
+const NODE_POLL_INTERVAL_MS = 3000
 
 export function useTopicDashboard() {
   const [includeAllTopics, setIncludeAllTopics] = useState(false)
@@ -22,6 +25,9 @@ export function useTopicDashboard() {
   })
   const alerts = usePolling(fetchAlerts, POLL_INTERVAL_MS, {
     initialData: { data: [], meta: {} },
+  })
+  const nodeState = usePolling(fetchNodes, NODE_POLL_INTERVAL_MS, {
+    initialData: { data: { nodes: [], meta: {} } },
   })
 
   const latestFetcher = useCallback(
@@ -41,6 +47,14 @@ export function useTopicDashboard() {
   })
 
   const topicItems = useMemo(() => topics.data?.data ?? [], [topics.data])
+  const nodeItems = useMemo(
+    () => nodeState.data?.data?.nodes ?? [],
+    [nodeState.data],
+  )
+  const { topicParticipants } = useMemo(
+    () => buildParticipantMaps(nodeItems),
+    [nodeItems],
+  )
   const selectedTopic = useMemo(
     () => topicItems.find((topic) => topic.name === selectedTopicName) ?? null,
     [selectedTopicName, topicItems],
@@ -110,7 +124,10 @@ export function useTopicDashboard() {
   }, [hzTopicNames])
 
   const lastUpdated =
-    topics.lastUpdated ?? alerts.lastUpdated ?? health.lastUpdated
+    topics.lastUpdated ??
+    nodeState.lastUpdated ??
+    alerts.lastUpdated ??
+    health.lastUpdated
 
   return {
     alerts,
@@ -125,6 +142,7 @@ export function useTopicDashboard() {
     setSelectedTopicName,
     topicHzByName,
     topicItems,
+    topicParticipants,
     topics,
   }
 }

@@ -1,5 +1,7 @@
 const FILTERS = [
-  { id: 'all', label: '상태 전체' },
+  { id: 'primary', label: '주요 항목' },
+  { id: 'all', label: '전체' },
+  { id: 'waiting', label: '대기 중' },
   { id: 'active', label: '정상' },
   { id: 'warning', label: '주의' },
   { id: 'error', label: '오류' },
@@ -31,7 +33,7 @@ export function FilterToolbar({
           onClick={() => onIncludeAllTopicsChange?.(!includeAllTopics)}
           type="button"
         >
-          숨김 Topic 포함
+          숨김 포함
         </button>
         <div className="filter-buttons" role="group" aria-label="상태 필터">
           {FILTERS.map((filter) => (

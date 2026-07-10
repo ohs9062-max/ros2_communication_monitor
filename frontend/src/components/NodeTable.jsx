@@ -62,16 +62,16 @@ export function NodeTable({
       <table className="topic-table node-table">
         <thead>
           <tr>
-            <SortableHeader columnKey="status" label="Status" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="status" label="상태" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="full_name" label="Node" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="namespace" label="Namespace" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="publisher_count" label="Pub" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="subscriber_count" label="Sub" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="service_server_count" label="Service Server" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="service_client_count" label="Service Client" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="action_server_count" label="Action Server" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="action_client_count" label="Action Client" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="last_seen_at" label="Last Seen" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="publisher_count" label="발행" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="subscriber_count" label="구독" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="service_server_count" label="응답 Service" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="service_client_count" label="요청 Service" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="action_server_count" label="Goal 실행" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="action_client_count" label="Goal 요청" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="last_seen_at" label="마지막 확인" onSort={onSort} sort={sort} />
           </tr>
         </thead>
         <tbody>
@@ -114,7 +114,7 @@ export function NodeStatusBadge({ status }) {
 function nodeStatusLabel(status) {
   const labels = {
     active: '실행 중',
-    stale: '사라짐 감지',
+    stale: '종료 감지',
     inactive: '비활성',
     unknown: '알 수 없음',
   }

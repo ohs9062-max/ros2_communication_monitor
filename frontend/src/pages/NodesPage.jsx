@@ -5,10 +5,10 @@ import { NodeSummaryCards } from '../components/NodeSummaryCards.jsx'
 import { NodeTable } from '../components/NodeTable.jsx'
 
 const NODE_FILTERS = [
-  { id: 'all', label: '상태 전체' },
+  { id: 'primary', label: '주요 항목' },
+  { id: 'all', label: '전체' },
   { id: 'active', label: '실행 중' },
-  { id: 'stale', label: '주의' },
-  { id: 'inactive', label: '비활성' },
+  { id: 'stale', label: '종료 감지' },
 ]
 
 export function NodesPage({ dashboard }) {
@@ -40,11 +40,15 @@ export function NodesPage({ dashboard }) {
 
   const filteredNodes = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
-    const baseNodes = includeInternalNodes ? nodes : activeNodes
+    const baseNodes = includeInternalNodes || statusFilter === 'all'
+      ? nodes
+      : activeNodes
 
     return baseNodes.filter((node) => {
       const matchesStatus =
-        statusFilter === 'all' || node.status === statusFilter
+        statusFilter === 'primary' ||
+        statusFilter === 'all' ||
+        node.status === statusFilter
       const matchesSearch =
         !normalizedSearch || nodeMatchesSearch(node, normalizedSearch)
 
@@ -120,7 +124,7 @@ export function NodesPage({ dashboard }) {
                 }
                 type="button"
               >
-                숨김 Node 포함
+                숨김 포함
               </button>
               <div
                 className="filter-buttons"

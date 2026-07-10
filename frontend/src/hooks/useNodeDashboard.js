@@ -8,7 +8,7 @@ const ALERT_POLL_INTERVAL_MS = 3000
 export function useNodeDashboard() {
   const [selectedNodeName, setSelectedNodeName] = useState('')
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('primary')
   const [includeInternalNodes, setIncludeInternalNodes] = useState(false)
 
   const nodesState = usePolling(fetchNodes, NODE_POLL_INTERVAL_MS, {

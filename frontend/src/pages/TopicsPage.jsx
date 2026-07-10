@@ -12,7 +12,7 @@ import {
 
 export function TopicsPage({ dashboard }) {
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('primary')
   const {
     alerts,
     health,
@@ -25,6 +25,7 @@ export function TopicsPage({ dashboard }) {
     setSelectedTopicName,
     topicHzByName,
     topicItems,
+    topicParticipants,
     topics,
   } = dashboard
 
@@ -56,7 +57,9 @@ export function TopicsPage({ dashboard }) {
   )
   const filteredTopics = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
-    const baseTopics = includeAllTopics ? topicItems : activeTopics
+    const baseTopics = includeAllTopics || statusFilter !== 'primary'
+      ? topicItems
+      : activeTopics
     return sortTopicsByHealth(baseTopics).filter((topic) => {
       const type = topic.types?.[0] ?? ''
       const matchesSearch =
@@ -64,9 +67,13 @@ export function TopicsPage({ dashboard }) {
         topic.name.toLowerCase().includes(normalizedSearch) ||
         type.toLowerCase().includes(normalizedSearch)
       const matchesStatus =
-        statusFilter === 'missing'
-          ? isTopicMissingMessages(topic, topicHzByName[topic.name])
-          : matchesStatusFilter(topic, statusFilter)
+        statusFilter === 'primary' || statusFilter === 'all'
+          ? true
+          : statusFilter === 'waiting'
+            ? isWaitingTopic(topic)
+            : statusFilter === 'missing'
+              ? isTopicMissingMessages(topic, topicHzByName[topic.name])
+              : matchesStatusFilter(topic, statusFilter)
       return (
         matchesSearch &&
         matchesStatus
@@ -162,6 +169,7 @@ export function TopicsPage({ dashboard }) {
       <TopicDetailPanel
         hz={hz}
         latest={latest}
+        participants={topicParticipants[detailTopic?.name] ?? null}
         topic={detailTopic}
       />
     </main>
@@ -202,6 +210,14 @@ const INTERNAL_TOPIC_NAMES = new Set([
   '/tf_static',
 ])
 
+const IMPORTANT_TOPIC_NAMES = new Set([
+  '/cmd_vel',
+  '/odom',
+  '/imu',
+  '/joint_states',
+  '/scan',
+])
+
 function isInternalTopic(name) {
   return (
     INTERNAL_TOPIC_NAMES.has(name) ||
@@ -227,6 +243,7 @@ function isActiveTopic(topic, hzEntry) {
 
   return (
     topic.status === 'active' ||
+    IMPORTANT_TOPIC_NAMES.has(topic.name) ||
     topic.received === true ||
     hzData?.received === true ||
     messageCount > 0 ||
@@ -250,5 +267,11 @@ function isTopicMissingMessages(topic, hzEntry) {
       topic.publisher_count > 0 &&
       hzEntry?.data?.received === false
     )
+  )
+}
+
+function isWaitingTopic(topic) {
+  return ['waiting_publisher', 'no_subscriber'].includes(
+    String(topic.status || '').toLowerCase(),
   )
 }

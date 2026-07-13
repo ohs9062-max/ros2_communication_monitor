@@ -3,7 +3,7 @@
 Service 모니터링은 노드 간의 동기식(요청-응답) 통신 상태를 확인합니다.
 
 ## 핵심 흐름
-1. **목록 가져오기**: `_update_services` (`ros_monitor.py`)에서 `self._node.get_service_names_and_types()`를 사용합니다.
+1. **목록 가져오기**: `ServiceRuntime.update()` (`service/runtime.py`)가 주입받은 rclpy Node의 `get_service_names_and_types()`를 사용합니다.
 2. **Active Check (중요)**: 모든 서비스를 호출하면 부하가 크기 때문에, `monitor.yaml`의 **allowlist(허용 목록)**에 등록된 안전한 read-only 서비스만 직접 호출(`active_check`)하여 응답 시간과 성공 여부를 확인합니다.
 3. **분류**: 서비스 명칭을 기준으로 `user`, `parameter`, `action_internal`, `ros_internal` 등으로 분류합니다.
 

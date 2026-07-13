@@ -78,6 +78,7 @@ ros2_dashboard/
 │     │     │  ├─ models.py
 │     │     │  ├─ result.py
 │     │     │  ├─ result_runtime.py
+│     │     │  ├─ runtime.py
 │     │     │  └─ subscriptions.py
 │     │     ├─ node/
 │     │     │  ├─ __init__.py
@@ -95,7 +96,8 @@ ros2_dashboard/
 │     │     │  ├─ filters.py
 │     │     │  ├─ introspection.py
 │     │     │  ├─ introspection_test_nodes.py
-│     │     │  └─ models.py
+│     │     │  ├─ models.py
+│     │     │  └─ runtime.py
 │     │     └─ topic/
 │     │        ├─ __init__.py
 │     │        ├─ alerts.py
@@ -129,7 +131,8 @@ backend/src/ros2_dashboard_backend/
 = ROS2 ament_python backend 패키지
 
 ros_monitor.py
-= rclpy Node 생성, spin thread, runtime 조립, public API용 snapshot 제공
+= RosMonitor coordinator가 rclpy Node 생성, spin thread, runtime 조립,
+  Alert 통합과 public API용 snapshot 제공
 
 topic/
 = Topic discovery / filter / subscription / preview / hz / alert 로직
@@ -137,7 +140,9 @@ topic/
 
 service/
 = Service graph 조회 / filter / status / alert 로직
-  active_check는 allowlist 대상만 runtime에서 안전하게 호출
+  runtime.py는 service graph cache, count, snapshot을 소유하고
+  ServiceActiveCheckRuntime을 내부에서 조립한다.
+  active_check는 allowlist 대상만 세부 runtime에서 안전하게 호출
 
 node/
 = Node graph 조회 / pub-sub-service-action 관계 조립 / stale 감지 / alert 로직
@@ -147,6 +152,8 @@ ros2_dashboard_interfaces/
 
 action/
 = Action graph 조회 / status-feedback topic 관찰 / alert 로직
+  runtime.py는 action graph cache와 status/feedback subscription을 소유하고
+  내부에서 ActionResultRuntime을 조립한다.
   Goal, cancel은 보내지 않는다
   get_result는 status topic에서 관찰된 terminal goal_id에 대해서만 제한적으로 조회한다
 
@@ -1060,6 +1067,44 @@ WebSocket은 /ws/monitor 1차 구현이 있으며 REST API와 cache snapshot을 
 ```
 
 ## 22. Codex 작업 기록
+
+2026-07-13 Service backend runtime 1차 분리:
+
+```text
+ros_monitor.py의 Service graph 조회, server/client count, category/status 조립,
+Service cache와 public snapshot 책임을 service/runtime.py의 ServiceRuntime으로 이동했다.
+ServiceRuntime은 기존 ServiceActiveCheckRuntime을 내부 구성요소로 유지하고,
+allowlist, request, response time, timeout/failed/error 정책을 변경하지 않는다.
+active_check cache는 기존과 같이 다음 graph 갱신에서 public service item에 병합한다.
+RosMonitor에는 ServiceRuntime update/snapshot/alert 위임과 WebSocket meta 조립만 남긴다.
+REST API 경로/응답 key와 WebSocket monitor_snapshot 구조는 변경하지 않는다.
+```
+
+2026-07-13 Backend monitor coordinator 명칭 정리:
+
+```text
+ros_monitor.py의 전체 coordinator 클래스명을 TopicMonitor에서 RosMonitor로 변경했다.
+main.py의 import와 module-level instance도 RosMonitor, ros_monitor로 정리했다.
+ROS2 graph에 노출되는 Node 이름 ros2_dashboard_topic_monitor는 동작 호환성을 위해 유지한다.
+TopicRuntime, ActionRuntime, Service/Node 로직과 REST API 경로/응답 key,
+WebSocket monitor_snapshot 구조는 변경하지 않는다.
+현재 기술 문서의 coordinator 명칭과 runtime 소유 관계도 새 구조에 맞게 정리했다.
+```
+
+2026-07-13 Action backend runtime 1차 분리:
+
+```text
+ros_monitor.py의 Action graph 조회, server/client count 집계,
+status/feedback subscription과 callback, runtime cache 책임을
+action/runtime.py의 ActionRuntime으로 이동했다.
+ActionRuntime은 ros_monitor.py가 생성한 rclpy Node를 node_getter로 주입받고,
+기존 shared lock과 MonitorConfig를 재사용한다.
+기존 ActionResultRuntime은 ActionRuntime 내부 구성요소로 유지하며,
+관찰된 terminal goal_id만 get_result로 조회하는 정책을 변경하지 않는다.
+TopicRuntime은 변경하지 않고 Action monitor subscription count callback만
+ActionRuntime.monitor_subscriber_count로 연결했다.
+TopicMonitor 클래스명, REST API 경로와 응답 key, WebSocket snapshot 구조는 유지한다.
+```
 
 2026-07-13 Topic backend runtime 1차 분리:
 

@@ -8,24 +8,24 @@ from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from ros2_dashboard_backend.config_loader import load_backend_config
-from ros2_dashboard_backend.ros_monitor import TopicMonitor
+from ros2_dashboard_backend.ros_monitor import RosMonitor
 from ros2_dashboard_backend.websocket_manager import WebSocketManager
 
 
 WEBSOCKET_INTERVAL_SEC = 1.0
 backend_config = load_backend_config()
-topic_monitor = TopicMonitor(backend_config.monitor)
+ros_monitor = RosMonitor(backend_config.monitor)
 websocket_manager = WebSocketManager()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Start and stop the ROS 2 topic monitor with the API process."""
-    topic_monitor.start()
+    """Start and stop the ROS 2 monitor coordinator with the API process."""
+    ros_monitor.start()
     try:
         yield
     finally:
-        topic_monitor.stop()
+        ros_monitor.stop()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -54,7 +54,7 @@ def health() -> dict[str, Any]:
 @app.get('/ros/topics')
 def get_ros_topics() -> dict[str, Any]:
     """Return the cached ROS 2 topic snapshot."""
-    snapshot = topic_monitor.snapshot()
+    snapshot = ros_monitor.snapshot()
     return {
         'success': True,
         'data': snapshot['topics'],
@@ -69,13 +69,13 @@ def get_ros_topics() -> dict[str, Any]:
 @app.get('/ros/topics/latest')
 def get_latest_ros_topic(name: str = Query(...)) -> dict[str, Any]:
     """Return the latest cached message preview for a ROS 2 topic."""
-    return topic_monitor.latest_message(name)
+    return ros_monitor.latest_message(name)
 
 
 @app.get('/ros/topics/hz')
 def get_ros_topic_hz(name: str = Query(...)) -> dict[str, Any]:
     """Return the recent message frequency for a ROS 2 topic."""
-    return topic_monitor.topic_hz(name)
+    return ros_monitor.topic_hz(name)
 
 
 @app.get('/ros/services')
@@ -83,7 +83,7 @@ def get_ros_services(
     include_hidden: bool = Query(False),
 ) -> dict[str, Any]:
     """Return the cached ROS 2 service snapshot."""
-    snapshot = topic_monitor.service_snapshot(
+    snapshot = ros_monitor.service_snapshot(
         include_hidden=include_hidden,
     )
     return {
@@ -98,7 +98,7 @@ def get_ros_services(
 @app.get('/ros/actions')
 def get_ros_actions() -> dict[str, Any]:
     """Return the cached ROS 2 action snapshot."""
-    snapshot = topic_monitor.action_snapshot()
+    snapshot = ros_monitor.action_snapshot()
     return {
         'ok': True,
         'data': {
@@ -111,7 +111,7 @@ def get_ros_actions() -> dict[str, Any]:
 @app.get('/ros/nodes')
 def get_ros_nodes() -> dict[str, Any]:
     """Return the cached ROS 2 node snapshot."""
-    snapshot = topic_monitor.node_snapshot()
+    snapshot = ros_monitor.node_snapshot()
     return {
         'ok': True,
         'data': {
@@ -124,7 +124,7 @@ def get_ros_nodes() -> dict[str, Any]:
 @app.get('/ros/alerts')
 def get_ros_alerts() -> dict[str, Any]:
     """Return current ROS 2 monitoring alerts."""
-    return topic_monitor.alerts()
+    return ros_monitor.alerts()
 
 
 @app.websocket('/ws/monitor')
@@ -135,7 +135,7 @@ async def monitor_websocket(websocket: WebSocket) -> None:
         while True:
             sent = await websocket_manager.send_json(
                 websocket,
-                topic_monitor.websocket_snapshot(),
+                ros_monitor.websocket_snapshot(),
             )
             if not sent:
                 break

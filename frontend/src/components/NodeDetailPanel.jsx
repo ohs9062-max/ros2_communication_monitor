@@ -37,7 +37,7 @@ export function NodeDetailPanel({ node }) {
         <h3>상태 요약</h3>
         <DetailLine label="전체 이름" value={node.full_name ?? '-'} />
         <DetailLine label="이름" value={node.name ?? '-'} />
-        <DetailLine label="Namespace" value={node.namespace ?? '-'} />
+        <DetailLine label="네임스페이스" value={node.namespace ?? '-'} />
         <DetailLine
           label="상태"
           tone={statusTone(node.status)}
@@ -45,14 +45,14 @@ export function NodeDetailPanel({ node }) {
         />
         <DetailLine label="상태 이유" value={node.reason ?? '-'} />
         <DetailLine
-          label="마지막 발견"
+          label="마지막 확인"
           value={formatRelativeTime(node.last_seen_at)}
         />
         <DetailLine label="마지막 갱신" value={formatTime(node.last_updated)} />
       </section>
 
       <section className="detail-section">
-        <h3>Pub/Sub 정보</h3>
+        <h3>연결 정보 · Topic</h3>
         <div className="metric-grid">
           <Metric label="발행자 수" value={node.publisher_count ?? 0} />
           <Metric label="구독자 수" value={node.subscriber_count ?? 0} />
@@ -70,7 +70,7 @@ export function NodeDetailPanel({ node }) {
       </section>
 
       <section className="detail-section">
-        <h3>Service 정보</h3>
+        <h3>연결 정보 · Service</h3>
         <div className="metric-grid">
           <Metric
             label="응답 Service"
@@ -94,7 +94,7 @@ export function NodeDetailPanel({ node }) {
       </section>
 
       <section className="detail-section">
-        <h3>Action 정보</h3>
+        <h3>연결 정보 · Action</h3>
         <div className="metric-grid">
           <Metric
             label="Goal 실행 Action"

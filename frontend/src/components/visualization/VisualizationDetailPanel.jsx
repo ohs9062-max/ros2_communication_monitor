@@ -12,7 +12,7 @@ export function VisualizationDetailPanel({ graphNode, missingNodeId }) {
         </div>
         <h2>{missingNodeId.replace(/^[^:]+:/, '')}</h2>
         <p className="notice-text warning">
-          선택 항목이 현재 graph에서 사라졌습니다. 필터를 조정하거나 전체
+          선택 항목이 현재 Graph에서 사라졌습니다. 필터를 조정하거나 전체
           보기를 누르면 다시 표시될 수 있습니다.
         </p>
       </aside>
@@ -152,8 +152,7 @@ function KindSpecificDetails({ data }) {
           value={entity.active_check?.last_status}
         />
         <p className="detail-help-text">
-          Client는 요청을 보내는 Node이고, Server는 요청을 받아 응답하는
-          Node입니다.
+          요청자 Node는 요청을 보내고, 응답자 Node는 요청을 받아 응답합니다.
         </p>
         <ConnectionNodeList
           emptyText="응답자 Node 없음"
@@ -174,7 +173,7 @@ function KindSpecificDetails({ data }) {
       <DetailLine label="서버 수" value={entity.server_count} />
       <DetailLine label="클라이언트 수" value={entity.client_count} />
       <DetailLine
-        label="마지막 Goal"
+        label="마지막 Goal 상태"
         value={entity.runtime?.last_goal_status}
       />
       <DetailLine
@@ -186,15 +185,15 @@ function KindSpecificDetails({ data }) {
         value={entity.runtime?.observed_goal_count}
       />
       <p className="detail-help-text">
-      Goal 요청자 Node는 Goal을 보내고, Goal 실행자 Node는 Goal을 받아 실행합니다.
+        Goal 요청자 Node는 Goal을 보내고, Goal 실행자 Node는 Goal을 받아 실행합니다.
       </p>
       <ConnectionNodeList
-      emptyText="Goal 실행자 Node 없음"
+        emptyText="Goal 실행자 Node 없음"
         items={data.participants?.servers ?? []}
         title="Goal 실행자 Node"
       />
       <ConnectionNodeList
-      emptyText="Goal 요청자 Node 없음"
+        emptyText="Goal 요청자 Node 없음"
         items={data.participants?.clients ?? []}
         title="Goal 요청자 Node"
       />

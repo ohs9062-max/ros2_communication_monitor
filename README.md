@@ -15,8 +15,8 @@
  source /opt/ros/jazzy/setup.bash
  export TURTLEBOT3_MODEL=burger
  ros2 launch turtlebot3_navigation2 \
-   navigation2.launch.py \
-   use_sim_time:=True
+ navigation2.launch.py \
+ use_sim_time:=True
 
 ## venv
 cd ~/rang/ros2_dashboard/backend
@@ -28,6 +28,8 @@ python3 -m uvicorn ros2_dashboard_backend.main:app \
   --host 127.0.0.1 \
   --port 8000 \
   --reload
+
+## 
 
 ## build
 cd ~/rang/ros2_dashboard/backend

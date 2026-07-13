@@ -11,6 +11,7 @@ import {
   nodeConnectionCount,
 } from '../utils/graphTransform.js'
 import { buildParticipantMaps } from '../utils/participants.js'
+import { isInternalNode, isPrimaryNode } from '../utils/nodeFilters.js'
 import { usePolling } from './usePolling.js'
 
 const GRAPH_POLL_INTERVAL_MS = 5000
@@ -18,6 +19,7 @@ const GRAPH_POLL_INTERVAL_MS = 5000
 export function useVisualizationGraph() {
   const [activeOnly, setActiveOnly] = useState(true)
   const [includeHidden, setIncludeHidden] = useState(false)
+  const [nodeFilterMode, setNodeFilterMode] = useState('primary')
   const [search, setSearch] = useState('')
   const [selectedGraphNodeId, setSelectedGraphNodeId] = useState('')
   const [selectedNodeName, setSelectedNodeName] = useState('')
@@ -128,12 +130,17 @@ export function useVisualizationGraph() {
   const selectableNodes = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
     return nodes
-      .filter((node) => includeHidden || !isHiddenGraphNode(node))
       .filter((node) => {
-        if (
-          !normalizedSearch ||
-          (selectedNodeName && viewMode === 'connected')
-        ) {
+        if (nodeFilterMode === 'primary') {
+          return isPrimaryNode(node)
+        }
+        if (nodeFilterMode === 'active') {
+          return node.status === 'active' && !isInternalNode(node)
+        }
+        return includeHidden || !isHiddenGraphNode(node)
+      })
+      .filter((node) => {
+        if (!normalizedSearch) {
           return true
         }
         return [
@@ -152,7 +159,7 @@ export function useVisualizationGraph() {
         }
         return nodeConnectionCount(right) - nodeConnectionCount(left)
       })
-  }, [includeHidden, nodes, search, selectedNodeName, viewMode])
+  }, [includeHidden, nodeFilterMode, nodes, search])
 
   const refresh = () => {
     nodeState.refresh()
@@ -177,6 +184,7 @@ export function useVisualizationGraph() {
       serviceState.loading ||
       actionState.loading,
     nodes,
+    nodeFilterMode,
     refresh,
     search,
     selectableNodes,
@@ -188,6 +196,7 @@ export function useVisualizationGraph() {
     services,
     setActiveOnly,
     setIncludeHidden,
+    setNodeFilterMode,
     setSearch,
     setSelectedGraphNodeId,
     setSelectedNodeName,

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 
 const DEFAULT_VISIBLE_COUNT = 3
 
@@ -11,6 +11,7 @@ export function CollapsibleList({
   title,
 }) {
   const [expanded, setExpanded] = useState(!defaultCollapsed)
+  const listId = useId()
   const hasItems = items.length > 0
   const visibleCount = Math.max(initialVisibleCount, 1)
   const canToggle = items.length > visibleCount
@@ -18,6 +19,11 @@ export function CollapsibleList({
     ? items
     : items.slice(0, visibleCount)
   const hiddenCount = Math.max(items.length - visibleItems.length, 0)
+  const itemsIdentity = items.map((item, index) => itemKey(item, index)).join('|')
+
+  useEffect(() => {
+    setExpanded(!defaultCollapsed)
+  }, [defaultCollapsed, itemsIdentity, title])
 
   return (
     <div className="collapsible-list">
@@ -31,7 +37,7 @@ export function CollapsibleList({
         <p className="node-empty">{emptyText}</p>
       ) : (
         <>
-          <div className="collapsible-list-items">
+          <div className="collapsible-list-items" id={listId}>
             {visibleItems.map((item, index) => (
               <div className="collapsible-list-item" key={itemKey(item, index)}>
                 {renderItem ? renderItem(item, index) : String(item)}
@@ -41,6 +47,8 @@ export function CollapsibleList({
           {canToggle && (
             <button
               className="connection-node-toggle"
+              aria-controls={listId}
+              aria-expanded={expanded}
               onClick={() => setExpanded((value) => !value)}
               type="button"
             >

@@ -40,6 +40,8 @@ export function ServiceDetailPanel({ participants, service }) {
 
       <section className="detail-section">
         <h3>상태 요약</h3>
+        <DetailLine label="이름" value={service.name} />
+        <DetailLine label="타입" value={service.type ?? '-'} />
         <DetailLine label="분류" value={service.category ?? '-'} />
         <DetailLine
           label="기본 숨김"
@@ -74,7 +76,7 @@ export function ServiceDetailPanel({ participants, service }) {
       </section>
 
       <section className="detail-section">
-        <h3>응답 측정</h3>
+        <h3>실행/측정 정보</h3>
         <DetailLine
           label="측정 지원"
           tone={service.active_check_supported ? 'good' : 'muted'}
@@ -99,8 +101,9 @@ export function ServiceDetailPanel({ participants, service }) {
       </section>
 
       <section className="detail-section">
+        <h3>상세 데이터</h3>
         <details>
-          <summary>응답 미리보기 JSON</summary>
+          <summary>응답 원본 Preview JSON</summary>
           <pre className="preview-json">
             {activeCheck.response_preview
               ? JSON.stringify(activeCheck.response_preview, null, 2)

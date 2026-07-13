@@ -930,7 +930,9 @@ h3 {
   padding: 10px 12px;
   text-align: left;
   vertical-align: top;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .topic-table th,
@@ -955,7 +957,7 @@ h3 {
   padding: 0;
   text-align: left;
   text-transform: inherit;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .sort-header:hover,
@@ -1272,7 +1274,8 @@ h3 {
 .detail-panel {
   align-self: start;
   max-height: calc(100vh - 36px);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding-bottom: 12px;
   position: sticky;
   top: 18px;
@@ -1286,6 +1289,18 @@ h3 {
 .detail-panel h2 {
   margin-top: 14px;
   overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.detail-panel > .muted,
+.detail-line strong,
+.metric strong,
+.alert-item strong,
+.alert-item p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .detail-section {
@@ -1439,6 +1454,10 @@ details summary {
 
 .visualization-toolbar .filter-toolbar {
   min-width: 0;
+}
+
+.visualization-page.node-list-mode .visualization-toolbar .filter-toolbar {
+  justify-content: flex-start;
 }
 
 .visualization-mode-tabs {
@@ -1659,22 +1678,43 @@ details summary {
   font-size: 10px;
 }
 
-.react-flow__controls {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: none;
+.visualization-page .react-flow__controls {
+  background: #ffffff !important;
+  border: 2px solid #111827 !important;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.48);
   overflow: hidden;
 }
 
-.react-flow__controls-button {
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-  color: var(--text);
+.visualization-page .react-flow__controls-button {
+  background: #ffffff !important;
+  border-bottom: 2px solid #9ca3af !important;
+  color: #000000 !important;
+  height: 52px !important;
+  width: 52px !important;
 }
 
-.react-flow__controls-button svg {
-  fill: var(--text);
+.visualization-page .react-flow__controls-button:last-child {
+  border-bottom: 0 !important;
+}
+
+.visualization-page .react-flow__controls-button:hover {
+  background: #dbeafe !important;
+}
+
+.visualization-page .react-flow__controls-button svg {
+  fill: #000000 !important;
+  max-height: 24px !important;
+  max-width: 24px !important;
+}
+
+.visualization-page .react-flow__controls-button:disabled {
+  background: #e5e7eb !important;
+  opacity: 1 !important;
+}
+
+.visualization-page .react-flow__controls-button:disabled svg {
+  fill: #6b7280 !important;
 }
 
 .react-flow__minimap {

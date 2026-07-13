@@ -170,11 +170,9 @@ export function ServicesPage({ dashboard }) {
             <div>
               <h2>Service 상세</h2>
               <p className="muted">
-                기본 화면은 현재 활동 중이거나 사용자에게 필요한 Service만
-                표시합니다. 기본 화면은 응답 측정 대상, custom service,
-                대기/오류 상태처럼 사용자가 먼저 확인해야 하는 Service만
-                표시합니다. 전체 목록은 '전체' 또는 '내부/관리 포함'에서
-                확인할 수 있습니다.
+                기본 화면은 응답 측정 대상, 사용자 Service, 대기/오류 상태처럼
+                먼저 확인해야 하는 Service만 표시합니다. 전체 목록은 '전체'
+                또는 '내부/관리 포함'에서 확인할 수 있습니다.
               </p>
             </div>
             {loading && <span className="muted">로딩 중</span>}

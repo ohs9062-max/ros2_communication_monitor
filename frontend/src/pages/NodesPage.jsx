@@ -3,12 +3,14 @@ import { AlertsPreview } from '../components/AlertsPreview.jsx'
 import { NodeDetailPanel } from '../components/NodeDetailPanel.jsx'
 import { NodeSummaryCards } from '../components/NodeSummaryCards.jsx'
 import { NodeTable } from '../components/NodeTable.jsx'
+import { isInternalNode, isPrimaryNode } from '../utils/nodeFilters.js'
 
 const NODE_FILTERS = [
   { id: 'primary', label: '주요 항목' },
   { id: 'all', label: '전체' },
   { id: 'active', label: '실행 중' },
   { id: 'stale', label: '종료 감지' },
+  { id: 'hidden', label: '숨김 포함' },
 ]
 
 export function NodesPage({ dashboard }) {
@@ -30,31 +32,32 @@ export function NodesPage({ dashboard }) {
     statusFilter,
   } = dashboard
 
-  const activeNodes = useMemo(
+  const primaryNodes = useMemo(
     () =>
       nodes.filter((node) =>
-        !isInternalNode(node) && isActiveNode(node),
+        !isInternalNode(node) && isPrimaryNode(node),
       ),
     [nodes],
   )
 
   const filteredNodes = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase()
-    const baseNodes = includeInternalNodes || statusFilter === 'all'
+    const baseNodes = includeInternalNodes
       ? nodes
-      : activeNodes
+      : nodes.filter((node) => !isInternalNode(node))
 
     return baseNodes.filter((node) => {
-      const matchesStatus =
-        statusFilter === 'primary' ||
-        statusFilter === 'all' ||
-        node.status === statusFilter
+      const matchesStatus = statusFilter === 'primary'
+        ? isPrimaryNode(node)
+        : statusFilter === 'all' || statusFilter === 'hidden'
+          ? true
+          : node.status === statusFilter
       const matchesSearch =
         !normalizedSearch || nodeMatchesSearch(node, normalizedSearch)
 
       return matchesStatus && matchesSearch
     })
-  }, [activeNodes, includeInternalNodes, nodes, search, statusFilter])
+  }, [includeInternalNodes, nodes, search, statusFilter])
 
   useEffect(() => {
     if (filteredNodes.some((node) => node.full_name === selectedNodeName)) {
@@ -88,8 +91,8 @@ export function NodesPage({ dashboard }) {
             <div>
               <h2>Nodes</h2>
               <p className="muted">
-                기본 화면은 현재 활동 중이거나 최근 상태 변화가 관찰된 Node만
-                표시합니다.
+                기본 화면은 운영 시 먼저 확인할 핵심 Node와 종료가 감지된
+                Node를 표시합니다.
               </p>
             </div>
             {loading && <span className="muted">로딩 중</span>}
@@ -97,7 +100,7 @@ export function NodesPage({ dashboard }) {
           </div>
         </section>
 
-        <NodeSummaryCards activeNodes={activeNodes} meta={meta} nodes={nodes} />
+        <NodeSummaryCards activeNodes={primaryNodes} meta={meta} nodes={nodes} />
 
         <AlertsPreview
           alerts={nodeAlerts}
@@ -117,15 +120,6 @@ export function NodesPage({ dashboard }) {
               value={search}
             />
             <div className="service-filter-actions">
-              <button
-                className={includeInternalNodes ? 'filter active' : 'filter'}
-                onClick={() =>
-                  setIncludeInternalNodes(!includeInternalNodes)
-                }
-                type="button"
-              >
-                숨김 포함
-              </button>
               <div
                 className="filter-buttons"
                 role="group"
@@ -137,7 +131,10 @@ export function NodesPage({ dashboard }) {
                       statusFilter === filter.id ? 'filter active' : 'filter'
                     }
                     key={filter.id}
-                    onClick={() => setStatusFilter(filter.id)}
+                    onClick={() => {
+                      setIncludeInternalNodes(filter.id === 'hidden')
+                      setStatusFilter(filter.id)
+                    }}
                     type="button"
                   >
                     {filter.label}
@@ -149,9 +146,9 @@ export function NodesPage({ dashboard }) {
 
           <NodeTable
             emptyMessage={
-              includeInternalNodes
+              statusFilter === 'hidden'
                 ? '표시할 Node가 없습니다.'
-                : "현재 활동 중인 Node가 없습니다. 숨김 Node를 보려면 '숨김 Node 포함'을 켜세요."
+                : "조건에 맞는 Node가 없습니다. 내부 Node는 '숨김 포함' 탭에서 확인하세요."
             }
             nodes={filteredNodes}
             onSelectNode={setSelectedNodeName}
@@ -162,37 +159,6 @@ export function NodesPage({ dashboard }) {
 
       <NodeDetailPanel node={detailNode} />
     </main>
-  )
-}
-
-function isInternalNode(node) {
-  const name = String(node.name ?? '')
-  const fullName = String(node.full_name ?? '')
-  return (
-    name.startsWith('_ros2cli_daemon') ||
-    fullName.startsWith('/_ros2cli_daemon') ||
-    name.includes('ros2cli_daemon') ||
-    fullName.includes('ros2cli_daemon')
-  )
-}
-
-function isActiveNode(node) {
-  const connectionCount =
-    (node.publisher_count ?? 0) +
-    (node.subscriber_count ?? 0) +
-    (node.service_server_count ?? 0) +
-    (node.service_client_count ?? 0) +
-    (node.action_server_count ?? 0) +
-    (node.action_client_count ?? 0)
-
-  return (
-    (node.status === 'active' && connectionCount > 0) ||
-    node.status === 'stale' ||
-    (node.publisher_count ?? 0) > 0 ||
-    (node.subscriber_count ?? 0) > 0 ||
-    (node.service_server_count ?? 0) > 0 ||
-    (node.action_server_count ?? 0) > 0 ||
-    (node.action_client_count ?? 0) > 0
   )
 }
 

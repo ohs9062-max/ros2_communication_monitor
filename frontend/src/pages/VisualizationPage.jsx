@@ -19,6 +19,7 @@ export function VisualizationPage({ websocket }) {
     loading,
     actions,
     nodes,
+    nodeFilterMode,
     refresh,
     search,
     selectableNodes,
@@ -28,6 +29,7 @@ export function VisualizationPage({ websocket }) {
     selectedNodeName,
     setActiveOnly,
     setIncludeHidden,
+    setNodeFilterMode,
     setSearch,
     setSelectedGraphNodeId,
     setSelectedNodeName,
@@ -50,14 +52,18 @@ export function VisualizationPage({ websocket }) {
     setShowServices(true)
     setShowTopics(true)
     setViewMode('all')
+    setNodeFilterMode('all')
     setSearch('')
     window.setTimeout(() => fitViewRef.current?.(), 80)
   }
   const showGlobalView = () => {
-    setViewMode('all')
-    window.setTimeout(() => fitViewRef.current?.(), 80)
+    setNodeFilterMode('all')
+    setSelectedNodeName('')
+    setSelectedGraphNodeId('')
+    setViewMode('nodes')
   }
   const showNodeView = () => {
+    setNodeFilterMode('primary')
     setViewMode('nodes')
     setSelectedNodeName('')
     setSelectedGraphNodeId('')
@@ -69,10 +75,10 @@ export function VisualizationPage({ websocket }) {
     window.setTimeout(() => fitViewRef.current?.(), 80)
   }
   const showConnectedView = () => {
-    setViewMode('connected')
-    setSelectedGraphNodeId(
-      selectedNodeName ? `node:${selectedNodeName}` : '',
-    )
+    setNodeFilterMode('active')
+    setSelectedNodeName('')
+    setSelectedGraphNodeId('')
+    setViewMode('nodes')
     setActiveOnly(true)
   }
   const setFitViewHandler = useCallback((fitView) => {
@@ -86,6 +92,9 @@ export function VisualizationPage({ websocket }) {
   const isNodeMode = viewMode === 'nodes'
   const isConnectedMode = viewMode === 'connected'
   const isAllMode = viewMode === 'all'
+  const isPrimaryNodeFilter = nodeFilterMode === 'primary'
+  const isActiveNodeFilter = nodeFilterMode === 'active'
+  const isAllNodeFilter = nodeFilterMode === 'all'
 
   return (
     <main
@@ -120,8 +129,8 @@ export function VisualizationPage({ websocket }) {
             </>
           ) : selectedNodeName && isConnectedMode ? (
             <>
-              <SummaryCard label="Subscribe Topic" value={graph.summary.subscribeTopicCount ?? 0} />
-              <SummaryCard label="Publish Topic" value={graph.summary.publishTopicCount ?? 0} />
+              <SummaryCard label="구독 Topic" value={graph.summary.subscribeTopicCount ?? 0} />
+              <SummaryCard label="발행 Topic" value={graph.summary.publishTopicCount ?? 0} />
               <SummaryCard label="응답 Service" value={graph.summary.serviceServerCount ?? 0} />
               <SummaryCard label="요청 Service" value={graph.summary.serviceClientCount ?? 0} />
               <SummaryCard label="Action" value={(graph.summary.actionServerCount ?? 0) + (graph.summary.actionClientCount ?? 0)} />
@@ -133,7 +142,7 @@ export function VisualizationPage({ websocket }) {
               <SummaryCard label="Service" value={graph.summary.serviceCount} />
               <SummaryCard label="Action" value={graph.summary.actionCount} />
               <SummaryCard
-                label="Edge"
+                label="연결"
                 tone={graph.summary.edgeCount ? 'good' : 'default'}
                 value={graph.summary.edgeCount}
               />
@@ -157,83 +166,89 @@ export function VisualizationPage({ websocket }) {
               role="group"
             >
               <button
-                className={isNodeMode ? 'filter active' : 'filter'}
+                className={isPrimaryNodeFilter ? 'filter active' : 'filter'}
                 onClick={showNodeView}
                 type="button"
               >
-                노드 중심
+                주요 노드
               </button>
               <button
-                className={isConnectedMode ? 'filter active' : 'filter'}
+                className={isActiveNodeFilter ? 'filter active' : 'filter'}
                 onClick={showConnectedView}
                 type="button"
               >
-                연결 중심
+                실행 노드
               </button>
               <button
-                className={isAllMode ? 'filter active' : 'filter'}
+                className={isAllNodeFilter ? 'filter active' : 'filter'}
                 onClick={showGlobalView}
                 type="button"
               >
-                전체 중심
+                전체 노드
               </button>
             </div>
             <input
               aria-label="통신 그래프 검색"
               onChange={(event) => setSearch(event.target.value)}
               placeholder={
-                selectedNodeName && isConnectedMode
+                !isNodeMode
                   ? '연결된 Topic, Service, Action 검색'
-                  : 'Node, Topic, Service, Action 검색'
+                  : 'Node 이름 또는 namespace 검색'
               }
               type="search"
               value={search}
             />
-            <div className="service-filter-actions">
-              <ToggleButton
-                active={activeOnly}
-                label="주요 항목"
-                onClick={() => setActiveOnly(!activeOnly)}
-              />
-              <ToggleButton
-                active={showTopics}
-                label="Topic"
-                onClick={() => setShowTopics(!showTopics)}
-              />
-              <ToggleButton
-                active={showServices}
-                label="Service"
-                onClick={() => setShowServices(!showServices)}
-              />
-              <ToggleButton
-                active={showActions}
-                label="Action"
-                onClick={() => setShowActions(!showActions)}
-              />
-              <ToggleButton
-                active={includeHidden}
-                label="숨김 포함"
-                onClick={() => setIncludeHidden(!includeHidden)}
-              />
+            {!isNodeMode && (
+              <div className="service-filter-actions">
+                <>
+                  <ToggleButton
+                    active={activeOnly}
+                    label="주요 항목"
+                    onClick={() => setActiveOnly(!activeOnly)}
+                  />
+                  <ToggleButton
+                    active={showTopics}
+                    label="Topic"
+                    onClick={() => setShowTopics(!showTopics)}
+                  />
+                  <ToggleButton
+                    active={showServices}
+                    label="Service"
+                    onClick={() => setShowServices(!showServices)}
+                  />
+                  <ToggleButton
+                    active={showActions}
+                    label="Action"
+                    onClick={() => setShowActions(!showActions)}
+                  />
+                  <ToggleButton
+                    active={includeHidden}
+                    label="숨김 포함"
+                    onClick={() => setIncludeHidden(!includeHidden)}
+                  />
+                </>
+              </div>
+            )}
+          </div>
+          {!isNodeMode && (
+            <div className="visualization-actions">
+              {loading && <span className="muted">갱신 중</span>}
+              {error && <span className="error-text">Graph API 연결 실패</span>}
+              <button
+                className="filter"
+                onClick={() => fitViewRef.current?.()}
+                type="button"
+              >
+                화면 맞춤
+              </button>
+              <button className="filter" onClick={showEverything} type="button">
+                전체
+              </button>
+              <button className="filter active" onClick={refresh} type="button">
+                새로고침
+              </button>
             </div>
-          </div>
-          <div className="visualization-actions">
-            {loading && <span className="muted">갱신 중</span>}
-            {error && <span className="error-text">Graph API 연결 실패</span>}
-            <button
-              className="filter"
-              onClick={() => fitViewRef.current?.()}
-              type="button"
-            >
-              Fit View
-            </button>
-            <button className="filter" onClick={showEverything} type="button">
-              전체
-            </button>
-            <button className="filter active" onClick={refresh} type="button">
-              새로고침
-            </button>
-          </div>
+          )}
         </section>
 
         {isNodeMode && (

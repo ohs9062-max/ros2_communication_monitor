@@ -41,33 +41,11 @@ export function TopicDetailPanel({ topic, latest, hz, participants }) {
 
       <section className="detail-section">
         <h3>상태 요약</h3>
+        <DetailLine label="이름" value={topic.name} />
+        <DetailLine label="타입" value={topic.types?.[0] ?? '-'} />
         <DetailLine label="상태" tone={statusTone(topic.status)} value={topic.status ?? '-'} />
         <DetailLine label="상태 이유" value={topic.reason ?? '-'} />
-        <DetailLine label="타입" value={topic.types?.[0] ?? '-'} />
-      </section>
-
-      <section className="detail-section">
-        <h3>수신 정보</h3>
-        <div className="metric-grid">
-          <Metric label="Hz" value={formatNumber(hzData?.hz)} />
-          <Metric
-            label="수신 여부"
-            tone={hzData?.received ? 'good' : 'muted'}
-            value={hzData?.received ? '예' : '아니오'}
-          />
-          <Metric label="메시지 수" value={hzData?.message_count ?? '-'} />
-          <Metric label="경과 시간" value={formatAge(hzData?.age_sec)} />
-          <Metric
-            label="오래됨"
-            tone={hzData?.is_stale ? 'warn' : 'good'}
-            value={hzData?.is_stale ? '예' : '아니오'}
-          />
-          <Metric
-            label="상태"
-            tone={statusTone(hzData?.status)}
-            value={hzData?.status ?? '-'}
-          />
-        </div>
+        <DetailLine label="마지막 갱신" value={formatTime(topic.last_updated)} />
       </section>
 
       <section className="detail-section">
@@ -112,7 +90,31 @@ export function TopicDetailPanel({ topic, latest, hz, participants }) {
       </section>
 
       <section className="detail-section">
-        <h3>최신 메시지</h3>
+        <h3>실행/측정 정보</h3>
+        <div className="metric-grid">
+          <Metric label="Hz" value={formatNumber(hzData?.hz)} />
+          <Metric
+            label="수신 여부"
+            tone={hzData?.received ? 'good' : 'muted'}
+            value={hzData?.received ? '예' : '아니오'}
+          />
+          <Metric label="메시지 수" value={hzData?.message_count ?? '-'} />
+          <Metric label="경과 시간" value={formatAge(hzData?.age_sec)} />
+          <Metric
+            label="오래됨"
+            tone={hzData?.is_stale ? 'warn' : 'good'}
+            value={hzData?.is_stale ? '예' : '아니오'}
+          />
+          <Metric
+            label="상태"
+            tone={statusTone(hzData?.status)}
+            value={hzData?.status ?? '-'}
+          />
+        </div>
+      </section>
+
+      <section className="detail-section">
+        <h3>상세 데이터</h3>
         <div className="detail-line">
           <span>수신 여부</span>
           <strong className={latestData?.received ? 'detail-value-good' : 'detail-value-muted'}>
@@ -132,7 +134,7 @@ export function TopicDetailPanel({ topic, latest, hz, participants }) {
 
       <section className="detail-section">
         <details>
-          <summary>원본 메시지 JSON</summary>
+          <summary>원본 Preview JSON</summary>
           <pre className="preview-json">
             {preview ? JSON.stringify(preview, null, 2) : 'preview 없음'}
           </pre>

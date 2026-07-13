@@ -80,13 +80,15 @@ export function ActionDetailPanel({ action, participants }) {
 
       <section className="detail-section">
         <h3>상태 요약</h3>
+        <DetailLine label="이름" value={action.name} />
+        <DetailLine label="타입" value={action.type ?? '-'} />
         <DetailLine
           label="상태"
           tone={statusTone(action.status)}
           value={action.status ?? '-'}
         />
         <DetailLine label="상태 이유" value={action.reason ?? '-'} />
-        <DetailLine label="타입" value={action.type ?? '-'} />
+        <DetailLine label="마지막 갱신" value={formatTime(action.last_updated)} />
       </section>
 
       <section className="detail-section">
@@ -95,10 +97,6 @@ export function ActionDetailPanel({ action, participants }) {
         <DetailLine label="클라이언트 수" value={action.client_count ?? 0} />
         <DetailLine label="상태 Topic" value={action.status_topic ?? '-'} />
         <DetailLine label="피드백 Topic" value={action.feedback_topic ?? '-'} />
-        <DetailLine
-          label="마지막 갱신"
-          value={formatTime(action.last_updated)}
-        />
         <p className="detail-help-text">
           Goal 요청자 Node는 Goal을 보내고, Goal 실행자 Node는 Goal을 받아
           실행합니다.
@@ -116,10 +114,49 @@ export function ActionDetailPanel({ action, participants }) {
       </section>
 
       <section className="detail-section">
-        <h3>지원 상태</h3>
+        <h3>실행/측정 정보</h3>
+        <DetailLine
+          label="마지막 Goal 상태"
+          tone={statusTone(runtime.last_goal_status)}
+          value={
+            runtime.last_goal_status === 'unknown'
+              ? 'Goal 미관찰'
+              : goalStatusLabel(runtime.last_goal_status)
+          }
+        />
+        <DetailLine
+          label="마지막 Goal ID"
+          value={runtime.last_goal_id ?? '-'}
+        />
+        <DetailLine
+          label="마지막 상태 수신"
+          value={formatRelativeTime(runtime.last_status_at)}
+        />
+        <DetailLine
+          label="마지막 피드백"
+          value={formatRelativeTime(runtime.last_feedback_at)}
+        />
+        <DetailLine
+          label="실행 시간"
+          value={formatMs(runtime.elapsed_time_ms)}
+        />
+        <DetailLine
+          label="관찰 Goal 수"
+          value={runtime.observed_goal_count ?? 0}
+        />
+        <DetailLine
+          label="결과 상태"
+          tone={statusTone(runtime.result_status)}
+          value={resultStatusLabel(runtime.result_status)}
+        />
+        <DetailLine label="결과 오류" value={runtime.result_error ?? '-'} />
+      </section>
+
+      <section className="detail-section">
+        <h3>상세 데이터</h3>
         <p className="muted detail-help-text">
           피드백 구독 지원 여부는 이 Action 타입의 피드백 메시지를
-          대시보드가 해석할 수 있는지를 의미합니다. 실제 수신 여부는 Runtime과
+          대시보드가 해석할 수 있는지를 의미합니다. 실제 수신 여부는 실행 정보와
           피드백 미리보기에서 확인합니다.
         </p>
         <DetailLine
@@ -143,42 +180,6 @@ export function ActionDetailPanel({ action, participants }) {
           value={resultPolicyLabel(action.result_policy)}
         />
         <DetailLine label="결과 이유" value={action.result_reason ?? '-'} />
-      </section>
-
-      <section className="detail-section">
-        <h3>실행 정보</h3>
-        <DetailLine
-          label="마지막 Goal 상태"
-          tone={statusTone(runtime.last_goal_status)}
-          value={
-            runtime.last_goal_status === 'unknown'
-              ? 'Goal 미관찰'
-              : goalStatusLabel(runtime.last_goal_status)
-          }
-        />
-        <DetailLine label="마지막 Goal ID" value={runtime.last_goal_id ?? '-'} />
-        <DetailLine
-          label="마지막 상태 수신"
-          value={formatRelativeTime(runtime.last_status_at)}
-        />
-        <DetailLine
-          label="마지막 피드백"
-          value={formatRelativeTime(runtime.last_feedback_at)}
-        />
-        <DetailLine
-          label="실행 시간"
-          value={formatMs(runtime.elapsed_time_ms)}
-        />
-        <DetailLine
-          label="관찰 Goal 수"
-          value={runtime.observed_goal_count ?? 0}
-        />
-        <DetailLine
-          label="결과 상태"
-          tone={statusTone(runtime.result_status)}
-          value={resultStatusLabel(runtime.result_status)}
-        />
-        <DetailLine label="결과 오류" value={runtime.result_error ?? '-'} />
       </section>
 
       <PreviewSection
@@ -252,7 +253,7 @@ function resultStatusLabel(status) {
     succeeded: '성공',
     aborted: '실패 종료',
     canceled: '취소됨',
-    timeout: 'Timeout',
+    timeout: '시간 초과',
     error: '결과 조회 오류',
     unavailable: '결과 없음',
     pending: '결과 대기',

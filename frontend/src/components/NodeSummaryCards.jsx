@@ -11,16 +11,16 @@ export function NodeSummaryCards({ activeNodes = [], meta = {}, nodes = [] }) {
       <SummaryCard label="활동 Node" value={activeNodes.length} tone="good" />
       <SummaryCard label="실행 중" value={active} tone="good" />
       <SummaryCard
-        label="Stale"
+        label="종료 감지"
         tone={stale ? 'warn' : 'default'}
         value={stale}
       />
       <SummaryCard
-        label="Publishers"
+        label="발행 연결"
         value={meta.publisher_count ?? sumCount(nodes, 'publisher_count')}
       />
       <SummaryCard
-        label="Subscribers"
+        label="구독 연결"
         value={meta.subscriber_count ?? sumCount(nodes, 'subscriber_count')}
       />
     </div>

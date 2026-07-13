@@ -66,7 +66,7 @@ function statusLabel(value) {
     waiting_server: '서버 대기',
     success: '응답 성공',
     failed: '응답 실패',
-    timeout: 'Timeout',
+    timeout: '시간 초과',
     type_mismatch: '타입 불일치',
     pending: '진행 중',
     accepted: 'Goal 수락',

@@ -64,7 +64,7 @@ export function NodeTable({
           <tr>
             <SortableHeader columnKey="status" label="상태" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="full_name" label="Node" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="namespace" label="Namespace" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="namespace" label="네임스페이스" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="publisher_count" label="발행" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="subscriber_count" label="구독" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="service_server_count" label="응답 Service" onSort={onSort} sort={sort} />

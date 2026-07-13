@@ -104,6 +104,7 @@ ros2_dashboard/
 │     │        ├─ hz.py
 │     │        ├─ models.py
 │     │        ├─ preview.py
+│     │        ├─ runtime.py
 │     │        └─ subscriptions.py
 │     └─ ros2_dashboard_interfaces/
 │        ├─ package.xml
@@ -132,6 +133,7 @@ ros_monitor.py
 
 topic/
 = Topic discovery / filter / subscription / preview / hz / alert 로직
+  runtime.py는 topic graph cache, subscription, latest, hz runtime을 소유
 
 service/
 = Service graph 조회 / filter / status / alert 로직
@@ -1058,6 +1060,20 @@ WebSocket은 /ws/monitor 1차 구현이 있으며 REST API와 cache snapshot을 
 ```
 
 ## 22. Codex 작업 기록
+
+2026-07-13 Topic backend runtime 1차 분리:
+
+```text
+ros_monitor.py의 Topic graph 갱신, subscription cache, latest, Hz 책임을
+topic/runtime.py의 TopicRuntime으로 이동했다.
+TopicRuntime은 ros_monitor.py가 생성한 rclpy Node를 node_getter로 주입받고,
+기존 shared lock과 MonitorConfig를 재사용한다.
+Action status/feedback monitor subscription count는 callback으로 전달받아
+external_subscriber_count 계산 기준을 기존과 동일하게 유지한다.
+TopicMonitor 클래스명, REST API 경로와 응답 key, WebSocket snapshot 구조는 유지한다.
+ros_monitor.py는 lifecycle, 전체 graph update 조립, public snapshot 위임,
+Service/Action/Node runtime 호출과 통합 Alert 구성을 담당한다.
+```
 
 2026-07-09 Service 모니터링 1차 backend 보완:
 

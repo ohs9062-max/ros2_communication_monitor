@@ -1,26 +1,35 @@
 :root {
-  --bg: #0c1117;
-  --panel: #111821;
-  --panel-strong: #151f2b;
-  --border: #223041;
-  --text: #d6dee8;
-  --muted: #8392a5;
-  --green: #34d399;
+  --bg: #080d13;
+  --panel: #101821;
+  --panel-strong: #172331;
+  --panel-soft: #0c141d;
+  --border: #223247;
+  --border-strong: #30445c;
+  --text: #dce5ef;
+  --muted: #8c9bad;
+  --green: #36c995;
   --green-bg: rgba(52, 211, 153, 0.14);
-  --yellow: #fbbf24;
+  --yellow: #eeb64a;
   --yellow-bg: rgba(251, 191, 36, 0.14);
-  --red: #fb7185;
+  --red: #f07888;
   --red-bg: rgba(251, 113, 133, 0.14);
   --gray: #94a3b8;
   --gray-bg: rgba(148, 163, 184, 0.12);
-  --blue: #60a5fa;
+  --blue: #6aa9f4;
   --blue-bg: rgba(96, 165, 250, 0.12);
   --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     'Segoe UI', sans-serif;
   --mono: ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+  --radius-card: 12px;
+  --radius-control: 9px;
+  --shadow-card: 0 10px 28px rgba(0, 0, 0, 0.16);
+  --shadow-raised: 0 16px 36px rgba(0, 0, 0, 0.24);
 
   color: var(--text);
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 82% 0%, rgba(59, 130, 246, 0.07), transparent 32%),
+    linear-gradient(180deg, #0a1017 0%, var(--bg) 38%);
+  background-attachment: fixed;
   font-family: var(--font);
   font-synthesis: none;
   line-height: 1.45;
@@ -53,6 +62,11 @@ button {
 
 button:disabled {
   cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(106, 169, 244, 0.85);
+  outline-offset: 2px;
 }
 
 #root {

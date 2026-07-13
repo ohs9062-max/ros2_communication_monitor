@@ -640,17 +640,26 @@ action
 Topic alert 기준:
 
 ```text
-publisher_count == 0 and subscriber_count > 0
+required stream topic 또는 명시적 monitoring target만 기본 topic alert 대상이다.
+
+기본 required stream topic:
+/odom, /imu, /scan, /joint_states
+
+required stream topic의 publisher_count == 0
 → waiting_publisher
 
-publisher_count > 0 and last_received_at is None
+required stream topic의 publisher_count > 0이고 stale timeout 동안 수신 없음
 → topic_message_missing
 
-publisher_count > 0 and age_sec > stale_timeout_sec
+required stream topic의 publisher_count > 0이고 age_sec > stale_timeout_sec
 → topic_stale
 
-publisher_count == 0 and subscriber_count == 0
-→ topic_inactive
+command topic:
+/cmd_vel, /cmd_vel_smoothed
+
+command topic은 명령이 있을 때만 발행될 수 있으므로 waiting_publisher,
+topic_message_missing, topic_stale을 기본 alert로 만들지 않는다.
+Topic 목록과 상세의 상태 badge는 그대로 유지한다.
 ```
 
 주의:
@@ -658,6 +667,7 @@ publisher_count == 0 and subscriber_count == 0
 ```text
 publisher_count > 0 and subscriber_count == 0 은 기본 alert로 보지 않는다.
 센서 topic은 발행만 하고 외부 subscriber가 없어도 정상일 수 있다.
+일반 topic의 waiting_publisher, inactive, unsupported는 상태 badge로만 표시한다.
 ```
 
 MonitorStatus alert 기준:
@@ -672,21 +682,23 @@ level info / active / empty → alert 아님
 Service alert 기준:
 
 ```text
-status waiting_server
-→ service_waiting_server
+allowlist active_check의 timeout / failed / error만 alert로 표시한다.
+waiting_server, type_mismatch, 상태만 표시는 기본 alert로 보지 않는다.
 ```
 
 Action alert 기준:
 
 ```text
-status waiting_server
-→ action_waiting_server
-
 last_goal_status aborted
 → action_goal_aborted
 
 last_goal_status canceled
 → action_goal_canceled
+
+result_error 있음
+→ action_result_unavailable
+
+waiting_server, Goal 미관찰, 단순 result unavailable은 기본 alert로 보지 않는다.
 ```
 
 ## 14. FastAPI + rclpy 실행 구조

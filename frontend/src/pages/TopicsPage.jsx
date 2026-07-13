@@ -152,6 +152,10 @@ export function TopicsPage({ dashboard }) {
             search={search}
             statusFilter={statusFilter}
           />
+          <p className="topic-filter-help">
+            구독자 없음은 현재 해당 Topic을 받는 외부 Node가 없다는 뜻입니다.
+            센서 출력, 로그, 이벤트성 Topic에서는 장애가 아닐 수 있습니다.
+          </p>
           <TopicTable
             emptyMessage={
               includeAllTopics

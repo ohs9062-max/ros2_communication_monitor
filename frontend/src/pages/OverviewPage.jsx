@@ -248,8 +248,12 @@ function OverviewColumnChart({
         <div className="chart-legend">
           <span><i className="green" />정상</span>
           <span><i className="yellow" />주의</span>
-          <span><i className="red" />오류</span>
+          <span><i className="red" />오류/비활성</span>
         </div>
+        <p className="overview-inactive-note">
+          비활성은 현재 실행 중이 아니거나 관찰되지 않은 상태이며, 항상 장애를
+          의미하지는 않습니다.
+        </p>
         <table className="chart-summary-table">
           <thead>
             <tr>

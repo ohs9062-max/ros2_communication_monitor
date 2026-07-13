@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from time import time
 from typing import Any
 
 from ros2_dashboard_backend.topic.hz import recent_timestamps
@@ -20,6 +21,7 @@ def build_subscription_entry(
         'type': topic_type,
         'subscription': subscription,
         'message_preview': None,
+        'created_at': time(),
         'last_received_at': None,
         'timestamps': [],
     }

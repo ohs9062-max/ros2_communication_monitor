@@ -1,3 +1,5 @@
+import { pagePath } from '../hooks/useBrowserRoute.js'
+
 const NAV_ITEMS = [
   { id: 'overview', label: 'Overview' },
   { id: 'topics', label: 'Topics' },
@@ -6,6 +8,7 @@ const NAV_ITEMS = [
   { id: 'nodes', label: 'Nodes' },
   { id: 'visualization', label: 'Visualization' },
   { id: 'alerts', label: 'Alerts' },
+  { id: 'settings', label: 'Settings' },
 ]
 
 export function Sidebar({
@@ -14,14 +17,14 @@ export function Sidebar({
   onExpandedChange,
   onNavigate,
 }) {
-  const navigate = (page) => {
+  const navigate = (event, page) => {
     onExpandedChange(true)
-    onNavigate(page)
-  }
+    if (isModifiedClick(event)) {
+      return
+    }
 
-  const navigateHome = () => {
-    onExpandedChange(true)
-    onNavigate('overview')
+    event.preventDefault()
+    onNavigate(page)
   }
 
   return (
@@ -37,29 +40,33 @@ export function Sidebar({
       onMouseLeave={() => onExpandedChange(false)}
       onTouchStart={() => onExpandedChange(true)}
     >
-      <button
+      <a
         className="brand"
-        onClick={navigateHome}
-        type="button"
+        href={pagePath('overview')}
+        onClick={(event) => navigate(event, 'overview')}
       >
         <span className="brand-mark">R2</span>
         <span className="nav-label">ROS2 Monitor</span>
-      </button>
+      </a>
       <nav className="nav-list" aria-label="대시보드 메뉴">
         {NAV_ITEMS.map((item) => (
-          <button
+          <a
             className={item.id === activePage ? 'nav-item active' : 'nav-item'}
+            href={pagePath(item.id)}
             key={item.id}
-            onClick={() => navigate(item.id)}
+            onClick={(event) => navigate(event, item.id)}
             title={item.label}
-            type="button"
           >
             <span className="nav-icon">{item.label.slice(0, 1)}</span>
             <span className="nav-label">{item.label}</span>
             {item.comingSoon && <small>Soon</small>}
-          </button>
+          </a>
         ))}
       </nav>
     </aside>
   )
+}
+
+function isModifiedClick(event) {
+  return event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey
 }

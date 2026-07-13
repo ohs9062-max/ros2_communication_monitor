@@ -5,16 +5,13 @@ from __future__ import annotations
 from typing import Any
 
 from ros2_dashboard_backend.action.models import (
-    ACTION_STATUS_WAITING_SERVER,
     ALERT_CODE_ACTION_GOAL_ABORTED,
     ALERT_CODE_ACTION_GOAL_CANCELED,
     ALERT_CODE_ACTION_RESULT_UNAVAILABLE,
-    ALERT_CODE_ACTION_WAITING_SERVER,
     ALERT_LEVEL_ERROR,
     ALERT_LEVEL_WARNING,
     GOAL_STATUS_ABORTED,
     GOAL_STATUS_CANCELED,
-    RESULT_STATUS_UNAVAILABLE,
 )
 
 
@@ -26,18 +23,6 @@ def build_action_alerts(
     """Build user-visible action alerts."""
     alerts = []
     for action in actions:
-        if action.get('status') == ACTION_STATUS_WAITING_SERVER:
-            alerts.append(
-                _build_alert(
-                    action=action,
-                    detected_at=detected_at,
-                    level=ALERT_LEVEL_WARNING,
-                    code=ALERT_CODE_ACTION_WAITING_SERVER,
-                    message='Action client exists but no server is available.',
-                    last_received_at=None,
-                ),
-            )
-
         runtime = action.get('runtime', {})
         last_goal_status = runtime.get('last_goal_status')
         if last_goal_status == GOAL_STATUS_ABORTED:
@@ -63,14 +48,14 @@ def build_action_alerts(
                 ),
             )
 
-        if runtime.get('result_status') == RESULT_STATUS_UNAVAILABLE:
+        if runtime.get('result_error'):
             alerts.append(
                 _build_alert(
                     action=action,
                     detected_at=detected_at,
-                    level=ALERT_LEVEL_WARNING,
+                    level=ALERT_LEVEL_ERROR,
                     code=ALERT_CODE_ACTION_RESULT_UNAVAILABLE,
-                    message='Action result is unavailable.',
+                    message='Action result lookup failed.',
                     last_received_at=runtime.get('last_status_at'),
                 ),
             )

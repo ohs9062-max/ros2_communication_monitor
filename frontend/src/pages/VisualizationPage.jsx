@@ -242,7 +242,7 @@ export function VisualizationPage({ websocket }) {
                 화면 맞춤
               </button>
               <button className="filter" onClick={showEverything} type="button">
-                전체
+                전체 Graph
               </button>
               <button className="filter active" onClick={refresh} type="button">
                 새로고침
@@ -250,6 +250,19 @@ export function VisualizationPage({ websocket }) {
             </div>
           )}
         </section>
+
+        {isNodeMode && loading && (
+          <section className="notice-text visualization-mode-warning">
+            데이터를 불러오는 중입니다.
+          </section>
+        )}
+
+        {isNodeMode && error && (
+          <section className="notice-text warning visualization-mode-warning">
+            ROS2 데이터를 불러오지 못했습니다. 백엔드 실행 상태와 API 주소를
+            확인하세요.
+          </section>
+        )}
 
         {isNodeMode && (
           <section className="topic-section visualization-node-picker">

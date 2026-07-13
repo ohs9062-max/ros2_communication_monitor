@@ -5,23 +5,33 @@ from __future__ import annotations
 from typing import Any
 
 from ros2_dashboard_backend.topic.models import (
-    ALERT_CODE_TOPIC_INACTIVE,
     ALERT_CODE_TOPIC_MESSAGE_MISSING,
     ALERT_CODE_TOPIC_STALE,
     ALERT_CODE_WAITING_PUBLISHER,
     ALERT_LEVEL_CRITICAL,
     ALERT_LEVEL_ERROR,
-    ALERT_LEVEL_INFO,
     ALERT_LEVEL_WARNING,
     HZ_STATUS_NEVER_RECEIVED,
     HZ_STATUS_STALE,
     MONITOR_STATUS_TYPE,
-    TOPIC_STATUS_INACTIVE,
     TOPIC_STATUS_WAITING_PUBLISHER,
     copy_values,
     text_or_empty,
     topic_primary_type,
 )
+
+
+REQUIRED_STREAM_TOPIC_NAMES = {
+    '/imu',
+    '/joint_states',
+    '/odom',
+    '/scan',
+}
+
+COMMAND_TOPIC_NAMES = {
+    '/cmd_vel',
+    '/cmd_vel_smoothed',
+}
 
 
 def build_alerts(
@@ -57,9 +67,7 @@ def build_alert_meta(alerts: list[dict[str, Any]]) -> dict[str, int]:
     """Build alert count metadata for /ros/alerts."""
     return {
         'count': len(alerts),
-        'info_count': sum(
-            1 for alert in alerts if alert['level'] == ALERT_LEVEL_INFO
-        ),
+        'info_count': sum(1 for alert in alerts if alert['level'] == 'info'),
         'warning_count': sum(
             1 for alert in alerts if alert['level'] == ALERT_LEVEL_WARNING
         ),
@@ -81,21 +89,24 @@ def _topic_alerts(
 ) -> list[dict[str, Any]]:
     name = topic['name']
     publisher_count = topic['publisher_count']
-    subscriber_count = topic.get(
-        'external_subscriber_count',
-        topic['subscriber_count'],
-    )
     subscription = subscriptions.get(name)
+
+    if name in COMMAND_TOPIC_NAMES:
+        return []
+
+    if name not in REQUIRED_STREAM_TOPIC_NAMES:
+        return []
 
     if publisher_count > 0 and subscription is not None:
         return _topic_message_alerts(
             name=name,
+            first_observed_at=subscription.get('created_at'),
             last_received_at=subscription.get('last_received_at'),
             detected_at=detected_at,
             stale_timeout_sec=stale_timeout_sec,
         )
 
-    if publisher_count == 0 and subscriber_count > 0:
+    if publisher_count == 0:
         return [
             _alert(
                 level=ALERT_LEVEL_WARNING,
@@ -110,32 +121,24 @@ def _topic_alerts(
             ),
         ]
 
-    if publisher_count == 0 and subscriber_count == 0:
-        return [
-            _alert(
-                level=ALERT_LEVEL_INFO,
-                source='topic',
-                name=name,
-                code=ALERT_CODE_TOPIC_INACTIVE,
-                status=TOPIC_STATUS_INACTIVE,
-                message='No publisher and no subscriber are available.',
-                last_received_at=None,
-                age_sec=None,
-                detected_at=detected_at,
-            ),
-        ]
-
     return []
 
 
 def _topic_message_alerts(
     *,
     name: str,
+    first_observed_at: float | None,
     last_received_at: float | None,
     detected_at: float,
     stale_timeout_sec: float,
 ) -> list[dict[str, Any]]:
     if last_received_at is None:
+        if (
+            first_observed_at is None or
+            detected_at - first_observed_at <= stale_timeout_sec
+        ):
+            return []
+
         return [
             _alert(
                 level=ALERT_LEVEL_WARNING,

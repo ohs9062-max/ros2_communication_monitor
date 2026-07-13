@@ -340,6 +340,7 @@ class TopicMonitor:
             actions = [action.copy() for action in self._actions]
             subscriptions = {
                 name: {
+                    'created_at': entry.get('created_at'),
                     'last_received_at': entry.get('last_received_at'),
                     'message_preview': copy_message_preview(
                         entry.get('message_preview'),

@@ -13,6 +13,8 @@ import { GraphNodeCard } from './GraphNodeCard.jsx'
 const NODE_TYPES = {
   communicationNode: GraphNodeCard,
 }
+const NODE_WIDTH = 286
+const NODE_HEIGHT = 156
 
 export function CommunicationGraph({
   edges,
@@ -33,6 +35,10 @@ export function CommunicationGraph({
   const manualPositions = useRef(new Map())
   const previousLayoutKey = useRef(layoutKey)
   const [displayedNodes, setDisplayedNodes, onNodesChange] = useNodesState([])
+  const displayedEdges = useMemo(
+    () => routeEdgesToNearestHandles(edges, displayedNodes),
+    [displayedNodes, edges],
+  )
   const viewportSignature = useMemo(
     () => graphViewportSignature(nodes, edges, layoutKey),
     [edges, layoutKey, nodes],
@@ -114,7 +120,7 @@ export function CommunicationGraph({
 
   return (
     <ReactFlow
-      edges={edges}
+      edges={displayedEdges}
       maxZoom={1.6}
       minZoom={0.2}
       nodeTypes={NODE_TYPES}
@@ -241,6 +247,50 @@ function graphViewportSignature(nodes, edges, layoutKey) {
     .join('|')
 
   return `${layoutKey}::${nodeSignature}::${edgeSignature}`
+}
+
+function routeEdgesToNearestHandles(edges, nodes) {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]))
+
+  return edges.map((edge) => {
+    const source = nodesById.get(edge.source)
+    const target = nodesById.get(edge.target)
+    if (!source || !target) {
+      return edge
+    }
+
+    const sourceCenter = nodeCenter(source)
+    const targetCenter = nodeCenter(target)
+    const deltaX = targetCenter.x - sourceCenter.x
+    const deltaY = targetCenter.y - sourceCenter.y
+
+    if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+      return deltaX >= 0
+        ? withEdgeHandles(edge, 'right', 'left')
+        : withEdgeHandles(edge, 'left', 'right')
+    }
+
+    return deltaY >= 0
+      ? withEdgeHandles(edge, 'bottom', 'top')
+      : withEdgeHandles(edge, 'top', 'bottom')
+  })
+}
+
+function nodeCenter(node) {
+  const width = node.measured?.width ?? NODE_WIDTH
+  const height = node.measured?.height ?? NODE_HEIGHT
+  return {
+    x: node.position.x + width / 2,
+    y: node.position.y + height / 2,
+  }
+}
+
+function withEdgeHandles(edge, sourceSide, targetSide) {
+  return {
+    ...edge,
+    sourceHandle: `source-${sourceSide}`,
+    targetHandle: `target-${targetSide}`,
+  }
 }
 
 function minimapColor(kind) {

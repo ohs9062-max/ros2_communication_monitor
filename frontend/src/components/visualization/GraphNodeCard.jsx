@@ -7,6 +7,12 @@ const KIND_LABELS = {
   service: 'Service',
   topic: 'Topic',
 }
+const HANDLE_POSITIONS = [
+  ['left', Position.Left],
+  ['right', Position.Right],
+  ['top', Position.Top],
+  ['bottom', Position.Bottom],
+]
 
 export function GraphNodeCard({ data }) {
   const connectionCount =
@@ -15,7 +21,15 @@ export function GraphNodeCard({ data }) {
 
   return (
     <div className={`comm-node-card kind-${data.kind}`}>
-      <Handle className="comm-handle" position={Position.Left} type="target" />
+      {HANDLE_POSITIONS.map(([id, position]) => (
+        <Handle
+          className="comm-handle"
+          id={`target-${id}`}
+          key={`target-${id}`}
+          position={position}
+          type="target"
+        />
+      ))}
       <div className="comm-node-topline">
         <span className="comm-node-kind">{KIND_LABELS[data.kind]}</span>
         <StatusBadge value={data.status ?? 'unknown'} />
@@ -23,7 +37,15 @@ export function GraphNodeCard({ data }) {
       <strong className="comm-node-title">{data.label}</strong>
       <span className="comm-node-type">{data.type ?? '-'}</span>
       <span className="comm-node-meta">{connectionCount} 연결</span>
-      <Handle className="comm-handle" position={Position.Right} type="source" />
+      {HANDLE_POSITIONS.map(([id, position]) => (
+        <Handle
+          className="comm-handle"
+          id={`source-${id}`}
+          key={`source-${id}`}
+          position={position}
+          type="source"
+        />
+      ))}
     </div>
   )
 }

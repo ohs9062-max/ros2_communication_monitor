@@ -31,10 +31,7 @@ python3 -m uvicorn ros2_dashboard_backend.main:app \
 
 ## test service server
 ros2 run demo_nodes_cpp add_two_ints_server
-ros2 service call \
-/add_two_ints \
-example_interfaces/srv/AddTwoInts \
-"{a: 2, b: 3}"
+ros2 service call /add_two_ints example_interfaces/srv/AddTwoInts "{a: 2, b: 3}"
 
 ## build
 cd ~/rang/ros2_dashboard/backend

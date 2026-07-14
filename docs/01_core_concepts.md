@@ -25,7 +25,8 @@
 - **화면에서는 어디에 보이는지**: ServicesPage, ServiceTable
 
 **개념: Action**
-- **쉬운 설명**: 시간이 오래 걸리는 작업을 위한 통신입니다. 목표(Goal)를 보내고, 진행 상황(Feedback)을 듣고, 결과(Result)를 받습니다.
+- **쉬운 설명**: 시간이 오래 걸리는 작업을 위한 통신입니다.
+  목표(Goal), 진행 상황(Feedback), 결과(Result)로 구성됩니다.
 - **이 프로젝트에서 왜 쓰는지**: 로봇의 이동, 작업 등 긴 시간이 필요한 동작을 모니터링하기 위해 사용합니다.
 - **관련 파일**: `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/action/`
 - **화면에서는 어디에 보이는지**: ActionsPage, ActionTable
@@ -36,7 +37,8 @@
 
 **개념: Snapshot**
 - **쉬운 설명**: 특정 시점의 전체 시스템 상태를 사진 찍듯이 기록한 데이터입니다.
-- **이 프로젝트에서 왜 쓰는지**: 계속 변하는 ROS2 그래프 상태를 일정한 주기로 캡처하여 API로 제공하기 위해 사용합니다.
+- **이 프로젝트에서 왜 쓰는지**: 계속 변하는 ROS2 Graph를 일정한 주기로
+  cache에 반영하여 API로 제공하기 위해 사용합니다.
 - **관련 파일**: `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py`
 
 **개념: Stale**

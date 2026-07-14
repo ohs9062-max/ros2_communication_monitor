@@ -1,97 +1,104 @@
 # Alert 통합 흐름
 
-> 라인 번호는 2026-07-13 문서 작성 시점의 현재 코드 기준이다.
+> 라인 번호는 2026-07-14 실제 코드 기준이다.
 
-## 1. 범위와 한 줄 요약
+## 1. 상태 badge와 Alert를 나누는 이유
 
-Topic, MonitorStatus, Service, Action, Node Alert의 생성과 통합,
-`/ros/alerts`, Overview/Alerts 화면 반영을 설명한다.
+목록의 badge는 현재 관찰 상태를 넓게 보여줍니다. 하지만 모든 대기·미지원 상태를
+Alert로 만들면 사용자가 처리해야 할 문제를 찾기 어렵습니다. 그래서 Alert builder는
+각 Runtime의 현재 상태 중 조치 가능성이 높은 조건만 골라 하나의 배열로 만듭니다.
 
-상태 badge는 관찰 상태를 넓게 보여주지만 Alert는 조치 가능성이 높은 조건만
-builder가 선별한다.
-
-## 2. 전체 흐름
+## 2. Alert가 만들어지는 전체 순서
 
 ```text
-각 Runtime cache
-→ RosMonitor.alerts
-→ 도메인별 builder
-→ 하나의 alerts 배열 + meta
-→ /ros/alerts
-→ Overview / Alerts / 도메인 화면
+REST 또는 WebSocket이 현재 Alert 요청
+  — main.py L124-L127, L130-L143
+  — get_ros_alerts(), RosMonitor.websocket_snapshot()
+
+→ RosMonitor가 각 Runtime의 현재 snapshot 복사
+  — ros_monitor.py L156-L163
+  — RosMonitor.alerts()
+
+→ Topic과 MonitorStatus Alert 생성
+  — ros_monitor.py L165-L170
+  — topic/alerts.py L37-L64, build_alerts()
+
+→ Service Alert 추가
+  — ros_monitor.py L171-L176
+  — service/alerts.py L37-L88, build_service_alerts()
+
+→ Action Alert 추가
+  — ros_monitor.py L177-L182
+  — action/alerts.py L18-L63, build_action_alerts()
+
+→ Node Alert 추가
+  — ros_monitor.py L183-L188
+  — node/alerts.py L14-L41, build_node_alerts()
+
+→ level별 meta와 공통 응답 반환
+  — ros_monitor.py L190-L195
+  — topic/alerts.py L66-L80, build_alert_meta()
 ```
 
-## 3. 통합 코드 위치
+`RosMonitor.alerts()`는 별도 인자를 받지 않고 현재 시각 `detected_at`과 각 Runtime
+snapshot을 builder에 전달합니다. 결과는 저장 DB에 누적하지 않고 호출 시점마다
+새로 조립합니다. 따라서 `detected_at`은 이번 snapshot 생성 시각이지 최초 장애
+발생 시각이 아닙니다.
 
-| 단계 | 설명 | 파일 | 라인 | 함수/클래스 |
-|---|---|---|---|---|
-| 1 | Runtime Alert 입력 수집 | `backend/.../ros_monitor.py` | L156-L163 | `RosMonitor.alerts` |
-| 2 | Topic/MonitorStatus builder 호출 | 같은 파일 | L165-L170 | `RosMonitor.alerts` |
-| 3 | Service builder 병합 | 같은 파일 | L171-L176 | `RosMonitor.alerts` |
-| 4 | Action builder 병합 | 같은 파일 | L177-L182 | `RosMonitor.alerts` |
-| 5 | Node builder 병합 | 같은 파일 | L183-L188 | `RosMonitor.alerts` |
-| 6 | 배열과 공통 meta 반환 | 같은 파일 | L190-L195 | `RosMonitor.alerts` |
-| 7 | REST endpoint | `backend/.../main.py` | L124-L127 | `get_ros_alerts` |
+## 3. 어떤 상태가 Alert가 되는가
 
-## 4. 도메인별 Alert 정책
+- Topic: required stream의 publisher 없음, 장기 미수신, stale
+  (`topic/alerts.py` L83-L178)
+- MonitorStatus: preview level이 warning/error/critical
+  (`topic/alerts.py` L181-L237)
+- Service: visible user Service의 allowlist active check가 timeout/error/failed
+  (`service/alerts.py` L37-L88)
+- Action: aborted, canceled, result lookup error
+  (`action/alerts.py` L18-L63)
+- Node: stale (`node/alerts.py` L14-L41)
 
-| 도메인 | 조건 | 코드 위치 |
-|---|---|---|
-| Topic | required stream의 publisher 없음, 장기 미수신, stale | `topic/alerts.py` L24-L34, L83-L178 |
-| MonitorStatus | preview level이 warning/error/critical | `topic/alerts.py` L181-L237 |
-| Service | user/visible/allowlist active check의 timeout/error/failed | `service/alerts.py` L18-L88 |
-| Action | aborted, canceled, result lookup error | `action/alerts.py` L18-L63 |
-| Node | stale | `node/alerts.py` L14-L41 |
+required stream은 `/imu`, `/joint_states`, `/odom`, `/scan`입니다. 명령 Topic
+`/cmd_vel`, `/cmd_vel_smoothed`는 명령이 있을 때만 흐를 수 있어 기본 미수신
+Alert에서 제외됩니다.
 
-Topic required stream은 `/imu`, `/joint_states`, `/odom`, `/scan`이다.
-command Topic `/cmd_vel`, `/cmd_vel_smoothed`는 기본 Topic Alert에서 제외된다.
+일반 Topic의 subscriber 없음, Service waiting server, Action Goal 미관찰은 badge로
+표시할 수 있지만 기본 Alert는 아닙니다. 따라서 badge 개수와 Alert count가 달라도
+정상입니다.
 
-## 5. Alert와 badge 차이
+## 4. REST와 화면 전달
 
-| 상태 정보 | 목록 badge | 기본 Alert |
-|---|---|---|
-| 일반 Topic 구독자 없음 | 표시 | 제외 |
-| 일반 Topic 발행자 대기/미지원 | 표시 | 제외 |
-| command Topic 미수신 | 표시 가능 | 제외 |
-| Service 상태만 표시/waiting server | 표시 | 제외 |
-| Action Goal 미관찰/waiting server | 표시 | 제외 |
-| required stream 장기 미수신/stale | 표시 | 포함 |
-| Service active check timeout/failed/error | 표시 | 포함 |
-| Action aborted/canceled/result error | 표시 | 포함 |
-| Node stale | 표시 | 포함 |
+```text
+RosMonitor.alerts()가 응답 생성
+  — ros_monitor.py L156-L195
+→ GET /ros/alerts 반환
+  — main.py L124-L127
+→ Frontend fetchAlerts()
+  — rosApi.js L38-L40
+→ Topic dashboard가 공통 Alert polling
+  — useTopicDashboard.js L17-L148
+→ Overview와 Alerts 화면
+  — OverviewPage.jsx L12-L173
+  — AlertsPage.jsx L3-L60
+  — AlertsList.jsx L19-L65
+```
 
-badge는 `status`와 runtime 정보를 해석하는 화면 표현이고, Alert는 위 builder가
-만든 별도 배열이다. 따라서 badge 개수와 Alert count는 같지 않아도 정상이다.
+Alerts 화면은 source에 따라 관련 화면과 선택 state로 연결합니다. WebSocket도 같은
+`RosMonitor.alerts()` 결과를 경량 snapshot 안에 넣습니다
+(`ros_monitor.py` L117-L145).
 
-## 6. Frontend 반영
+## 5. 전체 흐름 한 문장
 
-| 화면 | 코드 위치 | 처리 |
-|---|---|---|
-| 공통 polling | `frontend/src/hooks/useTopicDashboard.js` L17-L148 | `/ros/alerts`를 Topic dashboard에 보관 |
-| Overview | `frontend/src/pages/OverviewPage.jsx` L20-L37, L91-L104 | meta/count/preview와 클릭 이동 |
-| Overview 목록 | `frontend/src/components/AlertsPreview.jsx` L1-L48 | 최근 Alert 표시 |
-| Alerts | `frontend/src/pages/AlertsPage.jsx` L3-L60 | source별 대상 화면/선택 state 설정 |
-| 전체 목록 | `frontend/src/components/AlertsList.jsx` L1-L65 | Alert row 렌더링 |
-| 도메인별 | 각 `use*Dashboard` hook | source로 해당 Alert만 filter |
+RosMonitor가 각 Runtime의 현재 snapshot을 도메인별 builder에 전달하고 조치 가능한
+조건만 하나의 Alert 배열과 meta로 반환합니다.
 
-`OverviewPage`의 전체 상태는 `utils/status.js`의 `overallStatus`가 Alert meta를
-사용한다. Alert 클릭은 Topic/Service는 직접 관련 화면으로, 그 밖은 Alerts 또는
-source별 화면으로 이동한다.
+## 초보자가 자주 틀리는 부분
 
-## 7. 발표 때 설명할 문장
+- warning처럼 보이는 모든 badge가 Alert는 아닙니다.
+- Alert는 현재 snapshot이며 영구 장애 이력이 아닙니다.
+- MonitorStatus Alert의 source는 일반 Topic과 다른 `monitor_status`입니다.
 
-“화면의 상태 badge는 관찰 정보를 넓게 보여주고, Alert는 사용자가 조치할
-가능성이 높은 조건만 별도 정책으로 선별합니다.”
+## 내가 반드시 알아야 할 것 3줄 요약
 
-## 8. 헷갈리기 쉬운 부분
-
-- MonitorStatus Alert source는 `monitor_status`이며 일반 Topic source와 다르다.
-- `detected_at`은 Alert snapshot을 만든 시각이지 최초 장애 발생 시각이 아니다.
-- Node stale은 짧게 보존되는 cache에 의존하므로 영구 이벤트 이력이 아니다.
-- 현재 Alert 저장 DB는 없고 현재 snapshot만 반환한다.
-
-## 9. 관련 파일 빠른 참조
-
-`ros_monitor.py`, `topic/alerts.py`, `service/alerts.py`,
-`action/alerts.py`, `node/alerts.py`, `main.py`,
-`OverviewPage.jsx`, `AlertsPage.jsx`, `AlertsList.jsx`
+1. Alert는 Runtime 상태 중 정책에 맞는 조건만 선별합니다.
+2. Topic, Service, Action, Node Alert는 `/ros/alerts` 하나로 통합됩니다.
+3. 현재 구현은 DB에 Alert 이력을 저장하지 않습니다.

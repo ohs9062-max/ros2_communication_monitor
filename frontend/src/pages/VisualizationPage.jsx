@@ -11,6 +11,7 @@ import { nodeConnectionCount } from '../utils/graphTransform.js'
 export function VisualizationPage({ websocket }) {
   const dashboard = useVisualizationGraph()
   const fitViewRef = useRef(null)
+  const resetLayoutRef = useRef(null)
   const {
     activeOnly,
     error,
@@ -54,7 +55,6 @@ export function VisualizationPage({ websocket }) {
     setViewMode('all')
     setNodeFilterMode('all')
     setSearch('')
-    window.setTimeout(() => fitViewRef.current?.(), 80)
   }
   const showGlobalView = () => {
     setNodeFilterMode('all')
@@ -72,7 +72,6 @@ export function VisualizationPage({ websocket }) {
     setSelectedNodeName(nodeName)
     setSelectedGraphNodeId(`node:${nodeName}`)
     setViewMode('connected')
-    window.setTimeout(() => fitViewRef.current?.(), 80)
   }
   const showConnectedView = () => {
     setNodeFilterMode('active')
@@ -83,6 +82,9 @@ export function VisualizationPage({ websocket }) {
   }
   const setFitViewHandler = useCallback((fitView) => {
     fitViewRef.current = fitView
+  }, [])
+  const setResetLayoutHandler = useCallback((resetLayout) => {
+    resetLayoutRef.current = resetLayout
   }, [])
   const emptyMessage = viewMode === 'connected' && !selectedNodeName
     ? 'Node를 선택하면 해당 Node와 직접 연결된 Topic, Service, Action 관계를 표시합니다.'
@@ -234,12 +236,20 @@ export function VisualizationPage({ websocket }) {
             <div className="visualization-actions">
               {loading && <span className="muted">갱신 중</span>}
               {error && <span className="error-text">Graph API 연결 실패</span>}
+              <span className="muted">Shift + 드래그: 같은 종류 묶음 이동</span>
               <button
                 className="filter"
                 onClick={() => fitViewRef.current?.()}
                 type="button"
               >
                 화면 맞춤
+              </button>
+              <button
+                className="filter"
+                onClick={() => resetLayoutRef.current?.()}
+                type="button"
+              >
+                배치 초기화
               </button>
               <button className="filter" onClick={showEverything} type="button">
                 전체 Graph
@@ -316,10 +326,13 @@ export function VisualizationPage({ websocket }) {
               <div className="visualization-flow-wrap">
                 <CommunicationGraph
                   edges={graph.edges}
+                  layoutKey={`${viewMode}:${selectedNodeName}`}
                   nodes={graph.nodes}
                   onFitReady={setFitViewHandler}
+                  onLayoutResetReady={setResetLayoutHandler}
                   onSelectNode={setSelectedGraphNodeId}
                   selectedNodeId={selectedGraphNodeId}
+                  viewMode={viewMode}
                 />
                 {!graph.nodes.length && (
                   <div className="visualization-empty-overlay">

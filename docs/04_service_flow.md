@@ -1,105 +1,119 @@
 # Service 모니터링 흐름
 
-> 라인 번호는 2026-07-13 문서 작성 시점의 현재 코드 기준이다.
+> 라인 번호는 2026-07-14 실제 코드 기준이다.
 
-## 1. 범위와 한 줄 요약
+## 1. Service를 안전하게 감시하는 방법
 
-Service 발견, server/client count, category/숨김 정책, allowlist active check,
-REST와 Alert 흐름을 설명한다.
+Service는 요청이 있을 때만 응답하므로 Topic처럼 메시지 Hz를 재지 않습니다.
+`ServiceRuntime`은 먼저 Graph API로 server/client 존재 여부를 조사합니다. 실제
+request를 보내는 **active check**는 `monitor.yaml` allowlist에 등록된 안전한
+Service에만 수행합니다.
 
-`ServiceRuntime`이 Graph snapshot을 소유하고, 내부의
-`ServiceActiveCheckRuntime`만 허용된 Service를 비동기로 호출한다.
-
-## 2. 전체 흐름
+## 2. Graph 목록 만들기
 
 ```text
-ServiceRuntime.update
-→ Service Graph/count/category 조립
-→ active-check cache 병합
-→ public snapshot
+RosMonitor가 Service 갱신 호출
+  — ros_monitor.py L304-L307
+  — RosMonitor._update_graph() → ServiceRuntime.update()
 
-ServiceRuntime.update_active_checks
-→ allowlist/type/server 확인
-→ request + call_async
-→ pending/timeout/failed/error/success cache
+→ Service 이름과 type 조회
+  — service/runtime.py L86-L104
+  — node.get_service_names_and_types()
+
+→ server/client 수, category, 상태 조립
+  — service/runtime.py L104-L119
+  — service/discovery.py L17-L57, build_service_item()
+
+→ 이전 active-check 결과를 item에 병합
+  — service/runtime.py L94-L119
+  — ServiceActiveCheckRuntime.cache_snapshot()
+
+→ Service 목록 cache 저장과 목록 반환
+  — service/runtime.py L121-L127
+  — self._services, self._last_updated
 ```
 
-## 3. Graph와 public snapshot 코드 위치
+`ServiceRuntime.update()`는 인자를 받지 않고 `node_getter()`로 Node를 얻습니다.
+완성한 `services`는 cache에 저장하는 동시에 `RosMonitor._update_graph()`로
+반환됩니다. `count_clients()`가 없는 rclpy 환경은 0으로 처리하므로 0이 반드시
+client 부재를 확정하지는 않습니다(`service/runtime.py` L136-L155).
 
-| 단계 | 설명 | 파일 | 라인 | 함수/클래스 |
-|---|---|---|---|---|
-| 1 | active-check runtime 조립 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/service/runtime.py` | L24-L44 | `ServiceRuntime.__init__` |
-| 2 | Service names/types 조회 | 같은 파일 | L86-L104 | `ServiceRuntime.update` |
-| 3 | server/client count 계산 | 같은 파일 | L104-L118 | `update`, `_client_count` |
-| 4 | public item과 active-check cache 병합 | 같은 파일 | L94-L119 | `ServiceRuntime.update` |
-| 5 | 전체 cache 저장 | 같은 파일 | L121-L127 | `ServiceRuntime.update` |
-| 6 | 숨김 포함 여부와 meta 조립 | 같은 파일 | L54-L79 | `ServiceRuntime.snapshot` |
-| 7 | active check 진행 위임 | 같은 파일 | L129-L134 | `update_active_checks` |
+parameter, action 내부, ROS 내부 Service 분류는 `service/filters.py` L30-L64에서
+정합니다. 기본 `GET /ros/services`는 숨김 항목을 제외하고,
+`?include_hidden=true`는 전체 cache를 반환합니다.
 
-`count_clients`가 없는 rclpy 환경은 `service/runtime.py` L136-L155에서
-0으로 안전 처리한다. 이는 “client가 확실히 없다”가 아니라 해당 환경에서
-count API를 쓸 수 없을 가능성도 포함한다.
+## 3. allowlist active check
 
-## 4. category와 숨김 정책
+Graph에서 server가 보인다는 사실은 실제 request 성공을 보장하지 않습니다. active
+check는 허용된 Service에 request를 보내 응답과 시간을 확인합니다.
 
-| 단계 | 파일 | 라인 | 함수 |
-|---|---|---|---|
-| 내부 종류 판정 | `backend/.../service/filters.py` | L16-L42 | `is_parameter_service` 외 |
-| category 결정 | 같은 파일 | L45-L59 | `service_category` |
-| 기본 숨김 여부 | 같은 파일 | L62-L64 | `is_hidden_by_default` |
-| Service item 조립 | `backend/.../service/discovery.py` | L17-L57 | `build_service_item` |
-| visible/all meta | `backend/.../service/models.py` | L65-L145 | `service_meta` |
+```text
+Graph 갱신이 반환한 services를 active-check Runtime에 전달
+  — ros_monitor.py L307-L309
+  — ServiceRuntime.update_active_checks(services)
 
-category는 `user`, `parameter`, `action_internal`, `ros_internal`, `unknown`이다.
-`GET /ros/services`는 기본 숨김 item을 제외하고,
-`?include_hidden=true`일 때 cache 전체를 반환한다.
+→ 완료 Future와 timeout 먼저 확인
+  — active_check_runtime.py L60-L104
+  — ServiceActiveCheckRuntime.update()
 
-## 5. Active check 상세 흐름
+→ allowlist, type, server, 기존 pending 검사
+  — active_check_runtime.py L147-L169
+  — _maybe_start_active_check(service, now)
 
-| 단계 | 설명 | 파일 | 라인 | 함수 |
-|---|---|---|---|---|
-| 1 | YAML allowlist를 name map으로 변환 | `backend/.../service/active_check_runtime.py` | L22-L37 | `ServiceActiveCheckRuntime.__init__` |
-| 2 | 주기/활성 여부 판단 | 같은 파일 | L60-L74 | `update` |
-| 3 | 완료 future/timeout 처리 | 같은 파일 | L76-L104 | `_complete_active_check_futures` |
-| 4 | allowlist/type/server/pending 검사 | 같은 파일 | L147-L169 | `_maybe_start_active_check` |
-| 5 | request와 client 생성, async 호출 | 같은 파일 | L170-L205 | `_maybe_start_active_check` |
-| 6 | done callback 등록 | 같은 파일 | L206-L214 | `_maybe_start_active_check` |
-| 7 | success/failed/error cache 저장 | 같은 파일 | L106-L145 | `_record_active_check_done` |
-| 8 | rclpy client 재사용 | 같은 파일 | L232-L243 | `_active_check_client` |
+→ request와 client 생성 후 call_async()
+  — active_check_runtime.py L170-L205
 
-request class 로드와 field 설정은 `service/active_check.py` L201-L213,
-응답 성공 판정은 L165-L199와 L224-L237에 있다. 실제 허용 목록은
-`backend/config/monitor.yaml` L36-L53이다.
+→ Future와 pending 상태를 cache에 저장
+  — active_check_runtime.py L194-L214
 
-## 6. REST, Alert, Frontend 연결
+→ 완료 callback 또는 다음 update에서 결과 기록
+  — active_check_runtime.py L76-L145
 
-- REST: `main.py` L81-L95 `get_ros_services`
-- coordinator 위임: `ros_monitor.py` L99-L107 `service_snapshot`
-- Alert 입력: `service/runtime.py` L81-L84 `alert_snapshot`
-- Alert builder: `service/alerts.py` L18-L88
-- API 호출: `frontend/src/api/rosApi.js` L42-L45
-- polling/participant map: `useServiceDashboard.js` L9-L76
-- filter/선택: `ServicesPage.jsx` L73-L231
-- 표/상세: `ServiceTable.jsx` L35-L105,
-  `ServiceDetailPanel.jsx` L5-L116
+→ 다음 ServiceRuntime.update()가 public item에 병합
+  — service/runtime.py L94-L119
+```
 
-Service Alert는 user이며 기본 숨김이 아니고 active-check 대상인 Service의
-`timeout`, `error`, `failed`만 만든다(`service/alerts.py` L37-L88).
-단순 `waiting_server`나 “상태만 표시”는 Alert가 아니다.
+`_update_graph()` 흐름은 일반 동기 함수 호출이지만 실제 Service 요청은
+`call_async()`를 사용합니다. 이 함수가 나중에 완료될 결과인 Future를 즉시
+반환하므로 `async def`가 없어도 응답을 기다리지 않고 진행합니다. request type과
+field 조립은 `service/active_check.py` L201-L213에 있습니다.
 
-## 7. 발표 때 설명할 문장
+allowlist 밖 Service에는 request를 보내지 않으며, `active_check_supported=false`는
+장애가 아니라 검사 정책 대상이 아니라는 뜻입니다.
 
-“Service 목록은 전부 Graph로 안전하게 관찰하고, 실제 request는 YAML
-allowlist에 등록된 테스트 가능한 Service만 비동기로 보냅니다.”
+## 4. REST, Alert, 화면 전달
 
-## 8. 헷갈리기 쉬운 부분
+```text
+ServiceRuntime.snapshot(include_hidden)
+  — service/runtime.py L54-L79
+→ RosMonitor.service_snapshot()
+  — ros_monitor.py L99-L107
+→ GET /ros/services
+  — main.py L81-L95
+→ Frontend polling과 화면
+  — rosApi.js L42-L45
+  — useServiceDashboard.js L9-L76
+  — ServicesPage.jsx L73-L231
+```
 
-- Service Graph의 `active`는 server 존재를 뜻하며 request 성공을 뜻하지 않는다.
-- `active_check_supported=false`는 장애가 아니라 호출 정책 대상 밖이라는 뜻이다.
-- endpoint는 Service를 호출하지 않고 이전 background 결과 cache만 반환한다.
+Service Alert 입력은 `ServiceRuntime.alert_snapshot()` L81-L84가 만들고,
+`build_service_alerts()`는 visible user Service의 allowlist active check가 timeout,
+error, failed일 때만 Alert를 만듭니다(`service/alerts.py` L37-L88). 단순
+`waiting_server`는 기본 Alert가 아닙니다.
 
-## 9. 관련 파일 빠른 참조
+## 5. 전체 흐름 한 문장
 
-`service/runtime.py`, `service/active_check_runtime.py`,
-`service/active_check.py`, `service/filters.py`, `service/discovery.py`,
-`service/models.py`, `service/alerts.py`, `monitor.yaml`
+ServiceRuntime이 모든 Service를 Graph로 관찰하고 allowlist 대상만 비동기 request로
+확인한 뒤 결과 cache를 REST와 Alert에 전달합니다.
+
+## 초보자가 자주 틀리는 부분
+
+- `active`는 server 발견이며 request 성공이라는 뜻이 아닙니다.
+- REST endpoint가 active check를 직접 시작하지 않습니다.
+- Future의 `pending`은 아직 응답 대기 중인 상태이지 실패가 아닙니다.
+
+## 내가 반드시 알아야 할 것 3줄 요약
+
+1. Service 기본 상태는 Graph의 server/client 관계로 판단합니다.
+2. 실제 request는 allowlist 대상에만 `call_async()`로 보냅니다.
+3. 응답은 cache에 기록되고 다음 Service item에 병합됩니다.

@@ -1,91 +1,131 @@
 # Action 모니터링 흐름
 
-> 라인 번호는 2026-07-13 문서 작성 시점의 현재 코드 기준이다.
+> 라인 번호는 2026-07-14 실제 코드 기준이다.
 
-## 1. 범위와 한 줄 요약
+## 1. Action을 관찰하는 범위
 
-Action 발견, server/client count, status/feedback 구독, observed goal cache,
-제한적 result 조회, REST와 Alert 흐름을 설명한다.
+Action은 오래 걸리는 작업을 Goal, 진행 Feedback, Result로 나눕니다. 이
+대시보드는 장비를 움직일 수 있는 Goal이나 cancel을 보내지 않습니다.
+`ActionRuntime`이 Action server/client와 status/feedback을 관찰하고,
+`ActionResultRuntime`은 status에서 실제로 본 종료 Goal만 result를 조회합니다.
 
-`ActionRuntime`이 Action Graph와 event subscription을 소유하고,
-`ActionResultRuntime`은 status에서 관찰된 terminal Goal만 조회한다.
-
-## 2. 전체 흐름
+## 2. Action 발견과 목록 cache
 
 ```text
-Action Graph discovery/count
-→ status/feedback subscription
-→ callback이 goal/runtime cache 갱신
-→ terminal observed goal 선별
-→ get_result call_async
-→ /ros/actions snapshot과 Alert
+RosMonitor가 Action 갱신 호출
+  — ros_monitor.py L304-L308
+  — RosMonitor._update_graph() → ActionRuntime.update()
+
+→ Action 이름과 type 조회
+  — action/runtime.py L84-L104, L159-L168
+  — rclpy.action.graph.get_action_names_and_types()
+
+→ Node별 server/client 관계를 합산
+  — action/runtime.py L170-L256
+  — _action_count_maps() 외 Graph reader
+
+→ status/feedback subscription 생성 또는 재사용
+  — action/runtime.py L258-L302
+  — _ensure_subscriptions()
+
+→ Graph 상태와 관찰 runtime을 Action item으로 조립
+  — action/runtime.py L105-L125
+  — action/discovery.py L23-L68, build_action_item()
+
+→ Action 목록 cache 저장
+  — action/runtime.py L127-L137
 ```
 
-## 3. Graph와 subscription 코드 위치
+`ActionRuntime.update()`는 `node_getter()`로 Node를 얻고, Action name/type과 Node별
+server/client count를 사용합니다. Action 하나의 내부 status/feedback Topic과 여러
+Service는 `/ros/actions`에서 하나의 Action item으로 묶입니다.
 
-| 단계 | 설명 | 파일 | 라인 | 함수/클래스 |
-|---|---|---|---|---|
-| 1 | ActionResultRuntime 조립 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/action/runtime.py` | L35-L59 | `ActionRuntime.__init__` |
-| 2 | names/types와 count map 조회 | 같은 파일 | L84-L104 | `ActionRuntime.update` |
-| 3 | Action 목록 Graph API | 같은 파일 | L159-L168 | `_action_names_and_types` |
-| 4 | Node별 server/client count 합산 | 같은 파일 | L170-L256 | `_action_count_maps` 외 |
-| 5 | subscription entry 생성/재사용 | 같은 파일 | L258-L302 | `_ensure_subscriptions` |
-| 6 | status subscription 생성 | 같은 파일 | L325-L357 | `_maybe_create_status_subscription` |
-| 7 | feedback subscription 생성 | 같은 파일 | L359-L397 | `_maybe_create_feedback_subscription` |
-| 8 | status callback | 같은 파일 | L403-L417 | `_status_callback` |
-| 9 | feedback callback | 같은 파일 | L419-L433 | `_feedback_callback` |
-| 10 | 사라진 Action subscription 정리 | 같은 파일 | L435-L455 | `_cleanup_disappeared_subscriptions` |
-| 11 | public snapshot/meta | 같은 파일 | L70-L82 | `snapshot` |
+## 3. status와 feedback 수신
 
-status callback은 `action/subscriptions.py` L122-L162의
-`update_status_runtime`으로 Goal별 상태, `last_goal_id`, elapsed time,
-`observed_goal_count`를 갱신한다. feedback은 L165-L175에서 JSON-safe preview로
-저장한다.
+```text
+status subscription 생성
+  — action/runtime.py L325-L357
+  — _maybe_create_status_subscription()
 
-## 4. Result 조회 정책
+→ status 메시지 도착 시 callback 실행
+  — action/runtime.py L403-L417
+  — _status_callback(name)
 
-| 단계 | 설명 | 파일 | 라인 | 함수 |
-|---|---|---|---|---|
-| 1 | result 지원 여부/정책 계산 | `backend/.../action/result_runtime.py` | L69-L80 | `support` |
-| 2 | 완료 future 처리 후 새 요청 검사 | 같은 파일 | L82-L100 | `update`, `_complete_action_result_futures` |
-| 3 | terminal이며 미요청 Goal만 선별 | `backend/.../action/subscriptions.py` | L177-L186 | `terminal_goals_ready_for_result` |
-| 4 | observed Goal request 생성/호출 | `backend/.../action/result_runtime.py` | L102-L173 | `_maybe_start_action_result_requests` |
-| 5 | 결과/오류를 Goal cache에 반영 | 같은 파일 | L175-L223 | `_record_action_result_done`, `_record_action_result_error` |
-| 6 | get_result client 생성 | 같은 파일 | L225-L239 | `_action_result_client` |
-| 7 | Action type에서 service class 로드 | 같은 파일 | L241-L262 | `_result_service_class` |
+→ Goal ID별 상태, 시간, observed count 저장
+  — action/subscriptions.py L122-L162
+  — update_status_runtime()
 
-`observed_goal_only`는 임의 Goal ID를 생성하거나 찾는 정책이 아니다.
-status topic에서 실제로 본 Goal 중 terminal 상태이고 아직 result를 요청하지 않은
-Goal만 대상으로 한다. Goal/cancel 전송 기능은 없다.
+feedback subscription과 callback
+  — action/runtime.py L359-L397, L419-L433
 
-## 5. REST, Alert, Frontend 연결
+→ JSON-safe feedback preview 저장
+  — action/subscriptions.py L165-L175
+  — update_feedback_runtime()
+```
 
-- REST: `main.py` L98-L108 `get_ros_actions`
-- coordinator: `ros_monitor.py` L109-L111 `action_snapshot`
-- Alert: `action/alerts.py` L18-L63 `build_action_alerts`
-- aborted/canceled/result_error만 Alert: `action/alerts.py` L25-L61
-- API 호출: `rosApi.js` L47-L49
-- polling/participant map: `useActionDashboard.js` L9-L73
-- page filter/선택: `ActionsPage.jsx` L16-L174
-- 표/상세: `ActionTable.jsx` L38-L116,
-  `ActionDetailPanel.jsx` L5-L195
+status callback은 Action 이름과 실제 `GoalStatusArray` 메시지를 전달받습니다.
+Goal별 accepted/executing/finished 시각과 elapsed time은 subscription runtime
+cache에 저장됩니다. feedback type을 import할 수 없으면 preview가 제한될 뿐 Action
+server 실패로 판단하지 않습니다.
 
-Goal 미관찰, waiting server, result policy 안내는 상태 정보이며 기본 Alert가 아니다.
+## 4. 관찰한 Goal의 Result 조회
 
-## 6. 발표 때 설명할 문장
+```text
+ActionRuntime이 ActionResultRuntime.update(actions) 호출
+  — action/runtime.py L118-L125
+  — result_runtime.py L82-L100
 
-“대시보드는 Action Goal을 보내지 않고 status와 feedback을 관찰합니다.
-Result도 status에서 실제로 관찰한 종료 Goal에 대해서만 제한적으로 조회합니다.”
+→ status에서 본 terminal Goal 중 미요청 항목 선택
+  — action/subscriptions.py L177-L186
+  — terminal_goals_ready_for_result()
 
-## 7. 헷갈리기 쉬운 부분
+→ 관찰한 Goal ID로 get_result request 생성
+  — action/result_runtime.py L102-L173
+  — _maybe_start_action_result_requests()
 
-- Action 하나는 내부적으로 status/feedback Topic과 여러 Service를 사용한다.
-- `server_count`와 `client_count`는 Node별 Action Graph 결과를 합산한다.
-- Feedback type import가 실패하면 Action 자체가 실패한 것이 아니다.
-- `result_status=pending`은 result 조회 중이지 Goal 실패 상태가 아니다.
+→ call_async() Future 완료 결과 저장
+  — action/result_runtime.py L88-L100, L175-L223
 
-## 8. 관련 파일 빠른 참조
+→ result_preview/result_status/result_error를 Action item에 반영
+  — action/subscriptions.py L204-L217, L283-L292
+```
 
-`action/runtime.py`, `action/subscriptions.py`, `action/result_runtime.py`,
-`action/result.py`, `action/discovery.py`, `action/models.py`,
-`action/alerts.py`, `frontend/src/pages/ActionsPage.jsx`
+`observed_goal_only`는 임의 Goal ID를 만들거나 새 Goal을 보내는 정책이 아닙니다.
+status Topic에서 확인한 terminal Goal만 사용합니다. `result_status=pending`은 Goal
+실패가 아니라 result 응답을 기다리는 상태입니다.
+
+## 5. REST, Alert, 화면 전달
+
+```text
+ActionRuntime.snapshot()
+  — action/runtime.py L70-L82
+→ RosMonitor.action_snapshot()
+  — ros_monitor.py L109-L111
+→ GET /ros/actions
+  — main.py L98-L108
+→ Frontend polling과 화면
+  — rosApi.js L47-L49
+  — useActionDashboard.js L9-L73
+  — ActionsPage.jsx L16-L174
+```
+
+`build_action_alerts()`는 `action/alerts.py` L18-L63에서 aborted, canceled,
+result lookup error만 Alert로 만듭니다. Goal 미관찰과 waiting server는 상태 정보이며
+기본 Alert가 아닙니다.
+
+## 6. 전체 흐름 한 문장
+
+ActionRuntime이 Graph와 status/feedback callback으로 Goal을 관찰하고, 실제로 본
+종료 Goal만 result 조회한 뒤 REST와 Alert에 전달합니다.
+
+## 초보자가 자주 틀리는 부분
+
+- Action server가 보여도 Goal이 실행되었다는 뜻은 아닙니다.
+- 이 Backend는 Goal과 cancel을 보내지 않습니다.
+- Result 조회는 status에서 관찰한 Goal ID로만 제한됩니다.
+
+## 내가 반드시 알아야 할 것 3줄 요약
+
+1. Action 목록과 참여자는 `rclpy.action.graph`로 찾습니다.
+2. status/feedback callback이 Goal runtime cache를 갱신합니다.
+3. 관찰한 terminal Goal만 result를 조회하며 새 Goal은 만들지 않습니다.

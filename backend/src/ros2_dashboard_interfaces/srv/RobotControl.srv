@@ -1,0 +1,10 @@
+# Goal
+
+uint8 cmd
+
+---
+# Result
+bool success
+uint8 result_code
+string message
+

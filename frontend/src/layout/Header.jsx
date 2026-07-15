@@ -1,5 +1,4 @@
 import { formatTime } from '../utils/format.js'
-import { InterfaceUploadControl } from '../components/InterfaceUploadControl.jsx'
 
 export function Header({ activePage, health, lastUpdated, onNavigate, websocket }) {
   const connected = Boolean(health.data?.success) && !health.error
@@ -22,7 +21,15 @@ export function Header({ activePage, health, lastUpdated, onNavigate, websocket 
           <span className={`dot ${realtime.dot}`} />
           {realtime.label}
         </span>
-        {activePage === 'overview' && <InterfaceUploadControl />}
+        {activePage === 'overview' && (
+          <button
+            className="interface-lab-link-button"
+            onClick={() => onNavigate('interfaceLab')}
+            type="button"
+          >
+            Interface Lab에서 타입 등록 관리
+          </button>
+        )}
         <span className="muted">마지막 갱신: {formatTime(lastUpdated)}</span>
         <span className="muted">
           {websocket?.connected

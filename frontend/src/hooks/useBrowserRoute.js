@@ -3,10 +3,10 @@ import { useCallback, useEffect, useState } from 'react'
 const PAGE_PATHS = {
   actions: '/actions',
   alerts: '/alerts',
+  interfaceLab: '/interface-lab',
   nodes: '/nodes',
   overview: '/',
   services: '/services',
-  settings: '/settings',
   topics: '/topics',
   visualization: '/visualization',
 }

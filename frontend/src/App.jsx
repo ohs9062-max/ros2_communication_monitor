@@ -9,9 +9,9 @@ import { useBrowserRoute } from './hooks/useBrowserRoute.js'
 import {
   AlertsPage,
   ActionsPage,
+  InterfaceLabPage,
   NodesPage,
   OverviewPage,
-  PlaceholderPage,
   ServicesPage,
   TopicsPage,
   VisualizationPage,
@@ -61,11 +61,8 @@ function App() {
       {activePage === 'visualization' && (
         <VisualizationPage websocket={monitorWebSocket} />
       )}
-      {activePage === 'settings' && (
-        <PlaceholderPage
-          message="설정 화면은 준비 중입니다. 현재 감시 설정은 backend/config/monitor.yaml에서 관리합니다."
-          title="Settings"
-        />
+      {activePage === 'interfaceLab' && (
+        <InterfaceLabPage websocket={monitorWebSocket} />
       )}
     </AppShell>
   )

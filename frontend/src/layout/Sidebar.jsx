@@ -8,7 +8,7 @@ const NAV_ITEMS = [
   { id: 'nodes', label: 'Nodes' },
   { id: 'visualization', label: 'Visualization' },
   { id: 'alerts', label: 'Alerts' },
-  { id: 'settings', label: 'Settings' },
+  { id: 'interfaceLab', label: 'Interface Lab' },
 ]
 
 export function Sidebar({

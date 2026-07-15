@@ -8,7 +8,10 @@ find_package(rosidl_default_generators REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/KeyValue.msg"
   "msg/MonitorStatus.msg"
-  DEPENDENCIES builtin_interfaces
+  "msg/CleaningSchedule.msg"
+  "srv/RobotControl.srv"
+  "action/CanControl.action"
+  DEPENDENCIES builtin_interfaces 
 )
 
 ament_export_dependencies(rosidl_default_runtime)

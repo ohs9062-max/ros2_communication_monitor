@@ -1,0 +1,19 @@
+# Goal
+uint8 node_id
+uint8 port
+uint32 value
+uint8 retries
+uint32 timeout_ms
+
+---
+# Result
+bool success
+uint8 ctrl_code
+uint32 response_can_id
+string message
+
+---
+# Feedback
+string stage
+uint8 attempt
+string detail

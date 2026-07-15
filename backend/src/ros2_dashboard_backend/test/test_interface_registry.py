@@ -10,6 +10,33 @@ from ros2_dashboard_backend.interface_registry import (
 )
 
 
+@pytest.fixture(autouse=True)
+def interface_package(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    package = tmp_path / 'src' / 'test_interfaces'
+    package.mkdir(parents=True)
+    (package / 'CMakeLists.txt').write_text(
+        'cmake_minimum_required(VERSION 3.8)\n'
+        'project(test_interfaces)\n'
+        'find_package(rosidl_default_generators REQUIRED)\n'
+        'rosidl_generate_interfaces(${PROJECT_NAME}\n)\n',
+        encoding='utf-8',
+    )
+    (package / 'package.xml').write_text(
+        '<package format="3">\n'
+        '  <name>test_interfaces</name>\n'
+        '  <version>0.0.0</version>\n'
+        '  <description>test</description>\n'
+        '  <maintainer email="test@example.com">test</maintainer>\n'
+        '  <license>Apache-2.0</license>\n'
+        '  <export></export>\n'
+        '</package>\n',
+        encoding='utf-8',
+    )
+    monkeypatch.setenv('INTERFACE_PACKAGE_NAME', 'test_interfaces')
+    monkeypatch.setenv('INTERFACE_PACKAGE_PATH', str(package))
+    return package
+
+
 def test_parse_message_fields_and_constant():
     parsed = parse_interface(
         '# comment\nbool success\nuint8 MODE=1\nstring label default\n',
@@ -58,3 +85,46 @@ def test_same_kind_and_safe_file_name_are_upserted(tmp_path: Path):
 def test_rejects_unsupported_extension(tmp_path: Path):
     with pytest.raises(InterfaceUploadError):
         register_interface('Status.txt', b'bool ok\n', tmp_path / 'registry.yaml')
+
+
+def test_registers_file_cmake_package_and_dependencies(
+    tmp_path: Path, interface_package: Path,
+):
+    entry = register_interface(
+        'ScheduleCrud.srv',
+        b'rths_interfaces/CleaningSchedule[] items\n---\nbool success\n',
+        tmp_path / 'registry.yaml',
+    )
+
+    assert (interface_package / 'srv' / 'ScheduleCrud.srv').is_file()
+    assert '"srv/ScheduleCrud.srv"' in (
+        interface_package / 'CMakeLists.txt'
+    ).read_text(encoding='utf-8')
+    assert 'find_package(rths_interfaces REQUIRED)' in (
+        interface_package / 'CMakeLists.txt'
+    ).read_text(encoding='utf-8')
+    assert '<depend>rths_interfaces</depend>' in (
+        interface_package / 'package.xml'
+    ).read_text(encoding='utf-8')
+    assert entry['build']['dependency_candidates'] == ['rths_interfaces']
+    assert entry['build']['rebuild_required'] is True
+    assert entry['build']['import_available'] is False
+
+
+def test_existing_interface_is_updated_without_duplicate_cmake(
+    tmp_path: Path, interface_package: Path,
+):
+    registry = tmp_path / 'registry.yaml'
+    register_interface('Status.msg', b'bool first\n', registry)
+    entry = register_interface('Status.msg', b'bool second\n', registry)
+
+    cmake = (interface_package / 'CMakeLists.txt').read_text(encoding='utf-8')
+    assert cmake.count('msg/Status.msg') == 1
+    assert entry['status'] == 'updated'
+    assert (interface_package / 'CMakeLists.txt.bak').is_file()
+    assert (interface_package / 'package.xml.bak').is_file()
+
+
+def test_rejects_invalid_ros_interface_type_name(tmp_path: Path):
+    with pytest.raises(InterfaceUploadError):
+        register_interface('bad_name.msg', b'bool ok\n', tmp_path / 'registry.yaml')

@@ -10,11 +10,13 @@ import rclpy
 from rclpy.node import Node
 
 from ros2_dashboard_backend.action.alerts import build_action_alerts
+from ros2_dashboard_backend.action.goal_runtime import ActionGoalRuntime
 from ros2_dashboard_backend.action.runtime import ActionRuntime
 from ros2_dashboard_backend.config_loader import MonitorConfig
 from ros2_dashboard_backend.node.alerts import build_node_alerts
 from ros2_dashboard_backend.node.runtime import NodeRuntime
 from ros2_dashboard_backend.service.alerts import build_service_alerts
+from ros2_dashboard_backend.service.call_runtime import ServiceCallRuntime
 from ros2_dashboard_backend.service.runtime import ServiceRuntime
 from ros2_dashboard_backend.topic.alerts import build_alert_meta, build_alerts
 from ros2_dashboard_backend.topic.runtime import TopicRuntime
@@ -31,6 +33,10 @@ class RosMonitor:
         self._lock = Lock()
         self._action_runtime = ActionRuntime(
             config=self._config,
+            lock=self._lock,
+            node_getter=lambda: self._node,
+        )
+        self._action_goal_runtime = ActionGoalRuntime(
             lock=self._lock,
             node_getter=lambda: self._node,
         )
@@ -52,6 +58,10 @@ class RosMonitor:
         )
         self._service_runtime = ServiceRuntime(
             config=self._config,
+            lock=self._lock,
+            node_getter=lambda: self._node,
+        )
+        self._service_call_runtime = ServiceCallRuntime(
             lock=self._lock,
             node_getter=lambda: self._node,
         )
@@ -89,7 +99,9 @@ class RosMonitor:
         self._node = None
         self._topic_runtime.clear()
         self._action_runtime.clear()
+        self._action_goal_runtime.clear()
         self._service_runtime.clear()
+        self._service_call_runtime.clear()
         self._node_runtime.clear()
 
     def snapshot(self) -> dict[str, Any]:
@@ -106,9 +118,57 @@ class RosMonitor:
             include_hidden=include_hidden,
         )
 
+    def callable_services(self) -> dict[str, Any]:
+        """Return registered services that can be explicitly called."""
+        return self._service_call_runtime.callable_services()
+
+    def call_service(
+        self,
+        *,
+        service_name: str,
+        service_type: str,
+        request_data: dict[str, Any],
+        timeout_sec: float | None = None,
+    ) -> dict[str, Any]:
+        """Run one explicit user-triggered service call."""
+        return self._service_call_runtime.call_service(
+            service_name=service_name,
+            service_type=service_type,
+            request_data=request_data,
+            timeout_sec=timeout_sec,
+        )
+
+    def service_call_history(self) -> dict[str, Any]:
+        """Return recent explicit service call history."""
+        return self._service_call_runtime.history()
+
     def action_snapshot(self) -> dict[str, Any]:
         """Return a thread-safe snapshot of the cached action list."""
         return self._action_runtime.snapshot()
+
+    def callable_actions(self) -> dict[str, Any]:
+        """Return registered actions that can receive explicit goals."""
+        return self._action_goal_runtime.callable_actions()
+
+    def send_action_goal(
+        self,
+        *,
+        action_name: str,
+        action_type: str,
+        goal_data: dict[str, Any],
+        timeout_sec: float | None = None,
+    ) -> dict[str, Any]:
+        """Run one explicit user-triggered action goal."""
+        return self._action_goal_runtime.send_goal(
+            action_name=action_name,
+            action_type=action_type,
+            goal_data=goal_data,
+            timeout_sec=timeout_sec,
+        )
+
+    def action_goal_history(self) -> dict[str, Any]:
+        """Return recent explicit action goal history."""
+        return self._action_goal_runtime.history()
 
     def node_snapshot(self) -> dict[str, Any]:
         """Return a thread-safe snapshot of the cached node list."""

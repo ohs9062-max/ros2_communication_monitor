@@ -64,6 +64,62 @@ export function fetchInterfaceRegistry() {
   return requestJson('/ros/interfaces/registry')
 }
 
+export function fetchInterfaceApplyStatus() {
+  return requestJson('/ros/interfaces/apply/status')
+}
+
+export function fetchCallableServices() {
+  return requestJson('/ros/interfaces/callable-services')
+}
+
+export function fetchCallableActions() {
+  return requestJson('/ros/interfaces/callable-actions')
+}
+
+export function fetchServiceCallHistory() {
+  return requestJson('/ros/interfaces/service-call/history')
+}
+
+export function fetchActionGoalHistory() {
+  return requestJson('/ros/interfaces/action-goal/history')
+}
+
+export async function applyInterfaces() {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/apply`, {
+    method: 'POST',
+  })
+  return responseJson(response)
+}
+
+export async function callRegisteredService(payload) {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/service-call`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+  return responseJson(response)
+}
+
+export async function sendActionGoal(payload) {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/action-goal`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+  return responseJson(response)
+}
+
+export async function checkInterfaceImports() {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/import-check`, {
+    method: 'POST',
+  })
+  return responseJson(response)
+}
+
 export async function uploadInterface(file) {
   const formData = new FormData()
   formData.append('file', file)

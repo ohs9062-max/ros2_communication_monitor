@@ -1,0 +1,104 @@
+interface_registry:
+  messages: []
+  services: []
+  actions:
+  - file_name: CanControl.action
+    file_kind: action
+    type_name: CanControl
+    uploaded_at: '2026-07-15T07:17:41.666649+00:00'
+    raw_text: '# Goal
+
+      uint8 node_id
+
+      uint8 port
+
+      uint32 value
+
+      uint8 retries
+
+      uint32 timeout_ms
+
+
+      ---
+
+      # Result
+
+      bool success
+
+      uint8 ctrl_code
+
+      uint32 response_can_id
+
+      string message
+
+
+      ---
+
+      # Feedback
+
+      string stage
+
+      uint8 attempt
+
+      string detail
+
+      '
+    parsed:
+      goal:
+      - type: uint8
+        raw_line: uint8 node_id
+        name: node_id
+      - type: uint8
+        raw_line: uint8 port
+        name: port
+      - type: uint32
+        raw_line: uint32 value
+        name: value
+      - type: uint8
+        raw_line: uint8 retries
+        name: retries
+      - type: uint32
+        raw_line: uint32 timeout_ms
+        name: timeout_ms
+      result:
+      - type: bool
+        raw_line: bool success
+        name: success
+      - type: uint8
+        raw_line: uint8 ctrl_code
+        name: ctrl_code
+      - type: uint32
+        raw_line: uint32 response_can_id
+        name: response_can_id
+      - type: string
+        raw_line: string message
+        name: message
+      feedback:
+      - type: string
+        raw_line: string stage
+        name: stage
+      - type: uint8
+        raw_line: uint8 attempt
+        name: attempt
+      - type: string
+        raw_line: string detail
+        name: detail
+    status: created
+    build:
+      interface_package: ros2_dashboard_interfaces
+      saved_path: backend/src/ros2_dashboard_interfaces/action/CanControl.action
+      absolute_saved_path: /home/hs/rang/ros2_dashboard/backend/src/ros2_dashboard_interfaces/action/CanControl.action
+      file_saved: true
+      cmake_registered: true
+      cmake_updated: true
+      package_xml_checked: true
+      package_xml_updated: false
+      dependency_candidates: []
+      rebuild_required: false
+      import_available: true
+      import_error: null
+      error: null
+      interface_package_path: backend/src/ros2_dashboard_interfaces
+      last_build_status: success
+      last_build_at: '2026-07-15T07:17:47.897336+00:00'
+      import_checked_at: '2026-07-15T07:17:49.891480+00:00'

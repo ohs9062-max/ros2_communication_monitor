@@ -19,6 +19,14 @@ async function requestJson(path) {
   return response.json()
 }
 
+async function responseJson(response) {
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(payload.detail || payload.message || `HTTP ${response.status}`)
+  }
+  return payload
+}
+
 export function fetchHealth() {
   return requestJson('/health')
 }
@@ -50,4 +58,18 @@ export function fetchActions() {
 
 export function fetchNodes() {
   return requestJson('/ros/nodes')
+}
+
+export function fetchInterfaceRegistry() {
+  return requestJson('/ros/interfaces/registry')
+}
+
+export async function uploadInterface(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/upload`, {
+    method: 'POST',
+    body: formData,
+  })
+  return responseJson(response)
 }

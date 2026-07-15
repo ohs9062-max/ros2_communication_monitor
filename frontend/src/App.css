@@ -221,6 +221,84 @@ h3 {
   gap: 6px;
 }
 
+.interface-upload-control {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  position: relative;
+}
+
+.interface-file-input {
+  display: none;
+}
+
+.interface-upload-button,
+.interface-registry-button {
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: 7px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 7px 10px;
+}
+
+.interface-upload-button {
+  background: rgba(37, 99, 235, 0.22);
+}
+
+.interface-registry-button {
+  background: rgba(30, 41, 59, 0.8);
+}
+
+.interface-upload-feedback {
+  background: rgba(8, 13, 19, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  max-width: 340px;
+  overflow-wrap: anywhere;
+  padding: 7px 9px;
+}
+
+.interface-upload-feedback.success { color: var(--green); }
+.interface-upload-feedback.warning { color: var(--yellow); }
+.interface-upload-feedback.error { color: var(--red); }
+
+.interface-registry-panel {
+  background: #0d141d;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.4);
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 12px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 9px);
+  width: 270px;
+  z-index: 20;
+}
+
+.interface-registry-heading {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.interface-registry-heading button {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.interface-registry-group + .interface-registry-group { margin-top: 10px; }
+.interface-registry-group > span { color: var(--blue); font-weight: 700; }
+.interface-registry-group ul { margin: 5px 0 0; padding-left: 18px; }
+.interface-registry-group li { color: var(--text); overflow-wrap: anywhere; }
+.interface-registry-group small { display: block; margin-top: 4px; }
+
 .ws-status.connected {
   color: var(--green);
 }

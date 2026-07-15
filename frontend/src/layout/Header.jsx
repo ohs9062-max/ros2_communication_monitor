@@ -1,6 +1,7 @@
 import { formatTime } from '../utils/format.js'
+import { InterfaceUploadControl } from '../components/InterfaceUploadControl.jsx'
 
-export function Header({ health, lastUpdated, onNavigate, websocket }) {
+export function Header({ activePage, health, lastUpdated, onNavigate, websocket }) {
   const connected = Boolean(health.data?.success) && !health.error
   const realtime = websocketStatus(websocket?.status)
 
@@ -21,6 +22,7 @@ export function Header({ health, lastUpdated, onNavigate, websocket }) {
           <span className={`dot ${realtime.dot}`} />
           {realtime.label}
         </span>
+        {activePage === 'overview' && <InterfaceUploadControl />}
         <span className="muted">마지막 갱신: {formatTime(lastUpdated)}</span>
         <span className="muted">
           {websocket?.connected

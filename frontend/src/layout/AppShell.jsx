@@ -21,6 +21,7 @@ export function AppShell({
       />
       <div className="app-content">
         <Header
+          activePage={activePage}
           health={dashboard.health}
           lastUpdated={dashboard.lastUpdated}
           onNavigate={onNavigate}

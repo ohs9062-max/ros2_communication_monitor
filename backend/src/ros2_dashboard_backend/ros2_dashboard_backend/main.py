@@ -4,10 +4,17 @@ import asyncio
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from ros2_dashboard_backend.config_loader import load_backend_config
+from ros2_dashboard_backend.interface_registry import (
+    InterfaceUploadError,
+    MAX_INTERFACE_FILE_SIZE,
+    extract_multipart_file,
+    register_interface,
+    registry_snapshot,
+)
 from ros2_dashboard_backend.ros_monitor import RosMonitor
 from ros2_dashboard_backend.websocket_manager import WebSocketManager
 
@@ -125,6 +132,51 @@ def get_ros_nodes() -> dict[str, Any]:
 def get_ros_alerts() -> dict[str, Any]:
     """Return current ROS 2 monitoring alerts."""
     return ros_monitor.alerts()
+
+
+@app.post('/ros/interfaces/upload')
+async def upload_ros_interface(request: Request) -> dict[str, Any]:
+    """Register one uploaded ROS interface definition without executing it."""
+    content_length = request.headers.get('content-length')
+    if content_length:
+        try:
+            request_size = int(content_length)
+        except ValueError:
+            request_size = 0
+        if request_size > MAX_INTERFACE_FILE_SIZE + 64 * 1024:
+            raise HTTPException(status_code=413, detail='업로드 요청이 너무 큽니다.')
+
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_INTERFACE_FILE_SIZE + 64 * 1024:
+            raise HTTPException(status_code=413, detail='업로드 요청이 너무 큽니다.')
+    try:
+        file_name, content = extract_multipart_file(
+            request.headers.get('content-type', ''), bytes(body),
+        )
+        entry = register_interface(file_name, content)
+    except InterfaceUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        'success': True,
+        'data': entry,
+        'message': '인터페이스 타입이 등록되었습니다.',
+    }
+
+
+@app.get('/ros/interfaces/registry')
+def get_interface_registry() -> dict[str, Any]:
+    """Return uploaded interface definitions."""
+    try:
+        registry = registry_snapshot()
+    except InterfaceUploadError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {
+        'success': True,
+        'data': registry['interface_registry'],
+        'message': '등록된 인터페이스 타입을 조회했습니다.',
+    }
 
 
 @app.websocket('/ws/monitor')

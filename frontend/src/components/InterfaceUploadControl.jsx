@@ -24,7 +24,6 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   const packageFolderInputRef = useRef(null)
   const packageInputRef = useRef(null)
   const lastRefreshSignalRef = useRef(refreshSignal)
-  const dragCleanupRef = useRef(null)
   const [busy, setBusy] = useState(false)
   const [applying, setApplying] = useState(false)
   const [reloadPhase, setReloadPhase] = useState('idle')
@@ -37,10 +36,6 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   const [showPackages, setShowPackages] = useState(false)
   const [showBuildLog, setShowBuildLog] = useState(false)
   const [buildLogTail, setBuildLogTail] = useState('')
-  const [registryPanelPosition, setRegistryPanelPosition] = useState(null)
-  const [buildLogPosition, setBuildLogPosition] = useState(null)
-  const [servicePanelPosition, setServicePanelPosition] = useState(null)
-  const [actionPanelPosition, setActionPanelPosition] = useState(null)
   const [callableServices, setCallableServices] = useState([])
   const [selectedServiceKey, setSelectedServiceKey] = useState('')
   const [requestValues, setRequestValues] = useState({})
@@ -57,19 +52,16 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   const [actionGoalHistory, setActionGoalHistory] = useState([])
   const [replacePackage, setReplacePackage] = useState(false)
   const [packages, setPackages] = useState([])
-  const [packagePanelPosition, setPackagePanelPosition] = useState(null)
 
   const chooseFile = () => inputRef.current?.click()
   const choosePackageFolder = () => packageFolderInputRef.current?.click()
   const choosePackageFile = () => packageInputRef.current?.click()
   const toggleBuildLog = () => {
-    setShowBuildLog((value) => {
-      const nextValue = !value
-      if (nextValue && !buildLogPosition) {
-        setBuildLogPosition(defaultFloatingPosition(540, 112))
-      }
-      return nextValue
-    })
+    setShowBuildLog((value) => !value)
+    setShowRegistry(false)
+    setShowPackages(false)
+    setShowCallableServices(false)
+    setShowCallableActions(false)
   }
   const disabled = busy || applying || serviceCallBusy || actionGoalBusy
   const selectedService = callableServices.find(
@@ -201,18 +193,17 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   }, [])
 
   const loadRegistry = async (keepOpen = false) => {
-    if (showRegistry && !keepOpen) {
-      setShowRegistry(false)
-      return
-    }
     setBusy(true)
     try {
       const payload = await fetchInterfaceRegistry()
       setRegistry(payload.data)
-      if (!registryPanelPosition) {
-        setRegistryPanelPosition(defaultFloatingPosition(300, 112))
-      }
       setShowRegistry(true)
+      if (!keepOpen) {
+        setShowPackages(false)
+        setShowCallableServices(false)
+        setShowCallableActions(false)
+        setShowBuildLog(false)
+      }
     } catch (error) {
       setFeedback({ tone: 'error', text: error.message })
     } finally {
@@ -221,18 +212,17 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   }
 
   const loadPackages = async (keepOpen = false) => {
-    if (showPackages && !keepOpen) {
-      setShowPackages(false)
-      return
-    }
     setBusy(true)
     try {
       const payload = await fetchInterfacePackages()
       setPackages(payload.data ?? [])
-      if (!packagePanelPosition) {
-        setPackagePanelPosition(defaultFloatingPosition(420, 132))
-      }
       setShowPackages(true)
+      if (!keepOpen) {
+        setShowRegistry(false)
+        setShowCallableServices(false)
+        setShowCallableActions(false)
+        setShowBuildLog(false)
+      }
     } catch (error) {
       setFeedback({ tone: 'error', text: error.message })
     } finally {
@@ -258,10 +248,6 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   }
 
   const loadCallableServices = async (keepOpen = false) => {
-    if (showCallableServices && !keepOpen) {
-      setShowCallableServices(false)
-      return
-    }
     setBusy(true)
     try {
       const [servicesPayload, historyPayload] = await Promise.all([
@@ -271,10 +257,13 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       const services = servicesPayload.data ?? []
       setCallableServices(services)
       setServiceCallHistory(historyPayload.data ?? [])
-      if (!servicePanelPosition) {
-        setServicePanelPosition(defaultFloatingPosition(420, 112))
-      }
       setShowCallableServices(true)
+      if (!keepOpen) {
+        setShowRegistry(false)
+        setShowPackages(false)
+        setShowCallableActions(false)
+        setShowBuildLog(false)
+      }
       const selectedStillExists = services.some(
         (service) => serviceKey(service) === selectedServiceKey,
       )
@@ -296,10 +285,6 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   }
 
   const loadCallableActions = async (keepOpen = false) => {
-    if (showCallableActions && !keepOpen) {
-      setShowCallableActions(false)
-      return
-    }
     setBusy(true)
     try {
       const [actionsPayload, historyPayload] = await Promise.all([
@@ -309,10 +294,13 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       const actions = actionsPayload.data ?? []
       setCallableActions(actions)
       setActionGoalHistory(historyPayload.data ?? [])
-      if (!actionPanelPosition) {
-        setActionPanelPosition(defaultFloatingPosition(420, 156))
-      }
       setShowCallableActions(true)
+      if (!keepOpen) {
+        setShowRegistry(false)
+        setShowPackages(false)
+        setShowCallableServices(false)
+        setShowBuildLog(false)
+      }
       const selectedStillExists = actions.some(
         (action) => actionKey(action) === selectedActionKey,
       )
@@ -340,7 +328,6 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       setShowRegistry(true)
       const packagePayload = await fetchInterfacePackages()
       setPackages(packagePayload.data ?? [])
-      setPackagePanelPosition((position) => position ?? defaultFloatingPosition(420, 132))
       setShowPackages(true)
       const summary = payload.summary ?? {}
       const notApplied = summary.not_applied ?? payload.not_applied ?? []
@@ -464,10 +451,6 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       setFeedback({ tone: 'warning', text: `적용 상태를 읽을 수 없습니다: ${error.message}` })
     })
   }, [loadApplyStatus])
-
-  useEffect(() => () => {
-    dragCleanupRef.current?.()
-  }, [])
 
   useEffect(() => {
     if (lastRefreshSignalRef.current === refreshSignal) return
@@ -645,23 +628,9 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
             {showBuildLog ? '상세 오류 숨기기' : '상세 오류 보기'}
           </button>
           {showBuildLog && (
-            <div
-              className="interface-build-log-panel"
-              style={floatingPanelStyle(buildLogPosition)}
-            >
-              <div
-                className="interface-floating-heading"
-                onPointerDown={(event) => startFloatingDrag({
-                  cleanupRef: dragCleanupRef,
-                  event,
-                  height: 260,
-                  position: buildLogPosition,
-                  setPosition: setBuildLogPosition,
-                  width: 540,
-                })}
-              >
+            <div className="interface-build-log-panel">
+              <div className="interface-registry-heading">
                 <strong>상세 오류</strong>
-                <button aria-label="상세 오류 닫기" onClick={() => setShowBuildLog(false)} type="button">×</button>
               </div>
               <pre className="interface-build-log">{buildLogTail}</pre>
             </div>
@@ -669,23 +638,9 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         </>
       )}
       {showRegistry && (
-        <div
-          className="interface-registry-panel"
-          style={floatingPanelStyle(registryPanelPosition)}
-        >
-          <div
-            className="interface-registry-heading interface-floating-heading"
-            onPointerDown={(event) => startFloatingDrag({
-              cleanupRef: dragCleanupRef,
-              event,
-              height: 380,
-              position: registryPanelPosition,
-              setPosition: setRegistryPanelPosition,
-              width: 300,
-            })}
-          >
+        <div className="interface-registry-panel">
+          <div className="interface-registry-heading">
             <strong>등록된 타입</strong>
-            <button aria-label="등록 목록 닫기" onClick={() => setShowRegistry(false)} type="button">×</button>
           </div>
           <RegistryGroup items={registry?.messages} label="Message" />
           <RegistryGroup items={registry?.services} label="Service" />
@@ -693,23 +648,9 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         </div>
       )}
       {showPackages && (
-        <div
-          className="interface-package-panel"
-          style={floatingPanelStyle(packagePanelPosition)}
-        >
-          <div
-            className="interface-registry-heading interface-floating-heading"
-            onPointerDown={(event) => startFloatingDrag({
-              cleanupRef: dragCleanupRef,
-              event,
-              height: 520,
-              position: packagePanelPosition,
-              setPosition: setPackagePanelPosition,
-              width: 420,
-            })}
-          >
+        <div className="interface-package-panel">
+          <div className="interface-registry-heading">
             <strong>Uploaded Interface Packages</strong>
-            <button aria-label="Package 목록 닫기" onClick={() => setShowPackages(false)} type="button">×</button>
           </div>
           <p className="interface-package-help">
             장비가 실제 사용하는 원본 interface package를 패키지명 그대로 등록합니다.
@@ -718,23 +659,9 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         </div>
       )}
       {showCallableServices && (
-        <div
-          className="interface-service-panel"
-          style={floatingPanelStyle(servicePanelPosition)}
-        >
-          <div
-            className="interface-registry-heading interface-floating-heading"
-            onPointerDown={(event) => startFloatingDrag({
-              cleanupRef: dragCleanupRef,
-              event,
-              height: 520,
-              position: servicePanelPosition,
-              setPosition: setServicePanelPosition,
-              width: 420,
-            })}
-          >
+        <div className="interface-service-panel">
+          <div className="interface-registry-heading">
             <strong>등록 Service 실행</strong>
-            <button aria-label="Service 실행 닫기" onClick={() => setShowCallableServices(false)} type="button">×</button>
           </div>
           {callableServices.length ? (
             <>
@@ -808,23 +735,9 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         </div>
       )}
       {showCallableActions && (
-        <div
-          className="interface-service-panel"
-          style={floatingPanelStyle(actionPanelPosition)}
-        >
-          <div
-            className="interface-registry-heading interface-floating-heading"
-            onPointerDown={(event) => startFloatingDrag({
-              cleanupRef: dragCleanupRef,
-              event,
-              height: 520,
-              position: actionPanelPosition,
-              setPosition: setActionPanelPosition,
-              width: 420,
-            })}
-          >
+        <div className="interface-service-panel">
+          <div className="interface-registry-heading">
             <strong>등록 Action 실행</strong>
-            <button aria-label="Action 실행 닫기" onClick={() => setShowCallableActions(false)} type="button">×</button>
           </div>
           {callableActions.length ? (
             <>
@@ -896,66 +809,6 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       )}
     </div>
   )
-}
-
-function startFloatingDrag({ cleanupRef, event, height, position, setPosition, width }) {
-  if (event.button !== 0 || event.target.closest('button')) return
-  event.preventDefault()
-  cleanupRef?.current?.()
-
-  const current = position ?? defaultFloatingPosition(width, event.clientY)
-  const offsetX = event.clientX - current.left
-  const offsetY = event.clientY - current.top
-
-  const handleMove = (moveEvent) => {
-    setPosition(clampFloatingPosition({
-      left: moveEvent.clientX - offsetX,
-      top: moveEvent.clientY - offsetY,
-    }, width, height))
-  }
-  const handleUp = () => {
-    window.removeEventListener('pointermove', handleMove)
-    window.removeEventListener('pointerup', handleUp)
-    if (cleanupRef) {
-      cleanupRef.current = null
-    }
-  }
-
-  setPosition(current)
-  window.addEventListener('pointermove', handleMove)
-  window.addEventListener('pointerup', handleUp, { once: true })
-  if (cleanupRef) {
-    cleanupRef.current = handleUp
-  }
-}
-
-function floatingPanelStyle(position) {
-  if (!position) return undefined
-  return {
-    left: `${position.left}px`,
-    top: `${position.top}px`,
-  }
-}
-
-function defaultFloatingPosition(width, top = 112) {
-  if (typeof window === 'undefined') {
-    return { left: 24, top }
-  }
-  return clampFloatingPosition({
-    left: window.innerWidth - width - 24,
-    top,
-  }, width, 180)
-}
-
-function clampFloatingPosition(position, width, height) {
-  if (typeof window === 'undefined') return position
-  const margin = 8
-  const maxLeft = Math.max(margin, window.innerWidth - width - margin)
-  const maxTop = Math.max(margin, window.innerHeight - height - margin)
-  return {
-    left: Math.min(Math.max(position.left, margin), maxLeft),
-    top: Math.min(Math.max(position.top, margin), maxTop),
-  }
 }
 
 function PackageRegistry({ onDelete, packages }) {

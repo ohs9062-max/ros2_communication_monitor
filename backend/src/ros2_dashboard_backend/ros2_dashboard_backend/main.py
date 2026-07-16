@@ -44,6 +44,10 @@ from ros2_dashboard_backend.interface_packages import (
     upload_interface_package,
     upload_interface_package_folder,
 )
+from ros2_dashboard_backend.manual_interfaces import (
+    register_manual_type,
+    write_manual_definition,
+)
 from ros2_dashboard_backend.ros_monitor import RosMonitor
 from ros2_dashboard_backend.service.call_runtime import ServiceCallError
 from ros2_dashboard_backend.websocket_manager import WebSocketManager
@@ -223,6 +227,57 @@ def get_interface_registry() -> dict[str, Any]:
         'success': True,
         'data': registry['interface_registry'],
         'message': '등록된 인터페이스 타입을 조회했습니다.',
+    }
+
+
+@app.post('/ros/interfaces/manual-type')
+async def register_manual_interface_type(request: Request) -> dict[str, Any]:
+    """Register an existing full type string without creating interface files."""
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail='JSON 요청 본문이 필요합니다.') from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail='JSON object 요청 본문이 필요합니다.')
+    try:
+        entry = register_manual_type(
+            full_type=str(payload.get('full_type') or ''),
+            allowlisted=payload.get('allowlisted', True) is not False,
+            description=str(payload.get('description') or ''),
+        )
+    except InterfaceUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        'success': True,
+        'entry': entry,
+        'data': entry,
+        'message': '타입 직접 등록이 완료되었습니다. 파일/CMake/package.xml은 수정하지 않았습니다.',
+    }
+
+
+@app.post('/ros/interfaces/manual-definition')
+async def write_manual_interface_definition(request: Request) -> dict[str, Any]:
+    """Create a user-authored interface under uploaded_interfaces."""
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail='JSON 요청 본문이 필요합니다.') from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail='JSON object 요청 본문이 필요합니다.')
+    try:
+        entry = write_manual_definition(
+            package=str(payload.get('package') or 'uploaded_interfaces'),
+            kind=str(payload.get('kind') or ''),
+            type_name=str(payload.get('type_name') or ''),
+            definition=str(payload.get('definition') or ''),
+        )
+    except InterfaceUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        'success': True,
+        'entry': entry,
+        'data': entry,
+        'message': '인터페이스 직접 작성이 저장되었습니다. 적용하기로 build/import를 진행하세요.',
     }
 
 

@@ -191,8 +191,13 @@ export function InterfaceLabPage({ websocket }) {
           <p className="eyebrow">Interface Lab</p>
           <h2>타입 등록, 빌드 적용, Service/Action 테스트</h2>
           <p>
-            Allowlist에 등록되고 import 가능한 인터페이스만 실행 후보가 됩니다.
+            타입 등록은 “사용자가 이 타입을 쓰겠다”는 선언입니다.
+            이미 설치/import 가능하고 Graph에 서버가 있는 타입만 실행 후보가 됩니다.
             Service request와 Action Goal은 사용자가 버튼을 누를 때만 전송됩니다.
+          </p>
+          <p className="interface-lab-note">
+            단일 타입 등록만으로 없는 package, CMakeLists.txt, package.xml, 의존 msg 파일을 자동 생성하거나
+            colcon build 성공을 보장하지 않습니다. 패키지 전체가 필요하면 Package zip/폴더 업로드를 사용하세요.
           </p>
         </div>
         <div className="interface-lab-actions">
@@ -328,17 +333,15 @@ function InterfaceCard({ item, onClick, selected }) {
         <span>/</span>
         <span>{item.subtitle}</span>
         {item.counts && (
-          <>
-            <span>/</span>
-            <span className="interface-count-badges">
-              <CountBadge label="msg" tone="msg" value={item.counts.message} />
-              <CountBadge label="srv" tone="srv" value={item.counts.service} />
-              <CountBadge label="action" tone="action" value={item.counts.action} />
-            </span>
-          </>
+          <span className="interface-count-badges">
+            <CountBadge label="msg" tone="msg" value={item.counts.message} />
+            <CountBadge label="srv" tone="srv" value={item.counts.service} />
+            <CountBadge label="action" tone="action" value={item.counts.action} />
+          </span>
         )}
       </span>
       <div className="interface-badge-row">
+        <KindBadge kind={item.kind} />
         <Badge label={sourceLabel(item.source)} tone="blue" />
         {item.packageName && <Badge label={item.packageName} tone="neutral" />}
         {item.importAvailable !== null && (
@@ -355,6 +358,17 @@ function InterfaceCard({ item, onClick, selected }) {
       </div>
     </button>
   )
+}
+
+function KindBadge({ kind }) {
+  const normalized = kind === 'callable_service' ? 'service'
+    : kind === 'callable_action' ? 'action'
+    : kind
+  if (normalized === 'message') return <Badge label="msg" tone="msg" />
+  if (normalized === 'service') return <Badge label="srv" tone="srv" />
+  if (normalized === 'action') return <Badge label="action" tone="action" />
+  if (normalized === 'package') return <Badge label="pkg" tone="package" />
+  return null
 }
 
 function CountBadge({ label, tone, value }) {
@@ -824,7 +838,7 @@ function registryItem(item, kind, {
     rebuildRequired: Boolean(build.rebuild_required),
     schema: callable?.request_schema ?? callable?.goal_schema,
     serverAvailable: callable?.server_available ?? null,
-    source: 'single_upload',
+    source: item.source ?? 'single_upload',
     stableKey: `${kind}:${fullType}`,
     status: build,
     subtitle: fullType,
@@ -1175,6 +1189,8 @@ function packageFromType(type = '') {
 
 function sourceLabel(source) {
   if (source === 'single_upload') return 'allowlist 등록됨'
+  if (source === 'manual_type') return '타입 직접 등록'
+  if (source === 'manual_definition') return '인터페이스 직접 작성'
   if (source === 'uploaded_package') return 'package 등록됨'
   if (source === 'graph') return 'graph'
   return source

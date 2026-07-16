@@ -11,10 +11,12 @@ import {
   fetchInterfacePackages,
   fetchInterfaceRegistry,
   fetchServiceCallHistory,
+  registerManualType,
   sendActionGoal,
   uploadInterface,
   uploadInterfacePackage,
   uploadInterfacePackageFolder,
+  writeManualDefinition,
 } from '../api/rosApi.js'
 
 const ACCEPTED_EXTENSIONS = ['.msg', '.srv', '.action']
@@ -52,6 +54,14 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   const [actionGoalHistory, setActionGoalHistory] = useState([])
   const [replacePackage, setReplacePackage] = useState(false)
   const [packages, setPackages] = useState([])
+  const [showManualInput, setShowManualInput] = useState(false)
+  const [manualMode, setManualMode] = useState('type')
+  const [manualType, setManualType] = useState('rths_interfaces/srv/ScheduleCrud')
+  const [manualDescription, setManualDescription] = useState('')
+  const manualPackage = 'uploaded_interfaces'
+  const [manualKind, setManualKind] = useState('srv')
+  const [manualTypeName, setManualTypeName] = useState('MyControl')
+  const [manualDefinition, setManualDefinition] = useState('uint8 cmd\n---\nbool success\nstring message\n')
 
   const chooseFile = () => inputRef.current?.click()
   const choosePackageFolder = () => packageFolderInputRef.current?.click()
@@ -176,6 +186,56 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         text: `${item.name} package 폴더 업로드 완료 · msg ${counts.msg}, srv ${counts.srv}, action ${counts.action} · 적용하기로 build/import를 진행하세요.`,
       })
       await loadPackages(true)
+      await loadApplyStatus()
+      onStateChanged?.()
+    } catch (error) {
+      setFeedback({ tone: 'error', text: error.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitManualType = async () => {
+    setBusy(true)
+    setFeedback(null)
+    try {
+      const payload = await registerManualType({
+        full_type: manualType,
+        allowlisted: true,
+        description: manualDescription,
+      })
+      const entry = payload.data ?? payload.entry
+      setFeedback({
+        tone: entry?.build?.import_available ? 'success' : 'warning',
+        text: entry?.build?.import_available
+          ? `${entry.full_type} 타입 직접 등록 완료 · import 가능`
+          : `${entry?.full_type ?? manualType} 타입 직접 등록 완료 · import 불가: ${entry?.build?.import_error ?? '환경/source 확인 필요'}`,
+      })
+      await loadRegistry(true)
+      onStateChanged?.()
+    } catch (error) {
+      setFeedback({ tone: 'error', text: error.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const submitManualDefinition = async () => {
+    setBusy(true)
+    setFeedback(null)
+    try {
+      const payload = await writeManualDefinition({
+        package: manualPackage,
+        kind: manualKind,
+        type_name: manualTypeName,
+        definition: manualDefinition,
+      })
+      const entry = payload.data ?? payload.entry
+      setFeedback({
+        tone: 'success',
+        text: `${entry.full_type} 직접 작성 저장 완료 · 적용하기로 build/import를 진행하세요.`,
+      })
+      await loadRegistry(true)
       await loadApplyStatus()
       onStateChanged?.()
     } catch (error) {
@@ -575,6 +635,9 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         type="file"
         webkitdirectory=""
       />
+      <button className="interface-type-entry-badge" disabled={disabled} onClick={() => setShowManualInput((value) => !value)} type="button">
+        타입 기입
+      </button>
       <button className="interface-upload-button" disabled={disabled} onClick={chooseFile} type="button">
         {busy ? '처리 중…' : '타입 업로드'}
       </button>
@@ -617,6 +680,65 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         <span className={`interface-upload-feedback ${feedback.tone}`} role="status">
           {feedback.text}
         </span>
+      )}
+      {showManualInput && (
+        <div className="interface-manual-panel">
+          <div className="interface-manual-tabs">
+            <button className={manualMode === 'type' ? 'active' : ''} onClick={() => setManualMode('type')} type="button">
+              타입 직접 등록
+            </button>
+            <button className={manualMode === 'definition' ? 'active' : ''} onClick={() => setManualMode('definition')} type="button">
+              인터페이스 직접 작성
+            </button>
+          </div>
+          {manualMode === 'type' ? (
+            <div className="interface-manual-form">
+              <p className="interface-package-help">
+                이미 환경에 존재하는 full type을 allowlist에 등록합니다. 파일/CMake/package.xml은 만들지 않습니다.
+              </p>
+              <label className="interface-service-field">
+                <span>full type</span>
+                <input value={manualType} onChange={(event) => setManualType(event.target.value)} />
+              </label>
+              <label className="interface-service-field">
+                <span>description</span>
+                <input value={manualDescription} onChange={(event) => setManualDescription(event.target.value)} />
+              </label>
+              <button className="interface-service-call-button" disabled={disabled} onClick={submitManualType} type="button">
+                타입 등록
+              </button>
+            </div>
+          ) : (
+            <div className="interface-manual-form">
+              <p className="interface-package-help">
+                backend/src/uploaded_interfaces 폴더에 .msg/.srv/.action 파일을 직접 생성합니다.
+                기존 장비가 다른 패키지 타입을 쓰면 패키지 업로드 또는 타입 직접 등록을 사용하세요.
+              </p>
+              <div className="interface-manual-fixed-path">
+                저장 위치: backend/src/uploaded_interfaces/{manualKind}/{manualTypeName || 'TypeName'}.{manualKind}
+              </div>
+              <label className="interface-service-field">
+                <span>kind</span>
+                <select value={manualKind} onChange={(event) => setManualKind(event.target.value)}>
+                  <option value="msg">msg</option>
+                  <option value="srv">srv</option>
+                  <option value="action">action</option>
+                </select>
+              </label>
+              <label className="interface-service-field">
+                <span>type name</span>
+                <input value={manualTypeName} onChange={(event) => setManualTypeName(event.target.value)} />
+              </label>
+              <label className="interface-service-field">
+                <span>definition</span>
+                <textarea rows="8" value={manualDefinition} onChange={(event) => setManualDefinition(event.target.value)} />
+              </label>
+              <button className="interface-service-call-button" disabled={disabled} onClick={submitManualDefinition} type="button">
+                인터페이스 저장
+              </button>
+            </div>
+          )}
+        </div>
       )}
       {buildLogTail && applyStatus?.build_status === 'failed' && (
         <>

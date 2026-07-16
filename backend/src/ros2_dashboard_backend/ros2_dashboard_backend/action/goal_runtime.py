@@ -288,7 +288,7 @@ class ActionGoalRuntime:
                 'saved_path': build.get('saved_path'),
                 'import_available': build.get('import_available') is True,
                 'import_error': build.get('import_error'),
-                'source': 'single_interface',
+                'source': item.get('source', 'single_upload'),
                 'package_name': package_name,
             })
         actions.extend(registered_package_actions())

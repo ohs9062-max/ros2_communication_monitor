@@ -169,3 +169,25 @@ export async function deleteInterfacePackage(packageName) {
   )
   return responseJson(response)
 }
+
+export async function registerManualType(payload) {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/manual-type`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+  return responseJson(response)
+}
+
+export async function writeManualDefinition(payload) {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/manual-definition`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+  return responseJson(response)
+}

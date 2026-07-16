@@ -562,26 +562,49 @@ def _registry_apply_summary(
 
         kind = str(item.get('file_kind') or '')
         file_name = str(item.get('file_name') or '')
+        if item.get('source') == 'manual_type':
+            if update_registry:
+                package_name = str(build.get('interface_package') or '').strip()
+                type_name = str(item.get('type_name') or '').strip()
+                if package_name and kind in ALLOWED_KINDS and type_name:
+                    available, error = _check_import(package_name, kind, type_name)
+                    build['import_available'] = available
+                    build['import_error'] = error
+                    build['rebuild_required'] = False
+            if require_import_available and not build.get('import_available'):
+                not_applied.append({
+                    'file_name': file_name,
+                    'saved_path': None,
+                    'reason': build.get('import_error') or 'import_available false',
+                })
+            continue
+        item_package_path = build.get('absolute_interface_package_path') or build.get('interface_package_path')
+        active_package_path = Path(str(item_package_path)).resolve() if item_package_path else package_path
+        active_package_name = str(build.get('interface_package') or package_name)
+        active_package_xml = active_package_path / 'package.xml'
+        active_cmake_path = active_package_path / 'CMakeLists.txt'
+        active_cmake_text = _read_optional_text(active_cmake_path)
+        active_package_text = _read_optional_text(active_package_xml)
         interface_path = f'{kind}/{file_name}' if kind and file_name else ''
-        actual_path = _registered_interface_path(package_path, build, interface_path)
+        actual_path = _registered_interface_path(active_package_path, build, interface_path)
         file_saved = actual_path.is_file()
         cmake_registered = bool(
             interface_path
-            and cmake_text
+            and active_cmake_text
             and (
-                interface_path in cmake_text
-                or f'"{interface_path}"' in cmake_text
+                interface_path in active_cmake_text
+                or f'"{interface_path}"' in active_cmake_text
             )
         )
         package_xml_checked = _package_xml_satisfies(
-            package_text,
-            package_name,
+            active_package_text,
+            active_package_name,
             build.get('dependency_candidates', []),
         )
 
         if update_registry:
-            build['interface_package'] = package_name
-            build['interface_package_path'] = _display_path(package_path)
+            build['interface_package'] = active_package_name
+            build['interface_package_path'] = _display_path(active_package_path)
             build['saved_path'] = _display_path(actual_path) if file_saved else build.get('saved_path')
             build['absolute_saved_path'] = str(actual_path) if file_saved else build.get('absolute_saved_path')
             build['file_saved'] = file_saved

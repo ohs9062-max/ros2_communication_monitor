@@ -1,5 +1,6 @@
 import { formatMs, formatRelativeTime, formatTime } from '../utils/format.js'
 import { ConnectionNodeList } from './ConnectionNodeList.jsx'
+import { DetailSection } from './DetailSection.jsx'
 import { StatusBadge } from './StatusBadge.jsx'
 
 export function ActionDetailPanel({ action, participants }) {
@@ -79,8 +80,7 @@ export function ActionDetailPanel({ action, participants }) {
         </p>
       )}
 
-      <section className="detail-section">
-        <h3>상태 요약</h3>
+      <DetailSection title="상태 요약">
         <DetailLine label="이름" value={action.name} />
         <DetailLine label="타입" value={action.type ?? '-'} />
         <DetailLine
@@ -90,10 +90,9 @@ export function ActionDetailPanel({ action, participants }) {
         />
         <DetailLine label="상태 이유" value={action.reason ?? '-'} />
         <DetailLine label="마지막 갱신" value={formatTime(action.last_updated)} />
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>연결 정보</h3>
+      <DetailSection collapsible title="연결 정보">
         <DetailLine label="서버 수" value={action.server_count ?? 0} />
         <DetailLine label="클라이언트 수" value={action.client_count ?? 0} />
         <DetailLine label="상태 Topic" value={action.status_topic ?? '-'} />
@@ -112,10 +111,9 @@ export function ActionDetailPanel({ action, participants }) {
           items={participants?.clients ?? []}
           title="Goal 요청자 Node"
         />
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>실행/측정 정보</h3>
+      <DetailSection collapsible title="실행/측정 정보">
         <DetailLine
           label="마지막 Goal 상태"
           tone={statusTone(runtime.last_goal_status)}
@@ -171,10 +169,9 @@ export function ActionDetailPanel({ action, participants }) {
         <DetailLine label="마지막 실행 오류" value={goalSummary?.last_error ?? '-'} />
         <DetailLine label="Goal 수" value={action.goal_count ?? 0} />
         <DetailLine label="성공/실패" value={`${action.success_count ?? 0}/${action.failure_count ?? 0}`} />
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>상세 데이터</h3>
+      <DetailSection collapsible title="상세 데이터">
         <p className="muted detail-help-text">
           피드백 구독 지원 여부는 이 Action 타입의 피드백 메시지를
           대시보드가 해석할 수 있는지를 의미합니다. 실제 수신 여부는 실행 정보와
@@ -201,7 +198,7 @@ export function ActionDetailPanel({ action, participants }) {
           value={resultPolicyLabel(action.result_policy)}
         />
         <DetailLine label="결과 이유" value={action.result_reason ?? '-'} />
-      </section>
+      </DetailSection>
 
       <PreviewSection
         title="마지막 Goal JSON"
@@ -244,14 +241,11 @@ function DetailLine({ label, tone, value }) {
 
 function PreviewSection({ title, value }) {
   return (
-    <section className="detail-section">
-      <details>
-        <summary>{title}</summary>
-        <pre className="preview-json">
-          {value ? JSON.stringify(value, null, 2) : '데이터 없음'}
-        </pre>
-      </details>
-    </section>
+    <DetailSection collapsible title={title}>
+      <pre className="preview-json">
+        {value ? JSON.stringify(value, null, 2) : '데이터 없음'}
+      </pre>
+    </DetailSection>
   )
 }
 

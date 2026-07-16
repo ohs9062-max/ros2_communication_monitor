@@ -1,5 +1,6 @@
 import { formatRelativeTime, formatTime } from '../utils/format.js'
 import { CollapsibleList } from './CollapsibleList.jsx'
+import { DetailSection } from './DetailSection.jsx'
 import { NodeStatusBadge } from './NodeTable.jsx'
 
 export function NodeDetailPanel({ node }) {
@@ -33,8 +34,7 @@ export function NodeDetailPanel({ node }) {
         </p>
       )}
 
-      <section className="detail-section">
-        <h3>상태 요약</h3>
+      <DetailSection title="상태 요약">
         <DetailLine label="전체 이름" value={node.full_name ?? '-'} />
         <DetailLine label="이름" value={node.name ?? '-'} />
         <DetailLine label="네임스페이스" value={node.namespace ?? '-'} />
@@ -49,10 +49,9 @@ export function NodeDetailPanel({ node }) {
           value={formatRelativeTime(node.last_seen_at)}
         />
         <DetailLine label="마지막 갱신" value={formatTime(node.last_updated)} />
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>연결 정보 · Topic</h3>
+      <DetailSection collapsible title="연결 정보 · Topic">
         <div className="metric-grid">
           <Metric label="발행자 수" value={node.publisher_count ?? 0} />
           <Metric label="구독자 수" value={node.subscriber_count ?? 0} />
@@ -67,10 +66,9 @@ export function NodeDetailPanel({ node }) {
           items={node.topic_subscribers}
           title="구독 Topic"
         />
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>연결 정보 · Service</h3>
+      <DetailSection collapsible title="연결 정보 · Service">
         <div className="metric-grid">
           <Metric
             label="응답 Service"
@@ -91,10 +89,9 @@ export function NodeDetailPanel({ node }) {
           items={node.service_clients}
           title="요청 Service"
         />
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>연결 정보 · Action</h3>
+      <DetailSection collapsible title="연결 정보 · Action">
         <div className="metric-grid">
           <Metric
             label="Goal 실행 Action"
@@ -115,7 +112,7 @@ export function NodeDetailPanel({ node }) {
           items={node.action_clients}
           title="Goal 요청 Action"
         />
-      </section>
+      </DetailSection>
     </aside>
   )
 }

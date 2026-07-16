@@ -229,12 +229,17 @@ class ServiceCallRuntime:
             type_name = item.get('type_name')
             if not package_name or not type_name:
                 continue
+            service_type = f'{package_name}/srv/{type_name}'
+            request_schema = item.get('parsed', {}).get('request', [])
+            response_schema = item.get('parsed', {}).get('response', [])
+            if build.get('import_available') is True and not request_schema:
+                request_schema, response_schema = _schema_from_service_class(service_type)
             services.append({
                 'file_name': item.get('file_name'),
                 'type_name': type_name,
-                'service_type': f'{package_name}/srv/{type_name}',
-                'request_schema': item.get('parsed', {}).get('request', []),
-                'response_schema': item.get('parsed', {}).get('response', []),
+                'service_type': service_type,
+                'request_schema': request_schema,
+                'response_schema': response_schema,
                 'saved_path': build.get('saved_path'),
                 'import_available': build.get('import_available') is True,
                 'import_error': build.get('import_error'),
@@ -365,6 +370,29 @@ def _normalized_timeout(timeout_sec: float | None) -> float:
     if timeout <= 0:
         raise ServiceCallError('timeout_sec는 0보다 커야 합니다.')
     return min(timeout, MAX_TIMEOUT_SEC)
+
+
+def _schema_from_service_class(service_type: str) -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+    try:
+        service_class = load_service_class(service_type)
+        return (
+            _schema_from_message_class(service_class.Request),
+            _schema_from_message_class(service_class.Response),
+        )
+    except Exception:
+        return [], []
+
+
+def _schema_from_message_class(message_class: type) -> list[dict[str, str]]:
+    try:
+        message = message_class()
+        fields = message.get_fields_and_field_types()
+    except Exception:
+        return []
+    return [
+        {'name': name, 'type': field_type, 'raw_line': f'{field_type} {name}'}
+        for name, field_type in fields.items()
+    ]
 
 
 def _call_summary(call: dict[str, Any]) -> dict[str, Any]:

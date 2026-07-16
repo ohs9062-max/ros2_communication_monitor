@@ -365,6 +365,45 @@ def registry_snapshot(registry_path: Path | None = None) -> dict[str, Any]:
         return _load_registry(path)
 
 
+def delete_registry_entry(
+    *,
+    kind: str,
+    file_name: str,
+    source: str | None = None,
+    full_type: str | None = None,
+    registry_path: Path | None = None,
+) -> dict[str, Any]:
+    """Remove one registry entry without deleting generated interface files."""
+    if kind not in ALLOWED_KINDS:
+        raise InterfaceUploadError('kind는 msg, srv, action 중 하나여야 합니다.')
+    path = registry_path or default_registry_path()
+    with _REGISTRY_LOCK:
+        registry = _load_registry(path)
+        collection = registry['interface_registry'][KIND_COLLECTIONS[kind]]
+        removed = None
+        kept = []
+        for item in collection:
+            matches = (
+                item.get('file_name') == file_name
+                and (source is None or item.get('source') == source)
+                and (full_type is None or item.get('full_type') == full_type)
+            )
+            if removed is None and matches:
+                removed = item
+                continue
+            kept.append(item)
+        if removed is None:
+            raise InterfaceUploadError('삭제할 registry 항목을 찾을 수 없습니다.')
+        collection[:] = kept
+        _write_registry(path, registry)
+    return {
+        'removed': removed,
+        'registry_path': _display_path(path),
+        'file_deleted': False,
+        'message': 'registry 항목만 삭제했습니다. 생성된 interface 파일은 삭제하지 않았습니다.',
+    }
+
+
 def mark_registry_build_applied(
     registry_path: Path | None = None,
 ) -> dict[str, Any]:

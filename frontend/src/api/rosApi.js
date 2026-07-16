@@ -170,6 +170,18 @@ export async function deleteInterfacePackage(packageName) {
   return responseJson(response)
 }
 
+export async function deleteInterfaceRegistryEntry({ fileName, fullType, kind, source }) {
+  const query = new URLSearchParams()
+  if (source) query.set('source', source)
+  if (fullType) query.set('full_type', fullType)
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  const response = await fetch(
+    `${API_BASE_URL}/ros/interfaces/registry/${encodeURIComponent(kind)}/${encodeURIComponent(fileName)}${suffix}`,
+    { method: 'DELETE' },
+  )
+  return responseJson(response)
+}
+
 export async function registerManualType(payload) {
   const response = await fetch(`${API_BASE_URL}/ros/interfaces/manual-type`, {
     method: 'POST',
@@ -187,6 +199,111 @@ export async function writeManualDefinition(payload) {
     headers: {
       'Content-Type': 'application/json',
     },
+    body: JSON.stringify(payload),
+  })
+  return responseJson(response)
+}
+
+export async function validateManualDefinition(payload) {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/manual-definition/validate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+  return responseJson(response)
+}
+
+export async function updateManualDefinition({ definition, kind, typeName }) {
+  const response = await fetch(
+    `${API_BASE_URL}/ros/interfaces/manual-definition/${encodeURIComponent(kind)}/${encodeURIComponent(typeName)}`,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ definition }),
+    },
+  )
+  return responseJson(response)
+}
+
+export async function deleteManualDefinition({ kind, typeName }) {
+  const response = await fetch(
+    `${API_BASE_URL}/ros/interfaces/manual-definition/${encodeURIComponent(kind)}/${encodeURIComponent(typeName)}`,
+    { method: 'DELETE' },
+  )
+  return responseJson(response)
+}
+
+export async function rebuildUploadedInterfacesCmake() {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/uploaded-interfaces/rebuild-cmake`, {
+    method: 'POST',
+  })
+  return responseJson(response)
+}
+
+export async function startReceiveTopic(payload) {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/receive/topics/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return responseJson(response)
+}
+
+export async function stopReceiveTopic(payload) {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/receive/topics/stop`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return responseJson(response)
+}
+
+export function fetchReceiveTopics() {
+  return requestJson('/ros/interfaces/receive/topics')
+}
+
+export function fetchReceiveTopicHistory(topicName = '', { limit = 500 } = {}) {
+  const query = new URLSearchParams()
+  if (topicName) query.set('topic_name', topicName)
+  if (limit) query.set('limit', String(limit))
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return requestJson(`/ros/interfaces/receive/topics/history${suffix}`)
+}
+
+export async function resetReceiveTopicHistory(topicName = '') {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/receive/topics/history/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(topicName ? { topic_name: topicName } : {}),
+  })
+  return responseJson(response)
+}
+
+export function fetchReceiveServiceHistory() {
+  return requestJson('/ros/interfaces/receive/services/history')
+}
+
+export async function resetReceiveServiceHistory(payload = {}) {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/receive/services/history/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return responseJson(response)
+}
+
+export function fetchReceiveActionHistory() {
+  return requestJson('/ros/interfaces/receive/actions/history')
+}
+
+export async function resetReceiveActionHistory(payload = {}) {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/receive/actions/history/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
   return responseJson(response)

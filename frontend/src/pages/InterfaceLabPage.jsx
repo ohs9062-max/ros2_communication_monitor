@@ -4,10 +4,12 @@ import {
   callRegisteredService,
   fetchCallableActions,
   fetchCallableServices,
+  fetchActions,
   fetchTopics,
   fetchInterfaceApplyStatus,
   fetchInterfacePackages,
   fetchInterfaceRegistry,
+  fetchServices,
   fetchActionGoalHistory,
   fetchServiceCallHistory,
   sendActionGoal,
@@ -31,6 +33,8 @@ export function InterfaceLabPage({ websocket }) {
   const [applyStatus, setApplyStatus] = useState(null)
   const [callableServices, setCallableServices] = useState([])
   const [callableActions, setCallableActions] = useState([])
+  const [graphServices, setGraphServices] = useState([])
+  const [graphActions, setGraphActions] = useState([])
   const [packages, setPackages] = useState([])
   const [serviceHistory, setServiceHistory] = useState([])
   const [actionHistory, setActionHistory] = useState([])
@@ -61,6 +65,8 @@ export function InterfaceLabPage({ websocket }) {
         serviceHistoryPayload,
         actionHistoryPayload,
         topicsPayload,
+        graphServicesPayload,
+        graphActionsPayload,
       ] = await Promise.all([
         fetchInterfaceRegistry(),
         fetchInterfaceApplyStatus(),
@@ -70,6 +76,8 @@ export function InterfaceLabPage({ websocket }) {
         fetchServiceCallHistory(),
         fetchActionGoalHistory(),
         fetchTopics(),
+        fetchServices({ includeHidden: true }),
+        fetchActions(),
       ])
       setRegistry(registryPayload.data ?? { messages: [], services: [], actions: [] })
       setApplyStatus(statusPayload.data ?? null)
@@ -79,6 +87,8 @@ export function InterfaceLabPage({ websocket }) {
       setServiceHistory(serviceHistoryPayload.data ?? [])
       setActionHistory(actionHistoryPayload.data ?? [])
       setTopics(topicsPayload.data?.topics ?? topicsPayload.data ?? [])
+      setGraphServices(graphServicesPayload.data?.services ?? graphServicesPayload.data ?? [])
+      setGraphActions(graphActionsPayload.data?.actions ?? graphActionsPayload.data ?? [])
       setLastRefreshedAt(new Date())
       setError(null)
       if (notifyWorkbench) {
@@ -103,21 +113,24 @@ export function InterfaceLabPage({ websocket }) {
     registry,
     callableActions,
     callableServices,
+    graphActions,
+    graphServices,
     packages,
-  }), [registry, callableActions, callableServices, packages])
+  }), [registry, callableActions, callableServices, graphActions, graphServices, packages])
   const workspaceItems = useMemo(() => buildWorkspaceItems({
     actionHistory,
     callableActions,
     callableServices,
     filter: activeGroup,
+    graphActions,
+    graphServices,
     packages,
     registry,
     serviceHistory,
     topics,
-  }), [actionHistory, activeGroup, callableActions, callableServices, packages, registry, serviceHistory, topics])
+  }), [actionHistory, activeGroup, callableActions, callableServices, graphActions, graphServices, packages, registry, serviceHistory, topics])
   const selectedDetail = workspaceItems.find((item) => item.id === selected?.id)
     ?? workspaceItems.find((item) => item.stableKey === selected?.stableKey)
-    ?? workspaceItems[0]
     ?? null
   const relatedItems = useMemo(
     () => relatedWorkspaceItems(selectedDetail, workspaceItems),
@@ -275,7 +288,7 @@ export function InterfaceLabPage({ websocket }) {
                 <InterfaceCard
                   item={item}
                   onClick={() => {
-                    setSelected(item)
+                    setSelected((current) => current?.id === item.id ? null : item)
                     setSelectedHistoryItem(null)
                   }}
                   selected={selectedDetail?.id === item.id}
@@ -342,10 +355,16 @@ function InterfaceCard({ item, onClick, selected }) {
       </span>
       <div className="interface-badge-row">
         <KindBadge kind={item.kind} />
-        <Badge label={sourceLabel(item.source)} tone="blue" />
+        {(item.sources?.length ? item.sources : [item.source]).filter(Boolean).map((source) => (
+          <Badge key={source} label={sourceLabel(source)} tone="blue" />
+        ))}
+        {item.graphOnly && <Badge label="미등록" tone="yellow" />}
         {item.packageName && <Badge label={item.packageName} tone="neutral" />}
         {item.importAvailable !== null && (
           <Badge label={item.importAvailable ? 'import 가능' : 'import 대기/실패'} tone={item.importAvailable ? 'green' : 'yellow'} />
+        )}
+        {item.graphOnly && item.importAvailable === null && (
+          <Badge label="import 확인 필요" tone="yellow" />
         )}
         {item.rebuildRequired && <Badge label="build 필요" tone="yellow" />}
         {item.serverAvailable !== null && (
@@ -475,7 +494,7 @@ function InterfaceDetailPanel({
       <h3>{item.title}</h3>
       <dl>
         <dt>source</dt>
-        <dd>{sourceLabel(item.source)}</dd>
+        <dd>{(item.sources?.length ? item.sources : [item.source]).filter(Boolean).map(sourceLabel).join(', ')}</dd>
         <dt>full type</dt>
         <dd>{item.fullType ?? '-'}</dd>
         <dt>package</dt>
@@ -762,13 +781,17 @@ function buildWorkspaceItems({
   callableActions,
   callableServices,
   filter,
+  graphActions = [],
+  graphServices = [],
   packages,
   registry,
   serviceHistory,
   topics,
 }) {
-  const servicesByType = groupByType(callableServices, 'service_type')
-  const actionsByType = groupByType(callableActions, 'action_type')
+  const graphServiceEntries = mergeGraphServiceEntries(graphServices, callableServices)
+  const graphActionEntries = mergeGraphActionEntries(graphActions, callableActions)
+  const servicesByType = groupByType(graphServiceEntries, 'service_type')
+  const actionsByType = groupByType(graphActionEntries, 'action_type')
   const items = [
     ...(registry.messages ?? []).map((item) => registryItem(item, 'message', {
       actionsByType,
@@ -778,7 +801,6 @@ function buildWorkspaceItems({
       topics,
     })),
     ...(registry.services ?? []).map((item) => registryItem(item, 'service', {
-      callable: callableServices.find((service) => service.file_name === item.file_name),
       actionsByType,
       actionHistory,
       history: serviceHistory,
@@ -786,7 +808,6 @@ function buildWorkspaceItems({
       topics,
     })),
     ...(registry.actions ?? []).map((item) => registryItem(item, 'action', {
-      callable: callableActions.find((action) => action.file_name === item.file_name),
       actionsByType,
       history: actionHistory,
       servicesByType,
@@ -800,11 +821,170 @@ function buildWorkspaceItems({
       serviceHistory,
       topics,
     })),
-    ...callableServices.map((item) => callableServiceItem(item, serviceHistory, servicesByType)),
-    ...callableActions.map((item) => callableActionItem(item, actionHistory, actionsByType, topics)),
+    ...graphServiceEntries.map((item) => callableServiceItem(item, serviceHistory)),
+    ...graphActionEntries.map((item) => callableActionItem(item, actionHistory, actionsByType, topics)),
   ]
 
-  return items.filter((item) => matchesWorkspaceFilter(item, filter))
+  return mergeWorkspaceItemsByType(items, topics)
+    .filter((item) => !item.graphOnly)
+    .filter((item) => matchesWorkspaceFilter(item, filter))
+}
+
+function mergeGraphServiceEntries(graphServices = [], callableServices = []) {
+  const byKey = new Map()
+  graphServices.forEach((item) => {
+    const serviceName = item.service_name ?? item.name
+    const serviceType = firstType(item.service_type ?? item.type ?? item.types)
+    if (!serviceName || !serviceType) return
+    byKey.set(`${serviceName}|${serviceType}`, {
+      ...item,
+      callable: false,
+      service_name: serviceName,
+      service_type: serviceType,
+      server_available: (item.server_count ?? 0) > 0,
+    })
+  })
+  callableServices.forEach((item) => {
+    const serviceName = item.service_name ?? item.name
+    const serviceType = firstType(item.service_type ?? item.type)
+    if (!serviceName || !serviceType) return
+    byKey.set(`${serviceName}|${serviceType}`, {
+      ...(byKey.get(`${serviceName}|${serviceType}`) ?? {}),
+      ...item,
+      service_name: serviceName,
+      service_type: serviceType,
+    })
+  })
+  return Array.from(byKey.values())
+}
+
+function mergeGraphActionEntries(graphActions = [], callableActions = []) {
+  const byKey = new Map()
+  graphActions.forEach((item) => {
+    const actionName = item.action_name ?? item.name
+    const actionType = firstType(item.action_type ?? item.type ?? item.types)
+    if (!actionName || !actionType) return
+    byKey.set(`${actionName}|${actionType}`, {
+      ...item,
+      action_name: actionName,
+      action_type: actionType,
+      callable: false,
+      server_available: (item.server_count ?? 0) > 0,
+    })
+  })
+  callableActions.forEach((item) => {
+    const actionName = item.action_name ?? item.name
+    const actionType = firstType(item.action_type ?? item.type)
+    if (!actionName || !actionType) return
+    byKey.set(`${actionName}|${actionType}`, {
+      ...(byKey.get(`${actionName}|${actionType}`) ?? {}),
+      ...item,
+      action_name: actionName,
+      action_type: actionType,
+    })
+  })
+  return Array.from(byKey.values())
+}
+
+function mergeWorkspaceItemsByType(items = [], topics = []) {
+  const packageItems = items.filter((item) => item.kind === 'package')
+  const mergeableItems = items.filter((item) => item.kind !== 'package')
+  const byKey = new Map()
+  mergeableItems.forEach((item) => {
+    const normalizedKind = normalizeWorkspaceKind(item.kind)
+    const fullType = item.fullType
+    if (!fullType) return
+    const key = `${normalizedKind}:${fullType}`
+    const current = byKey.get(key)
+    byKey.set(key, current ? mergeWorkspaceItem(current, item) : normalizeMergeItem(item, normalizedKind))
+  })
+  return [
+    ...packageItems,
+    ...Array.from(byKey.values()).map((item) => finalizeMergedWorkspaceItem(item, topics)),
+  ]
+}
+
+function normalizeMergeItem(item, normalizedKind) {
+  const source = item.source ?? (item.status?.source) ?? 'unknown'
+  return {
+    ...item,
+    graphOnly: source === 'graph',
+    id: `${normalizedKind}:${item.fullType}`,
+    kind: normalizedKind,
+    sources: uniqueStrings([...(item.sources ?? []), source]),
+    stableKey: `${normalizedKind}:${item.fullType}`,
+  }
+}
+
+function mergeWorkspaceItem(left, right) {
+  const normalizedRight = normalizeMergeItem(right, normalizeWorkspaceKind(right.kind))
+  const connectedServices = mergeByNameAndType(
+    [...(left.connectedServices ?? []), ...(normalizedRight.connectedServices ?? [])],
+    'service_name',
+    'service_type',
+  )
+  const connectedActions = mergeByNameAndType(
+    [...(left.connectedActions ?? []), ...(normalizedRight.connectedActions ?? [])],
+    'action_name',
+    'action_type',
+  )
+  const sources = uniqueStrings([...(left.sources ?? []), ...(normalizedRight.sources ?? [])])
+  const history = mergeHistory([...(left.history ?? []), ...(normalizedRight.history ?? [])])
+  return {
+    ...left,
+    callable: [...connectedServices, ...connectedActions].some((entry) => entry.callable) || left.callable || normalizedRight.callable || null,
+    connectedActions,
+    connectedServices,
+    connectedTopics: [...(left.connectedTopics ?? []), ...(normalizedRight.connectedTopics ?? [])],
+    error: left.error ?? normalizedRight.error,
+    graphOnly: left.graphOnly && normalizedRight.graphOnly,
+    history,
+    importAvailable: left.importAvailable ?? normalizedRight.importAvailable,
+    lastRun: history[0] ?? left.lastRun ?? normalizedRight.lastRun,
+    packageName: left.packageName ?? normalizedRight.packageName,
+    parsed: hasMeaningfulParsed(left.parsed) ? left.parsed : normalizedRight.parsed,
+    raw_text: left.raw_text || normalizedRight.raw_text,
+    reason: left.reason ?? normalizedRight.reason,
+    rebuildRequired: left.rebuildRequired || normalizedRight.rebuildRequired,
+    schema: schemaFields(left.schema).length ? left.schema : normalizedRight.schema,
+    serverAvailable: [...connectedServices, ...connectedActions].some((entry) => entry.server_available || entry.server_count > 0) || left.serverAvailable || normalizedRight.serverAvailable || null,
+    source: sources[0],
+    sources,
+    status: {
+      registry_or_package: left.status,
+      graph: normalizedRight.status,
+      sources,
+    },
+  }
+}
+
+function finalizeMergedWorkspaceItem(item, topics = []) {
+  const graphNames = item.kind === 'service'
+    ? uniqueStrings((item.connectedServices ?? []).map((entry) => entry.service_name).filter(Boolean))
+    : item.kind === 'action'
+    ? uniqueStrings((item.connectedActions ?? []).map((entry) => entry.action_name).filter(Boolean))
+    : []
+  const connectedTopics = item.kind === 'message'
+    ? topics.filter((topic) => firstType(topic.type ?? topic.types) === item.fullType)
+    : item.connectedTopics ?? []
+  const title = graphNames.length === 1
+    ? graphNames[0]
+    : graphNames.length > 1
+    ? item.fullType
+    : item.title
+  return {
+    ...item,
+    connectedTopics,
+    graphOnly: item.sources?.length === 1 && item.sources[0] === 'graph',
+    id: `${item.kind}:${item.fullType}`,
+    serverAvailable: item.serverAvailable ?? null,
+    source: item.sources?.[0] ?? item.source,
+    stableKey: `${item.kind}:${item.fullType}`,
+    subtitle: item.kind === 'message'
+      ? `${item.fullType}${connectedTopics.length ? ` · topics ${connectedTopics.length}` : ''}`
+      : item.fullType,
+    title,
+  }
 }
 
 function registryItem(item, kind, {
@@ -1083,6 +1263,49 @@ function groupByType(items, key) {
   }, {})
 }
 
+function normalizeWorkspaceKind(kind) {
+  if (kind === 'callable_service') return 'service'
+  if (kind === 'callable_action') return 'action'
+  return kind
+}
+
+function uniqueStrings(items = []) {
+  return Array.from(new Set(items.filter(Boolean)))
+}
+
+function firstType(value) {
+  if (Array.isArray(value)) return value[0]
+  return value
+}
+
+function mergeByNameAndType(items = [], nameKey, typeKey) {
+  const byKey = new Map()
+  items.forEach((item) => {
+    const key = `${item?.[nameKey] ?? ''}|${item?.[typeKey] ?? ''}`
+    if (!item || key === '|') return
+    byKey.set(key, { ...(byKey.get(key) ?? {}), ...item })
+  })
+  return Array.from(byKey.values())
+}
+
+function mergeHistory(items = []) {
+  const byKey = new Map()
+  items.forEach((item, index) => {
+    const key = `${item.called_at ?? item.sent_at ?? item.id ?? index}:${item.service_name ?? item.action_name ?? ''}`
+    byKey.set(key, item)
+  })
+  return Array.from(byKey.values()).sort((a, b) =>
+    (b.called_at ?? b.sent_at ?? 0) - (a.called_at ?? a.sent_at ?? 0),
+  )
+}
+
+function hasMeaningfulParsed(value) {
+  if (!value) return false
+  if (Array.isArray(value)) return value.length > 0
+  if (typeof value === 'object') return Object.keys(value).length > 0
+  return true
+}
+
 function registryFullType(item, kind) {
   const build = item.build ?? {}
   const packageName = build.package_name ?? build.interface_package
@@ -1146,11 +1369,11 @@ function formatTime(timestamp) {
 function matchesWorkspaceFilter(item, filter) {
   if (filter === 'all') return true
   if (filter === 'messages') return item.kind === 'message'
-  if (filter === 'services') return item.kind === 'service' || item.kind === 'callable_service'
-  if (filter === 'actions') return item.kind === 'action' || item.kind === 'callable_action'
+  if (filter === 'services') return item.kind === 'service'
+  if (filter === 'actions') return item.kind === 'action'
   if (filter === 'packages') return item.kind === 'package'
-  if (filter === 'callable_services') return item.kind === 'callable_service' && item.callable
-  if (filter === 'callable_actions') return item.kind === 'callable_action' && item.callable
+  if (filter === 'callable_services') return item.kind === 'service' && item.callable
+  if (filter === 'callable_actions') return item.kind === 'action' && item.callable
   if (filter === 'importable') return item.importAvailable
   if (filter === 'rebuild_required') return item.rebuildRequired
   if (filter === 'errors') return Boolean(item.error)
@@ -1188,10 +1411,10 @@ function packageFromType(type = '') {
 }
 
 function sourceLabel(source) {
-  if (source === 'single_upload') return 'allowlist 등록됨'
+  if (source === 'single_upload') return '파일 등록'
   if (source === 'manual_type') return '타입 직접 등록'
   if (source === 'manual_definition') return '인터페이스 직접 작성'
-  if (source === 'uploaded_package') return 'package 등록됨'
+  if (source === 'uploaded_package') return 'package 등록'
   if (source === 'graph') return 'graph'
   return source
 }

@@ -1,5 +1,6 @@
 import { formatMs, formatRelativeTime, formatTime } from '../utils/format.js'
 import { ConnectionNodeList } from './ConnectionNodeList.jsx'
+import { DetailSection } from './DetailSection.jsx'
 import { StatusBadge } from './StatusBadge.jsx'
 
 export function ServiceDetailPanel({ participants, service }) {
@@ -39,8 +40,7 @@ export function ServiceDetailPanel({ participants, service }) {
         </p>
       )}
 
-      <section className="detail-section">
-        <h3>상태 요약</h3>
+      <DetailSection title="상태 요약">
         <DetailLine label="이름" value={service.name} />
         <DetailLine label="타입" value={service.type ?? '-'} />
         <DetailLine label="분류" value={service.category ?? '-'} />
@@ -55,10 +55,9 @@ export function ServiceDetailPanel({ participants, service }) {
         />
         <DetailLine label="상태 이유" value={service.reason ?? '-'} />
         <DetailLine label="마지막 갱신" value={formatTime(service.last_updated)} />
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>연결 정보</h3>
+      <DetailSection collapsible title="연결 정보">
         <DetailLine label="서버 수" value={service.server_count ?? 0} />
         <DetailLine label="클라이언트 수" value={service.client_count ?? 0} />
         <p className="detail-help-text">
@@ -74,10 +73,9 @@ export function ServiceDetailPanel({ participants, service }) {
           items={participants?.clients ?? []}
           title="요청자 Node"
         />
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>실행/측정 정보</h3>
+      <DetailSection collapsible title="실행/측정 정보">
         <DetailLine
           label="측정 지원"
           tone={service.active_check_supported ? 'good' : 'muted'}
@@ -126,10 +124,9 @@ export function ServiceDetailPanel({ participants, service }) {
         <DetailLine label="측정 이유" value={activeCheck.reason ?? '-'} />
         <DetailLine label="호출 수" value={service.call_count ?? 0} />
         <DetailLine label="성공/실패" value={`${service.success_count ?? 0}/${service.failure_count ?? 0}`} />
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>상세 데이터</h3>
+      <DetailSection collapsible title="상세 데이터">
         <details>
           <summary>마지막 요청 JSON</summary>
           <pre className="preview-json">
@@ -162,7 +159,7 @@ export function ServiceDetailPanel({ participants, service }) {
               : '미리보기 없음'}
           </pre>
         </details>
-      </section>
+      </DetailSection>
     </aside>
   )
 }

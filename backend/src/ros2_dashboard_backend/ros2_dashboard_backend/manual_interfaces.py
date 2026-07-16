@@ -28,6 +28,28 @@ PACKAGE_NAME_PATTERN = re.compile(r'^[a-z][a-z0-9_]*$')
 FULL_TYPE_PATTERN = re.compile(
     r'^([A-Za-z][A-Za-z0-9_]*)/(msg|srv|action)/([A-Z][A-Za-z0-9]*)$',
 )
+FIELD_NAME_PATTERN = re.compile(r'^[a-z][A-Za-z0-9_]*$')
+CONSTANT_NAME_PATTERN = re.compile(r'^[A-Za-z][A-Za-z0-9_]*$')
+CUSTOM_TYPE_PATTERN = re.compile(
+    r'^[A-Za-z][A-Za-z0-9_]*/(?:(?:msg|srv|action)/)?[A-Z][A-Za-z0-9_]*$',
+)
+PRIMITIVE_TYPES = {
+    'bool',
+    'byte',
+    'char',
+    'float32',
+    'float64',
+    'int8',
+    'uint8',
+    'int16',
+    'uint16',
+    'int32',
+    'uint32',
+    'int64',
+    'uint64',
+    'string',
+    'wstring',
+}
 
 
 def register_manual_type(
@@ -76,21 +98,17 @@ def write_manual_definition(
     registry_path: Path | None = None,
 ) -> dict[str, Any]:
     """Write a user-authored interface into backend/src/uploaded_interfaces."""
-    package_name = package.strip() or 'uploaded_interfaces'
-    if not PACKAGE_NAME_PATTERN.fullmatch(package_name):
-        raise InterfaceUploadError('package 이름은 소문자로 시작하고 소문자/숫자/_만 포함해야 합니다.')
-    if package_name != 'uploaded_interfaces':
-        raise InterfaceUploadError(
-            '직접 작성은 backend/src/uploaded_interfaces 폴더에 타입 파일을 생성하는 기능입니다.',
-        )
-    if kind not in ALLOWED_KINDS:
-        raise InterfaceUploadError('kind는 msg, srv, action 중 하나여야 합니다.')
-    if not TYPE_NAME_PATTERN.fullmatch(type_name):
-        raise InterfaceUploadError('type_name은 대문자로 시작하는 PascalCase여야 합니다.')
-    raw_text = definition.strip() + '\n'
-    if not raw_text.strip():
-        raise InterfaceUploadError('definition을 입력하세요.')
-    parsed = parse_interface(raw_text, kind)
+    validated = validate_manual_definition(
+        package=package,
+        kind=kind,
+        type_name=type_name,
+        definition=definition,
+    )
+    package_name = validated['package']
+    kind = validated['kind']
+    type_name = validated['type_name']
+    raw_text = validated['raw_text']
+    parsed = validated['parsed']
 
     package_root = backend_workspace_root() / 'src' / package_name
     _ensure_uploaded_interfaces_package(package_root, package_name)
@@ -132,6 +150,115 @@ def write_manual_definition(
     return entry
 
 
+def update_manual_definition(
+    *,
+    kind: str,
+    type_name: str,
+    definition: str,
+    registry_path: Path | None = None,
+) -> dict[str, Any]:
+    """Validate and overwrite an existing manual definition."""
+    return write_manual_definition(
+        package='uploaded_interfaces',
+        kind=kind,
+        type_name=type_name,
+        definition=definition,
+        registry_path=registry_path,
+    )
+
+
+def delete_manual_definition(
+    *,
+    kind: str,
+    type_name: str,
+    registry_path: Path | None = None,
+) -> dict[str, Any]:
+    """Delete one manual definition file and regenerate CMake from disk."""
+    if kind not in ALLOWED_KINDS:
+        raise InterfaceUploadError('kind는 msg, srv, action 중 하나여야 합니다.')
+    if not TYPE_NAME_PATTERN.fullmatch(type_name):
+        raise InterfaceUploadError('type_name은 대문자로 시작하는 PascalCase여야 합니다.')
+    package_name = 'uploaded_interfaces'
+    package_root = backend_workspace_root() / 'src' / package_name
+    suffix = {'msg': 'msg', 'srv': 'srv', 'action': 'action'}[kind]
+    target = package_root / kind / f'{type_name}.{suffix}'
+    deleted_file = False
+    if target.is_file():
+        target.unlink()
+        deleted_file = True
+    _ensure_uploaded_interfaces_package(package_root, package_name)
+    _regenerate_uploaded_cmake(package_root, package_name, _dependencies_from_existing_files(package_root, package_name))
+    _remove_registry_entry(
+        kind=kind,
+        full_type=f'{package_name}/{kind}/{type_name}',
+        registry_path=registry_path,
+    )
+    return {
+        'deleted_file': deleted_file,
+        'file_path': _display_path(target),
+        'full_type': f'{package_name}/{kind}/{type_name}',
+        'rebuild_required': True,
+    }
+
+
+def rebuild_uploaded_interfaces_cmake() -> dict[str, Any]:
+    """Regenerate uploaded_interfaces CMakeLists.txt from actual files only."""
+    package_name = 'uploaded_interfaces'
+    package_root = backend_workspace_root() / 'src' / package_name
+    _ensure_uploaded_interfaces_package(package_root, package_name)
+    dependencies = _dependencies_from_existing_files(package_root, package_name)
+    _regenerate_uploaded_cmake(package_root, package_name, dependencies)
+    return {
+        'package': package_name,
+        'package_path': _display_path(package_root),
+        'dependencies': dependencies,
+        'interfaces': _existing_interface_paths(package_root),
+        'rebuild_required': True,
+    }
+
+
+def validate_manual_definition(
+    *,
+    package: str,
+    kind: str,
+    type_name: str,
+    definition: str,
+) -> dict[str, Any]:
+    """Validate a user-authored interface without writing files."""
+    package_name = package.strip() or 'uploaded_interfaces'
+    if not PACKAGE_NAME_PATTERN.fullmatch(package_name):
+        raise InterfaceUploadError('validation_error: package 이름은 소문자로 시작하고 소문자/숫자/_만 포함해야 합니다.')
+    if package_name != 'uploaded_interfaces':
+        raise InterfaceUploadError('validation_error: 직접 작성은 uploaded_interfaces 패키지만 지원합니다.')
+    if kind not in ALLOWED_KINDS:
+        raise InterfaceUploadError('validation_error: kind는 msg, srv, action 중 하나여야 합니다.')
+    if not TYPE_NAME_PATTERN.fullmatch(type_name):
+        raise InterfaceUploadError('validation_error: type_name은 대문자로 시작하는 PascalCase여야 합니다.')
+    raw_text = definition.strip() + '\n'
+    if not raw_text.strip():
+        raise InterfaceUploadError('validation_error: definition을 입력하세요.')
+    separator_count = sum(
+        1
+        for line in raw_text.splitlines()
+        if line.split('#', 1)[0].strip() == '---'
+    )
+    expected_separators = {'msg': 0, 'srv': 1, 'action': 2}[kind]
+    if separator_count != expected_separators:
+        raise InterfaceUploadError(
+            f'validation_error: {kind}는 --- 구분선이 정확히 {expected_separators}개 필요합니다.',
+        )
+    parsed = parse_interface(raw_text, kind)
+    _validate_parsed_fields(parsed, kind)
+    return {
+        'valid': True,
+        'package': package_name,
+        'kind': kind,
+        'type_name': type_name,
+        'raw_text': raw_text,
+        'parsed': parsed,
+    }
+
+
 def _parse_full_type(full_type: str) -> tuple[str, str, str]:
     match = FULL_TYPE_PATTERN.fullmatch(full_type.strip())
     if not match:
@@ -152,6 +279,51 @@ def _upsert_registry_entry(entry: dict[str, Any], registry_path: Path | None) ->
     ]
     collection.append(entry)
     _write_registry(path, registry)
+
+
+def _remove_registry_entry(*, kind: str, full_type: str, registry_path: Path | None) -> None:
+    path = registry_path or default_registry_path()
+    registry = _load_registry(path)
+    collection = registry['interface_registry'][KIND_COLLECTIONS[kind]]
+    collection[:] = [
+        item for item in collection
+        if not (item.get('source') == 'manual_definition' and item.get('full_type') == full_type)
+    ]
+    _write_registry(path, registry)
+
+
+def _validate_parsed_fields(parsed: dict[str, Any], kind: str) -> None:
+    sections = ['fields'] if kind == 'msg' else ['request', 'response'] if kind == 'srv' else ['goal', 'result', 'feedback']
+    for section in sections:
+        names: set[str] = set()
+        for field in parsed.get(section, []):
+            raw_line = field.get('raw_line', '')
+            name = field.get('name')
+            field_type = field.get('type')
+            if not name or not field_type:
+                raise InterfaceUploadError(f'validation_error: "{raw_line}" 줄은 "type name" 형식이어야 합니다.')
+            if not _valid_interface_type(str(field_type)):
+                raise InterfaceUploadError(f'validation_error: 알 수 없는 타입 "{field_type}"')
+            name_pattern = CONSTANT_NAME_PATTERN if field.get('is_constant') else FIELD_NAME_PATTERN
+            if not name_pattern.fullmatch(str(name)):
+                raise InterfaceUploadError(f'validation_error: 필드명 "{name}" 형식이 올바르지 않습니다.')
+            if name in names:
+                raise InterfaceUploadError(f'validation_error: 중복 필드명 "{name}"')
+            names.add(str(name))
+
+
+def _valid_interface_type(field_type: str) -> bool:
+    base = _strip_array_suffix(field_type)
+    if '<=' in base:
+        base = base.split('<=', 1)[0]
+    return base in PRIMITIVE_TYPES or CUSTOM_TYPE_PATTERN.fullmatch(base) is not None
+
+
+def _strip_array_suffix(field_type: str) -> str:
+    value = field_type.strip()
+    while value.endswith(']') and '[' in value:
+        value = value[:value.rfind('[')]
+    return value
 
 
 def _ensure_uploaded_interfaces_package(package_root: Path, package_name: str) -> None:
@@ -188,17 +360,39 @@ def _regenerate_uploaded_cmake(
     dependency_lines = ''.join(f'find_package({name} REQUIRED)\n' for name in dependencies)
     dependency_arg = f'  DEPENDENCIES {" ".join(dependencies)}\n' if dependencies else ''
     interface_block = '\n'.join(f'  "{path}"' for path in interface_paths)
+    rosidl_block = (
+        f'''rosidl_generate_interfaces(${{PROJECT_NAME}}
+{interface_block}
+{dependency_arg})
+'''
+        if interface_paths else ''
+    )
     cmake = f'''cmake_minimum_required(VERSION 3.8)
 project({package_name})
 
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 {dependency_lines}
-rosidl_generate_interfaces(${{PROJECT_NAME}}
-{interface_block}
-{dependency_arg})
-
+{rosidl_block}
 ament_export_dependencies(rosidl_default_runtime)
 ament_package()
 '''
     _atomic_write(package_root / 'CMakeLists.txt', cmake)
+
+
+def _existing_interface_paths(package_root: Path) -> list[str]:
+    interface_paths: list[str] = []
+    for folder, suffix in (('msg', '.msg'), ('srv', '.srv'), ('action', '.action')):
+        interface_paths.extend(
+            f'{folder}/{path.name}'
+            for path in sorted((package_root / folder).glob(f'*{suffix}'))
+        )
+    return interface_paths
+
+
+def _dependencies_from_existing_files(package_root: Path, package_name: str) -> list[str]:
+    dependencies: set[str] = set()
+    for relative_path in _existing_interface_paths(package_root):
+        file_path = package_root / relative_path
+        dependencies.update(_dependency_candidates(file_path.read_text(encoding='utf-8'), package_name))
+    return sorted(dependencies)

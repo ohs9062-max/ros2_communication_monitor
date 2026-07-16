@@ -1,5 +1,6 @@
 import { formatAge, formatNumber, formatTime } from '../utils/format.js'
 import { ConnectionNodeList } from './ConnectionNodeList.jsx'
+import { DetailSection } from './DetailSection.jsx'
 import { KeyValueTable } from './KeyValueTable.jsx'
 import { StatusBadge } from './StatusBadge.jsx'
 
@@ -39,17 +40,15 @@ export function TopicDetailPanel({ topic, latest, hz, participants }) {
         </p>
       )}
 
-      <section className="detail-section">
-        <h3>상태 요약</h3>
+      <DetailSection title="상태 요약">
         <DetailLine label="이름" value={topic.name} />
         <DetailLine label="타입" value={topic.types?.[0] ?? '-'} />
         <DetailLine label="상태" tone={statusTone(topic.status)} value={topic.status ?? '-'} />
         <DetailLine label="상태 이유" value={topic.reason ?? '-'} />
         <DetailLine label="마지막 갱신" value={formatTime(topic.last_updated)} />
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>연결 정보</h3>
+      <DetailSection collapsible title="연결 정보">
         <div className="detail-line">
           <span>발행자</span>
           <strong>{topic.publisher_count ?? 0}</strong>
@@ -70,10 +69,9 @@ export function TopicDetailPanel({ topic, latest, hz, participants }) {
             {topic.deep_monitoring ? '예' : '아니오'}
           </strong>
         </div>
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>연결 Node</h3>
+      <DetailSection collapsible title="연결 Node">
         <p className="detail-help-text">
           표시된 Node 목록은 ROS2 Graph에서 확인된 Node 기준입니다.
         </p>
@@ -87,10 +85,9 @@ export function TopicDetailPanel({ topic, latest, hz, participants }) {
           items={participants?.subscribers ?? []}
           title="구독자 Node"
         />
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>실행/측정 정보</h3>
+      <DetailSection collapsible title="실행/측정 정보">
         <div className="metric-grid">
           <Metric label="Hz" value={formatNumber(hzData?.hz)} />
           <Metric
@@ -111,10 +108,9 @@ export function TopicDetailPanel({ topic, latest, hz, participants }) {
             value={hzData?.status ?? '-'}
           />
         </div>
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>상세 데이터</h3>
+      <DetailSection collapsible title="상세 데이터">
         <div className="detail-line">
           <span>수신 여부</span>
           <strong className={latestData?.received ? 'detail-value-good' : 'detail-value-muted'}>
@@ -137,21 +133,17 @@ export function TopicDetailPanel({ topic, latest, hz, participants }) {
             {topic.observed ? '예' : '아니오'}
           </strong>
         </div>
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <h3>장치 상태 값</h3>
+      <DetailSection collapsible title="장치 상태 값">
         <KeyValueTable values={values} />
-      </section>
+      </DetailSection>
 
-      <section className="detail-section">
-        <details>
-          <summary>원본 Preview JSON</summary>
-          <pre className="preview-json">
-            {preview ? JSON.stringify(preview, null, 2) : 'preview 없음'}
-          </pre>
-        </details>
-      </section>
+      <DetailSection collapsible title="원본 Preview JSON">
+        <pre className="preview-json">
+          {preview ? JSON.stringify(preview, null, 2) : 'preview 없음'}
+        </pre>
+      </DetailSection>
     </aside>
   )
 }

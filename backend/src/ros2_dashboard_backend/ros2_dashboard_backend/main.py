@@ -30,11 +30,13 @@ from ros2_dashboard_backend.interface_registry import (
     InterfaceUploadError,
     MAX_INTERFACE_FILE_SIZE,
     default_registry_path,
+    delete_registry_entry,
     extract_multipart_file,
     refresh_registry_imports,
     register_interface,
     registry_snapshot,
 )
+from ros2_dashboard_backend.interface_receive_runtime import InterfaceReceiveError
 from ros2_dashboard_backend.interface_packages import (
     InterfacePackageError,
     MAX_PACKAGE_ZIP_SIZE,
@@ -45,7 +47,11 @@ from ros2_dashboard_backend.interface_packages import (
     upload_interface_package_folder,
 )
 from ros2_dashboard_backend.manual_interfaces import (
+    delete_manual_definition,
+    rebuild_uploaded_interfaces_cmake,
     register_manual_type,
+    update_manual_definition,
+    validate_manual_definition,
     write_manual_definition,
 )
 from ros2_dashboard_backend.ros_monitor import RosMonitor
@@ -230,6 +236,30 @@ def get_interface_registry() -> dict[str, Any]:
     }
 
 
+@app.delete('/ros/interfaces/registry/{kind}/{file_name}')
+def delete_interface_registry_entry(
+    kind: str,
+    file_name: str,
+    source: str | None = Query(default=None),
+    full_type: str | None = Query(default=None),
+) -> dict[str, Any]:
+    """Delete one registry entry without deleting interface files."""
+    try:
+        result = delete_registry_entry(
+            kind=kind,
+            file_name=file_name,
+            source=source,
+            full_type=full_type,
+        )
+    except InterfaceUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        'success': True,
+        'data': result,
+        'message': result['message'],
+    }
+
+
 @app.post('/ros/interfaces/manual-type')
 async def register_manual_interface_type(request: Request) -> dict[str, Any]:
     """Register an existing full type string without creating interface files."""
@@ -278,6 +308,81 @@ async def write_manual_interface_definition(request: Request) -> dict[str, Any]:
         'entry': entry,
         'data': entry,
         'message': '인터페이스 직접 작성이 저장되었습니다. 적용하기로 build/import를 진행하세요.',
+    }
+
+
+@app.post('/ros/interfaces/manual-definition/validate')
+async def validate_manual_interface_definition(request: Request) -> dict[str, Any]:
+    """Validate a user-authored interface without writing files."""
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail='JSON 요청 본문이 필요합니다.') from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail='JSON object 요청 본문이 필요합니다.')
+    try:
+        result = validate_manual_definition(
+            package=str(payload.get('package') or 'uploaded_interfaces'),
+            kind=str(payload.get('kind') or ''),
+            type_name=str(payload.get('type_name') or ''),
+            definition=str(payload.get('definition') or ''),
+        )
+    except InterfaceUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        'success': True,
+        'data': result,
+        'message': '문법 검증을 통과했습니다. 아직 파일/CMake/registry는 수정하지 않았습니다.',
+    }
+
+
+@app.put('/ros/interfaces/manual-definition/{kind}/{type_name}')
+async def update_manual_interface_definition(kind: str, type_name: str, request: Request) -> dict[str, Any]:
+    """Validate and update a user-authored interface."""
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail='JSON 요청 본문이 필요합니다.') from exc
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail='JSON object 요청 본문이 필요합니다.')
+    try:
+        entry = update_manual_definition(
+            kind=kind,
+            type_name=type_name,
+            definition=str(payload.get('definition') or ''),
+        )
+    except InterfaceUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        'success': True,
+        'entry': entry,
+        'data': entry,
+        'message': '인터페이스 직접 작성 항목을 수정했습니다. 적용하기로 build/import를 다시 진행하세요.',
+    }
+
+
+@app.delete('/ros/interfaces/manual-definition/{kind}/{type_name}')
+def delete_manual_interface_definition(kind: str, type_name: str) -> dict[str, Any]:
+    """Delete a user-authored interface file and registry entry."""
+    try:
+        result = delete_manual_definition(kind=kind, type_name=type_name)
+    except InterfaceUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        'success': True,
+        'data': result,
+        'message': '인터페이스 직접 작성 항목을 삭제하고 CMakeLists.txt를 재생성했습니다.',
+    }
+
+
+@app.post('/ros/interfaces/uploaded-interfaces/rebuild-cmake')
+def rebuild_uploaded_interfaces_cmake_endpoint() -> dict[str, Any]:
+    """Regenerate uploaded_interfaces CMakeLists.txt from actual files."""
+    result = rebuild_uploaded_interfaces_cmake()
+    return {
+        'success': True,
+        'data': result,
+        'message': 'uploaded_interfaces/CMakeLists.txt를 실제 파일 목록 기준으로 재생성했습니다.',
     }
 
 
@@ -597,6 +702,108 @@ def get_action_goal_history() -> dict[str, Any]:
         'meta': snapshot['meta'],
         'message': 'Action Goal history를 조회했습니다.',
     }
+
+
+@app.post('/ros/interfaces/receive/topics/start')
+async def start_receive_topic(request: Request) -> dict[str, Any]:
+    """Start explicit Interface Lab topic receive."""
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail='JSON 요청 본문이 필요합니다.') from exc
+    try:
+        state = ros_monitor.start_receive_topic(
+            topic_name=str(payload.get('topic_name') or ''),
+            topic_type=str(payload.get('topic_type') or ''),
+            history_limit=int(payload.get('history_limit') or 100),
+        )
+    except (InterfaceReceiveError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {'success': True, 'data': state, 'message': 'Topic 수신을 시작했습니다.'}
+
+
+@app.post('/ros/interfaces/receive/topics/stop')
+async def stop_receive_topic(request: Request) -> dict[str, Any]:
+    """Stop explicit Interface Lab topic receive."""
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail='JSON 요청 본문이 필요합니다.') from exc
+    state = ros_monitor.stop_receive_topic(topic_name=str(payload.get('topic_name') or ''))
+    return {'success': True, 'data': state, 'message': 'Topic 수신을 중지했습니다.'}
+
+
+@app.get('/ros/interfaces/receive/topics')
+def get_receive_topics() -> dict[str, Any]:
+    """Return explicit topic receive states."""
+    snapshot = ros_monitor.receive_topics()
+    return {'success': True, 'data': snapshot['topics'], 'meta': snapshot['meta']}
+
+
+@app.get('/ros/interfaces/receive/topics/history')
+def get_receive_topic_history(
+    topic_name: str | None = Query(default=None),
+    limit: int | None = Query(default=500),
+) -> dict[str, Any]:
+    """Return explicit topic receive history."""
+    snapshot = ros_monitor.receive_topic_history(topic_name=topic_name, limit=limit)
+    return {'success': True, 'data': snapshot['history'], 'meta': snapshot['meta']}
+
+
+@app.post('/ros/interfaces/receive/topics/history/reset')
+async def reset_receive_topic_history(request: Request) -> dict[str, Any]:
+    """Reset accumulated explicit topic receive history."""
+    try:
+        payload = await request.json()
+    except ValueError:
+        payload = {}
+    topic_name = payload.get('topic_name')
+    snapshot = ros_monitor.reset_receive_topic_history(
+        topic_name=str(topic_name) if topic_name else None,
+    )
+    return {'success': True, 'data': snapshot, 'message': 'Topic 수신 이력을 초기화했습니다.'}
+
+
+@app.get('/ros/interfaces/receive/services/history')
+def get_receive_service_history() -> dict[str, Any]:
+    """Return service response receive history."""
+    snapshot = ros_monitor.receive_service_history()
+    return {'success': True, 'data': snapshot['history'], 'meta': snapshot['meta']}
+
+
+@app.post('/ros/interfaces/receive/services/history/reset')
+async def reset_receive_service_history(request: Request) -> dict[str, Any]:
+    """Reset receive-shaped service response history."""
+    try:
+        payload = await request.json()
+    except ValueError:
+        payload = {}
+    snapshot = ros_monitor.reset_receive_service_history(
+        service_name=payload.get('service_name'),
+        service_type=payload.get('service_type'),
+    )
+    return {'success': True, 'data': snapshot, 'message': 'Service 수신 이력을 초기화했습니다.'}
+
+
+@app.get('/ros/interfaces/receive/actions/history')
+def get_receive_action_history() -> dict[str, Any]:
+    """Return action feedback/result receive history."""
+    snapshot = ros_monitor.receive_action_history()
+    return {'success': True, 'data': snapshot['history'], 'meta': snapshot['meta']}
+
+
+@app.post('/ros/interfaces/receive/actions/history/reset')
+async def reset_receive_action_history(request: Request) -> dict[str, Any]:
+    """Reset receive-shaped action feedback/result history."""
+    try:
+        payload = await request.json()
+    except ValueError:
+        payload = {}
+    snapshot = ros_monitor.reset_receive_action_history(
+        action_name=payload.get('action_name'),
+        action_type=payload.get('action_type'),
+    )
+    return {'success': True, 'data': snapshot, 'message': 'Action 수신 이력을 초기화했습니다.'}
 
 
 @app.websocket('/ws/monitor')

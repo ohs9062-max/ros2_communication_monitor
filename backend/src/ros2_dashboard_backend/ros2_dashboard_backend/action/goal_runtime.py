@@ -278,13 +278,19 @@ class ActionGoalRuntime:
             type_name = item.get('type_name')
             if not package_name or not type_name:
                 continue
+            action_type = f'{package_name}/action/{type_name}'
+            goal_schema = item.get('parsed', {}).get('goal', [])
+            result_schema = item.get('parsed', {}).get('result', [])
+            feedback_schema = item.get('parsed', {}).get('feedback', [])
+            if build.get('import_available') is True and not goal_schema:
+                goal_schema, result_schema, feedback_schema = _schema_from_action_class(action_type)
             actions.append({
                 'file_name': item.get('file_name'),
                 'type_name': type_name,
-                'action_type': f'{package_name}/action/{type_name}',
-                'goal_schema': item.get('parsed', {}).get('goal', []),
-                'result_schema': item.get('parsed', {}).get('result', []),
-                'feedback_schema': item.get('parsed', {}).get('feedback', []),
+                'action_type': action_type,
+                'goal_schema': goal_schema,
+                'result_schema': result_schema,
+                'feedback_schema': feedback_schema,
                 'saved_path': build.get('saved_path'),
                 'import_available': build.get('import_available') is True,
                 'import_error': build.get('import_error'),
@@ -500,6 +506,30 @@ def _normalized_timeout(timeout_sec: float | None) -> float:
     if timeout <= 0:
         raise ActionGoalError('timeout_sec는 0보다 커야 합니다.')
     return min(timeout, MAX_TIMEOUT_SEC)
+
+
+def _schema_from_action_class(action_type: str) -> tuple[list[dict[str, str]], list[dict[str, str]], list[dict[str, str]]]:
+    try:
+        action_class = get_action(action_type)
+        return (
+            _schema_from_message_class(action_class.Goal),
+            _schema_from_message_class(action_class.Result),
+            _schema_from_message_class(action_class.Feedback),
+        )
+    except Exception:
+        return [], [], []
+
+
+def _schema_from_message_class(message_class: type) -> list[dict[str, str]]:
+    try:
+        message = message_class()
+        fields = message.get_fields_and_field_types()
+    except Exception:
+        return []
+    return [
+        {'name': name, 'type': field_type, 'raw_line': f'{field_type} {name}'}
+        for name, field_type in fields.items()
+    ]
 
 
 def _goal_summary(goal: dict[str, Any]) -> dict[str, Any]:

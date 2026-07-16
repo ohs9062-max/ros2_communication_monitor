@@ -13,6 +13,7 @@ from ros2_dashboard_backend.action.alerts import build_action_alerts
 from ros2_dashboard_backend.action.goal_runtime import ActionGoalRuntime
 from ros2_dashboard_backend.action.runtime import ActionRuntime
 from ros2_dashboard_backend.config_loader import MonitorConfig
+from ros2_dashboard_backend.interface_receive_runtime import InterfaceReceiveRuntime
 from ros2_dashboard_backend.node.alerts import build_node_alerts
 from ros2_dashboard_backend.node.runtime import NodeRuntime
 from ros2_dashboard_backend.service.alerts import build_service_alerts
@@ -65,6 +66,14 @@ class RosMonitor:
             lock=self._lock,
             node_getter=lambda: self._node,
         )
+        self._receive_runtime = InterfaceReceiveRuntime(
+            lock=self._lock,
+            node_getter=lambda: self._node,
+        )
+        self._receive_service_reset_at: float | None = None
+        self._receive_action_reset_at: float | None = None
+        self._receive_service_reset_by_key: dict[tuple[str | None, str | None], float] = {}
+        self._receive_action_reset_by_key: dict[tuple[str | None, str | None], float] = {}
 
     def start(self) -> None:
         """Start rclpy, create the monitor node, and spin in the background."""
@@ -102,6 +111,11 @@ class RosMonitor:
         self._action_goal_runtime.clear()
         self._service_runtime.clear()
         self._service_call_runtime.clear()
+        self._receive_runtime.clear()
+        self._receive_service_reset_at = None
+        self._receive_action_reset_at = None
+        self._receive_service_reset_by_key = {}
+        self._receive_action_reset_by_key = {}
         self._node_runtime.clear()
 
     def snapshot(self) -> dict[str, Any]:
@@ -162,6 +176,60 @@ class RosMonitor:
         """Return recent explicit service call history."""
         return self._service_call_runtime.history()
 
+    def receive_service_history(self) -> dict[str, Any]:
+        """Return receive-shaped service response history."""
+        calls = self._service_call_runtime.history()['calls']
+        events = []
+        for index, call in enumerate(calls):
+            called_at = call.get('called_at')
+            if (
+                self._receive_service_reset_at is not None
+                and called_at is not None
+                and called_at <= self._receive_service_reset_at
+            ):
+                continue
+            reset_at = self._receive_service_reset_by_key.get(
+                (call.get('service_name'), call.get('service_type')),
+            )
+            if reset_at is not None and called_at is not None and called_at <= reset_at:
+                continue
+            events.append({
+                'id': f"service-{call.get('called_at', index)}-{index}",
+                'direction': 'service_response',
+                'service_name': call.get('service_name'),
+                'service_type': call.get('service_type'),
+                'request': call.get('request'),
+                'response': call.get('response'),
+                'status': 'success' if call.get('success') else call.get('error_type') or 'failed',
+                'success': call.get('success') is True,
+                'error_type': call.get('error_type'),
+                'error': call.get('error'),
+                'sent_to_server': call.get('sent_to_server', False),
+                'called_at': call.get('called_at'),
+                'received_at': call.get('called_at'),
+                'response_time_ms': call.get('elapsed_ms'),
+                'raw': call,
+            })
+        return {'history': events, 'meta': {'count': len(events)}}
+
+    def reset_receive_service_history(
+        self,
+        *,
+        service_name: str | None = None,
+        service_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Hide previous service receive-shaped history without clearing call history."""
+        previous = len([
+            item for item in self.receive_service_history()['history']
+            if not service_name
+            or (item.get('service_name') == service_name and item.get('service_type') == service_type)
+        ])
+        if service_name:
+            self._receive_service_reset_by_key[(service_name, service_type)] = time()
+        else:
+            self._receive_service_reset_at = time()
+        return {'cleared': previous}
+
     def action_snapshot(self) -> dict[str, Any]:
         """Return a thread-safe snapshot of the cached action list."""
         snapshot = self._action_runtime.snapshot()
@@ -210,6 +278,105 @@ class RosMonitor:
     def action_goal_history(self) -> dict[str, Any]:
         """Return recent explicit action goal history."""
         return self._action_goal_runtime.history()
+
+    def receive_action_history(self) -> dict[str, Any]:
+        """Return receive-shaped action feedback/result history."""
+        goals = self._action_goal_runtime.history()['goals']
+        events = []
+        for goal_index, goal in enumerate(goals):
+            sent_at = goal.get('sent_at')
+            if (
+                self._receive_action_reset_at is not None
+                and sent_at is not None
+                and sent_at <= self._receive_action_reset_at
+            ):
+                continue
+            reset_at = self._receive_action_reset_by_key.get(
+                (goal.get('action_name'), goal.get('action_type')),
+            )
+            if reset_at is not None and sent_at is not None and sent_at <= reset_at:
+                continue
+            feedback_items = goal.get('feedback') if isinstance(goal.get('feedback'), list) else []
+            for feedback_index, feedback in enumerate(feedback_items):
+                events.append({
+                    'id': f"action-feedback-{goal.get('sent_at', goal_index)}-{feedback_index}",
+                    'direction': 'action_feedback',
+                    'action_name': goal.get('action_name'),
+                    'action_type': goal.get('action_type'),
+                    'goal': goal.get('goal'),
+                    'feedback': feedback,
+                    'result': None,
+                    'status': 'feedback',
+                    'success': goal.get('success') is True,
+                    'error_type': goal.get('error_type'),
+                    'error': goal.get('error'),
+                    'sent_to_server': goal.get('sent_to_server', False),
+                    'goal_sent_at': goal.get('sent_at'),
+                    'received_at': goal.get('sent_at'),
+                    'execution_time_ms': goal.get('elapsed_ms'),
+                    'raw': goal,
+                })
+            events.append({
+                'id': f"action-result-{goal.get('sent_at', goal_index)}-{goal_index}",
+                'direction': 'action_result',
+                'action_name': goal.get('action_name'),
+                'action_type': goal.get('action_type'),
+                'goal': goal.get('goal'),
+                'feedback': None,
+                'result': goal.get('result'),
+                'status': 'success' if goal.get('success') else goal.get('error_type') or goal.get('status') or 'failed',
+                'success': goal.get('success') is True,
+                'error_type': goal.get('error_type'),
+                'error': goal.get('error'),
+                'sent_to_server': goal.get('sent_to_server', False),
+                'goal_sent_at': goal.get('sent_at'),
+                'received_at': goal.get('sent_at'),
+                'execution_time_ms': goal.get('elapsed_ms'),
+                'raw': goal,
+            })
+        return {'history': events, 'meta': {'count': len(events)}}
+
+    def reset_receive_action_history(
+        self,
+        *,
+        action_name: str | None = None,
+        action_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Hide previous action receive-shaped history without clearing goal history."""
+        previous = len([
+            item for item in self.receive_action_history()['history']
+            if not action_name
+            or (item.get('action_name') == action_name and item.get('action_type') == action_type)
+        ])
+        if action_name:
+            self._receive_action_reset_by_key[(action_name, action_type)] = time()
+        else:
+            self._receive_action_reset_at = time()
+        return {'cleared': previous}
+
+    def start_receive_topic(self, *, topic_name: str, topic_type: str, history_limit: int = 100) -> dict[str, Any]:
+        """Start explicit topic receive."""
+        return self._receive_runtime.start_topic(
+            topic_name=topic_name,
+            topic_type=topic_type,
+            history_limit=history_limit,
+        )
+
+    def stop_receive_topic(self, *, topic_name: str) -> dict[str, Any]:
+        """Stop explicit topic receive."""
+        return self._receive_runtime.stop_topic(topic_name=topic_name)
+
+    def receive_topics(self) -> dict[str, Any]:
+        """Return receive topic states."""
+        return self._receive_runtime.topics()
+
+    def receive_topic_history(self, *, topic_name: str | None = None, limit: int | None = None) -> dict[str, Any]:
+        """Return explicit topic receive history."""
+        return self._receive_runtime.topic_history(topic_name=topic_name, limit=limit)
+
+    def reset_receive_topic_history(self, *, topic_name: str | None = None) -> dict[str, Any]:
+        """Clear explicit topic receive history."""
+        return self._receive_runtime.reset_topic_history(topic_name=topic_name)
 
     def node_snapshot(self) -> dict[str, Any]:
         """Return a thread-safe snapshot of the cached node list."""

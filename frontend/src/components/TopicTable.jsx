@@ -29,6 +29,10 @@ const TOPIC_SORT_COLUMNS = {
     defaultDirection: 'desc',
     value: (topic) => (topic.deep_monitoring ? 1 : 0),
   },
+  observed: {
+    defaultDirection: 'desc',
+    value: (topic) => (topic.observed ? 1 : 0),
+  },
   last_updated: {
     defaultDirection: 'desc',
     value: (topic) => topic.last_updated,
@@ -73,6 +77,7 @@ export function TopicTable({
             <SortableHeader columnKey="external_subscriber_count" label="외부 구독" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="hz" label="Hz" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="deep_monitoring" label="상세 감시" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="observed" label="마지막 값" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="last_updated" label="마지막 확인" onSort={onSort} sort={sort} />
           </tr>
         </thead>
@@ -107,6 +112,7 @@ export function TopicTable({
                   <HzBadge hzData={hz?.data} topic={topic} />
                 </td>
                 <td>{topic.deep_monitoring ? '예' : '아니오'}</td>
+                <td><PreviewText value={topic.last_message_preview} /></td>
                 <td>{formatTime(topic.last_updated)}</td>
               </tr>
             )
@@ -115,6 +121,11 @@ export function TopicTable({
       </table>
     </div>
   )
+}
+
+function PreviewText({ value }) {
+  if (!value) return <span className="muted">-</span>
+  return <code className="table-preview-text">{JSON.stringify(value)}</code>
 }
 
 function HzBadge({ hzData, topic }) {

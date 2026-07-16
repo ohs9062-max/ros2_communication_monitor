@@ -14,7 +14,8 @@ export function ActionDetailPanel({ action, participants }) {
   }
 
   const runtime = action.runtime ?? {}
-  const goalUnobserved = (runtime.observed_goal_count ?? 0) === 0
+  const goalSummary = action.last_goal_summary
+  const goalUnobserved = (runtime.observed_goal_count ?? 0) === 0 && !goalSummary
   const goalExecuting = runtime.last_goal_status === 'executing'
   const feedbackReceived = Boolean(runtime.feedback_preview)
   const feedbackWaiting =
@@ -119,11 +120,28 @@ export function ActionDetailPanel({ action, participants }) {
           label="마지막 Goal 상태"
           tone={statusTone(runtime.last_goal_status)}
           value={
-            runtime.last_goal_status === 'unknown'
+            goalSummary?.last_goal_status
+              ? goalStatusLabel(goalSummary.last_goal_status)
+              : runtime.last_goal_status === 'unknown'
               ? 'Goal 미관찰'
               : goalStatusLabel(runtime.last_goal_status)
           }
         />
+        <DetailLine
+          label="실행 가능"
+          tone={action.callable ? 'good' : action.allowlisted ? 'warn' : 'muted'}
+          value={action.callable ? '예' : action.allowlisted ? '등록됨' : '아니오'}
+        />
+        <DetailLine
+          label="서버 전송"
+          tone={goalSummary?.sent_to_server === false ? 'warn' : 'muted'}
+          value={goalSummary ? goalSummary.sent_to_server ? '예' : '아니오' : '-'}
+        />
+        {goalSummary?.error_type === 'validation_error' && (
+          <p className="notice-text warning">
+            입력값이 타입과 맞지 않아 서버로 보내지 않았습니다.
+          </p>
+        )}
         <DetailLine
           label="마지막 Goal ID"
           value={runtime.last_goal_id ?? '-'}
@@ -138,7 +156,7 @@ export function ActionDetailPanel({ action, participants }) {
         />
         <DetailLine
           label="실행 시간"
-          value={formatMs(runtime.elapsed_time_ms)}
+          value={formatMs(goalSummary?.execution_time_ms ?? runtime.elapsed_time_ms)}
         />
         <DetailLine
           label="관찰 Goal 수"
@@ -150,6 +168,9 @@ export function ActionDetailPanel({ action, participants }) {
           value={resultStatusLabel(runtime.result_status)}
         />
         <DetailLine label="결과 오류" value={runtime.result_error ?? '-'} />
+        <DetailLine label="마지막 실행 오류" value={goalSummary?.last_error ?? '-'} />
+        <DetailLine label="Goal 수" value={action.goal_count ?? 0} />
+        <DetailLine label="성공/실패" value={`${action.success_count ?? 0}/${action.failure_count ?? 0}`} />
       </section>
 
       <section className="detail-section">
@@ -182,6 +203,22 @@ export function ActionDetailPanel({ action, participants }) {
         <DetailLine label="결과 이유" value={action.result_reason ?? '-'} />
       </section>
 
+      <PreviewSection
+        title="마지막 Goal JSON"
+        value={goalSummary?.last_goal_preview}
+      />
+      <PreviewSection
+        title="마지막 Feedback JSON"
+        value={goalSummary?.last_feedback_preview}
+      />
+      <PreviewSection
+        title="마지막 Result JSON"
+        value={goalSummary?.last_result_preview}
+      />
+      <PreviewSection
+        title="최근 Goal History JSON"
+        value={goalSummary?.history}
+      />
       <PreviewSection
         title="피드백 미리보기 JSON"
         value={runtime.feedback_preview}

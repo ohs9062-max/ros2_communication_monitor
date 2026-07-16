@@ -14,6 +14,7 @@ export function ServiceDetailPanel({ participants, service }) {
   }
 
   const activeCheck = service.active_check ?? {}
+  const callSummary = service.last_call_summary
 
   return (
     <aside className="detail-panel">
@@ -83,6 +84,30 @@ export function ServiceDetailPanel({ participants, service }) {
           value={service.active_check_supported ? '예' : '아니오 (상태만 표시)'}
         />
         <DetailLine
+          label="호출 가능"
+          tone={service.callable ? 'good' : service.allowlisted ? 'warn' : 'muted'}
+          value={service.callable ? '예' : service.allowlisted ? '등록됨' : '아니오'}
+        />
+        <DetailLine
+          label="마지막 호출 상태"
+          tone={statusTone(callSummary?.last_call_status)}
+          value={callSummary?.last_call_status ?? '-'}
+        />
+        <DetailLine
+          label="서버 전송"
+          tone={callSummary?.sent_to_server === false ? 'warn' : 'muted'}
+          value={
+            callSummary
+              ? callSummary.sent_to_server ? '예' : '아니오'
+              : '-'
+          }
+        />
+        {callSummary?.error_type === 'validation_error' && (
+          <p className="notice-text warning">
+            입력값이 타입과 맞지 않아 서버로 보내지 않았습니다.
+          </p>
+        )}
+        <DetailLine
           label="마지막 상태"
           tone={statusTone(activeCheck.last_status)}
           value={activeCheck.last_status ?? '-'}
@@ -97,11 +122,38 @@ export function ServiceDetailPanel({ participants, service }) {
           value={formatRelativeTime(activeCheck.last_checked_at)}
         />
         <DetailLine label="오류 메시지" value={activeCheck.error_message ?? '-'} />
+        <DetailLine label="마지막 호출 오류" value={callSummary?.last_error ?? '-'} />
         <DetailLine label="측정 이유" value={activeCheck.reason ?? '-'} />
+        <DetailLine label="호출 수" value={service.call_count ?? 0} />
+        <DetailLine label="성공/실패" value={`${service.success_count ?? 0}/${service.failure_count ?? 0}`} />
       </section>
 
       <section className="detail-section">
         <h3>상세 데이터</h3>
+        <details>
+          <summary>마지막 요청 JSON</summary>
+          <pre className="preview-json">
+            {callSummary?.last_request_preview
+              ? JSON.stringify(callSummary.last_request_preview, null, 2)
+              : '데이터 없음'}
+          </pre>
+        </details>
+        <details>
+          <summary>마지막 응답 JSON</summary>
+          <pre className="preview-json">
+            {callSummary?.last_response_preview
+              ? JSON.stringify(callSummary.last_response_preview, null, 2)
+              : '데이터 없음'}
+          </pre>
+        </details>
+        <details>
+          <summary>최근 호출 History JSON</summary>
+          <pre className="preview-json">
+            {callSummary?.history
+              ? JSON.stringify(callSummary.history, null, 2)
+              : '데이터 없음'}
+          </pre>
+        </details>
         <details>
           <summary>응답 원본 Preview JSON</summary>
           <pre className="preview-json">

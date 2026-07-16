@@ -1,0 +1,21 @@
+# cmd: 1=CREATE, 2=READ, 3=UPDATE, 4=DELETE, 5=LIST
+uint8 cmd
+
+string table_name
+
+# CREATE/UPDATE용 데이터 (UPDATE는 scheduling_id 포함해서 전달)
+rths_interfaces/CleaningSchedule[] items
+
+# LIST 옵션
+bool only_active
+string where
+string options
+
+---
+bool success
+string message
+
+
+# LIST 결과(목록)
+rths_interfaces/CleaningSchedule[] items
+

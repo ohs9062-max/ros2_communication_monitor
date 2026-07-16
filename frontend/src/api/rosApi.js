@@ -64,6 +64,10 @@ export function fetchInterfaceRegistry() {
   return requestJson('/ros/interfaces/registry')
 }
 
+export function fetchInterfacePackages() {
+  return requestJson('/ros/interfaces/packages')
+}
+
 export function fetchInterfaceApplyStatus() {
   return requestJson('/ros/interfaces/apply/status')
 }
@@ -127,5 +131,41 @@ export async function uploadInterface(file) {
     method: 'POST',
     body: formData,
   })
+  return responseJson(response)
+}
+
+export async function uploadInterfacePackage(file, { replace = false } = {}) {
+  const formData = new FormData()
+  formData.append('file', file)
+  const query = replace ? '?replace=true' : ''
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/packages/upload${query}`, {
+    method: 'POST',
+    body: formData,
+  })
+  return responseJson(response)
+}
+
+export async function uploadInterfacePackageFolder(files, { replace = false } = {}) {
+  const formData = new FormData()
+  files.forEach((file) => {
+    const relativePath = file.webkitRelativePath || file.relativePath || file.name
+    formData.append('files', file, relativePath)
+    formData.append('relative_path', relativePath)
+  })
+  const query = replace ? '?replace=true' : ''
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/packages/folder-upload${query}`, {
+    method: 'POST',
+    body: formData,
+  })
+  return responseJson(response)
+}
+
+export async function deleteInterfacePackage(packageName) {
+  const response = await fetch(
+    `${API_BASE_URL}/ros/interfaces/packages/${encodeURIComponent(packageName)}`,
+    {
+      method: 'DELETE',
+    },
+  )
   return responseJson(response)
 }

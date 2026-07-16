@@ -8,6 +8,11 @@ from ros2_dashboard_backend.service.models import SERVICE_CATEGORY_USER
 
 from rosidl_runtime_py.utilities import get_service
 
+from ros2_dashboard_backend.interface_value_converter import (
+    build_ros_message,
+    ros_message_to_json,
+)
+
 
 ACTIVE_CHECK_STATUS_NOT_SUPPORTED = 'not_supported'
 ACTIVE_CHECK_STATUS_DISABLED = 'disabled'
@@ -205,20 +210,12 @@ def load_service_class(service_type: str) -> type:
 
 def build_request(service_class: type, request_data: dict[str, Any]) -> Any:
     """Create a Request object and apply configured fields."""
-    request = service_class.Request()
-    for key, value in request_data.items():
-        _set_field(request, key, value)
-
-    return request
+    return build_ros_message(service_class.Request, request_data, label='request')
 
 
 def response_to_preview(response: Any) -> dict[str, Any]:
     """Return a JSON-safe response preview."""
-    fields = response.get_fields_and_field_types()
-    return {
-        key: _json_value(getattr(response, key))
-        for key in fields
-    }
+    return ros_message_to_json(response)
 
 
 def response_success(

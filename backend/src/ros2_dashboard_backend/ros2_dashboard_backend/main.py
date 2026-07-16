@@ -35,6 +35,15 @@ from ros2_dashboard_backend.interface_registry import (
     register_interface,
     registry_snapshot,
 )
+from ros2_dashboard_backend.interface_packages import (
+    InterfacePackageError,
+    MAX_PACKAGE_ZIP_SIZE,
+    delete_interface_package,
+    extract_multipart_package_files,
+    packages_snapshot,
+    upload_interface_package,
+    upload_interface_package_folder,
+)
 from ros2_dashboard_backend.ros_monitor import RosMonitor
 from ros2_dashboard_backend.service.call_runtime import ServiceCallError
 from ros2_dashboard_backend.websocket_manager import WebSocketManager
@@ -217,6 +226,111 @@ def get_interface_registry() -> dict[str, Any]:
     }
 
 
+@app.post('/ros/interfaces/packages/upload')
+async def upload_ros_interface_package(
+    request: Request,
+    replace: bool = Query(False),
+) -> dict[str, Any]:
+    """Upload one zipped ROS 2 interface package while preserving its package name."""
+    content_length = request.headers.get('content-length')
+    if content_length:
+        try:
+            request_size = int(content_length)
+        except ValueError:
+            request_size = 0
+        if request_size > MAX_PACKAGE_ZIP_SIZE + 64 * 1024:
+            raise HTTPException(status_code=413, detail='패키지 업로드 요청이 너무 큽니다.')
+
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_PACKAGE_ZIP_SIZE + 64 * 1024:
+            raise HTTPException(status_code=413, detail='패키지 업로드 요청이 너무 큽니다.')
+    try:
+        file_name, content = extract_multipart_file(
+            request.headers.get('content-type', ''), bytes(body),
+        )
+        entry = upload_interface_package(file_name, content, replace=replace)
+    except InterfacePackageError as exc:
+        status_code = 409 if '이미 있습니다' in str(exc) else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    except InterfaceUploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        'success': True,
+        'status': 'uploaded',
+        'data': entry,
+        'message': 'interface package 업로드가 완료되었습니다. 적용하기로 build/import를 진행하세요.',
+    }
+
+
+@app.post('/ros/interfaces/packages/folder-upload')
+async def upload_ros_interface_package_folder(
+    request: Request,
+    replace: bool = Query(False),
+) -> dict[str, Any]:
+    """Upload one ROS 2 interface package folder using browser relative paths."""
+    content_length = request.headers.get('content-length')
+    if content_length:
+        try:
+            request_size = int(content_length)
+        except ValueError:
+            request_size = 0
+        if request_size > MAX_PACKAGE_ZIP_SIZE + 512 * 1024:
+            raise HTTPException(status_code=413, detail='패키지 폴더 업로드 요청이 너무 큽니다.')
+
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_PACKAGE_ZIP_SIZE + 512 * 1024:
+            raise HTTPException(status_code=413, detail='패키지 폴더 업로드 요청이 너무 큽니다.')
+    try:
+        files = extract_multipart_package_files(
+            request.headers.get('content-type', ''), bytes(body),
+        )
+        entry = upload_interface_package_folder(files, replace=replace)
+    except InterfacePackageError as exc:
+        status_code = 409 if '이미 있습니다' in str(exc) else 400
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+    return {
+        'success': True,
+        'status': 'uploaded',
+        'data': entry,
+        'message': 'interface package 폴더 업로드가 완료되었습니다. 적용하기로 build/import를 진행하세요.',
+    }
+
+
+@app.get('/ros/interfaces/packages')
+def get_interface_packages() -> dict[str, Any]:
+    """Return uploaded interface package registry."""
+    try:
+        registry = packages_snapshot()
+    except InterfacePackageError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {
+        'success': True,
+        'data': registry['packages'],
+        'meta': {
+            'count': len(registry['packages']),
+        },
+        'message': '업로드된 interface package 목록을 조회했습니다.',
+    }
+
+
+@app.delete('/ros/interfaces/packages/{package_name}')
+def delete_ros_interface_package(package_name: str) -> dict[str, Any]:
+    """Delete one uploaded interface package."""
+    try:
+        result = delete_interface_package(package_name)
+    except InterfacePackageError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {
+        'success': True,
+        'data': result,
+        'message': 'interface package를 삭제했습니다. 적용하기로 build 상태를 갱신하세요.',
+    }
+
+
 @app.post('/ros/interfaces/apply')
 def apply_ros_interfaces(background_tasks: BackgroundTasks) -> dict[str, Any]:
     """Build registered ROS interfaces and schedule uvicorn reload on success."""
@@ -345,7 +459,11 @@ async def call_registered_service(request: Request) -> dict[str, Any]:
 
     return {
         **result,
-        'message': 'Service call이 완료되었습니다.',
+        'message': (
+            '입력값이 서비스 타입과 맞지 않아 호출하지 않았습니다. 서버에는 요청을 보내지 않았습니다.'
+            if result.get('error_type') == 'validation_error'
+            else 'Service call이 완료되었습니다.'
+        ),
     }
 
 
@@ -406,7 +524,11 @@ async def send_registered_action_goal(request: Request) -> dict[str, Any]:
 
     return {
         **result,
-        'message': 'Action Goal 실행이 완료되었습니다.',
+        'message': (
+            '입력값이 Action 타입과 맞지 않아 Goal을 보내지 않았습니다. 서버에는 요청을 보내지 않았습니다.'
+            if result.get('error_type') == 'validation_error'
+            else 'Action Goal 실행이 완료되었습니다.'
+        ),
     }
 
 

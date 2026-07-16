@@ -1,0 +1,280 @@
+packages:
+- name: rths_interfaces
+  path: backend/src/uploaded_interface_packages/rths_interfaces
+  absolute_path: /home/hs/rang/ros2_dashboard/backend/src/uploaded_interface_packages/rths_interfaces
+  source: uploaded_package
+  uploaded_at: '2026-07-16T03:17:50.312033+00:00'
+  last_build_status: success
+  import_available: true
+  import_error: null
+  error: null
+  dependency_candidates: []
+  dependency_missing: []
+  interfaces:
+    msg:
+    - file_name: CleaningSchedule.msg
+      file_kind: msg
+      type_name: CleaningSchedule
+      type: rths_interfaces/msg/CleaningSchedule
+      relative_path: msg/CleaningSchedule.msg
+      saved_path: backend/src/uploaded_interface_packages/rths_interfaces/msg/CleaningSchedule.msg
+      absolute_saved_path: /home/hs/rang/ros2_dashboard/backend/src/uploaded_interface_packages/rths_interfaces/msg/CleaningSchedule.msg
+      raw_text: 'uint32 scheduling_id
+
+        string scheduling_dt
+
+        uint8 count
+
+        bool is_active
+
+
+        '
+      parsed:
+        fields:
+        - type: uint32
+          raw_line: uint32 scheduling_id
+          name: scheduling_id
+        - type: string
+          raw_line: string scheduling_dt
+          name: scheduling_dt
+        - type: uint8
+          raw_line: uint8 count
+          name: count
+        - type: bool
+          raw_line: bool is_active
+          name: is_active
+      parsed_error: null
+      dependency_candidates: []
+      import_available: true
+      import_error: null
+      import_checked_at: '2026-07-16T03:18:08.966291+00:00'
+    srv:
+    - file_name: RobotControl.srv
+      file_kind: srv
+      type_name: RobotControl
+      type: rths_interfaces/srv/RobotControl
+      relative_path: srv/RobotControl.srv
+      saved_path: backend/src/uploaded_interface_packages/rths_interfaces/srv/RobotControl.srv
+      absolute_saved_path: /home/hs/rang/ros2_dashboard/backend/src/uploaded_interface_packages/rths_interfaces/srv/RobotControl.srv
+      raw_text: '# Goal
+
+
+        uint8 cmd
+
+
+        ---
+
+        # Result
+
+        bool success
+
+        uint8 result_code
+
+        string message
+
+
+        '
+      parsed:
+        request:
+        - type: uint8
+          raw_line: uint8 cmd
+          name: cmd
+        response:
+        - type: bool
+          raw_line: bool success
+          name: success
+        - type: uint8
+          raw_line: uint8 result_code
+          name: result_code
+        - type: string
+          raw_line: string message
+          name: message
+      parsed_error: null
+      dependency_candidates: []
+      import_available: true
+      import_error: null
+      import_checked_at: '2026-07-16T03:18:08.966291+00:00'
+    - file_name: ScheduleCrud.srv
+      file_kind: srv
+      type_name: ScheduleCrud
+      type: rths_interfaces/srv/ScheduleCrud
+      relative_path: srv/ScheduleCrud.srv
+      saved_path: backend/src/uploaded_interface_packages/rths_interfaces/srv/ScheduleCrud.srv
+      absolute_saved_path: /home/hs/rang/ros2_dashboard/backend/src/uploaded_interface_packages/rths_interfaces/srv/ScheduleCrud.srv
+      raw_text: '# cmd: 1=CREATE, 2=READ, 3=UPDATE, 4=DELETE, 5=LIST
+
+        uint8 cmd
+
+
+        string table_name
+
+
+        # CREATE/UPDATE용 데이터 (UPDATE는 scheduling_id 포함해서 전달)
+
+        rths_interfaces/CleaningSchedule[] items
+
+
+        # LIST 옵션
+
+        bool only_active
+
+        string where
+
+        string options
+
+
+        ---
+
+        bool success
+
+        string message
+
+
+
+        # LIST 결과(목록)
+
+        rths_interfaces/CleaningSchedule[] items
+
+
+        '
+      parsed:
+        request:
+        - type: uint8
+          raw_line: uint8 cmd
+          name: cmd
+        - type: string
+          raw_line: string table_name
+          name: table_name
+        - type: rths_interfaces/CleaningSchedule[]
+          raw_line: rths_interfaces/CleaningSchedule[] items
+          name: items
+        - type: bool
+          raw_line: bool only_active
+          name: only_active
+        - type: string
+          raw_line: string where
+          name: where
+        - type: string
+          raw_line: string options
+          name: options
+        response:
+        - type: bool
+          raw_line: bool success
+          name: success
+        - type: string
+          raw_line: string message
+          name: message
+        - type: rths_interfaces/CleaningSchedule[]
+          raw_line: rths_interfaces/CleaningSchedule[] items
+          name: items
+      parsed_error: null
+      dependency_candidates: []
+      import_available: true
+      import_error: null
+      import_checked_at: '2026-07-16T03:18:08.966291+00:00'
+    action:
+    - file_name: CanControl.action
+      file_kind: action
+      type_name: CanControl
+      type: rths_interfaces/action/CanControl
+      relative_path: action/CanControl.action
+      saved_path: backend/src/uploaded_interface_packages/rths_interfaces/action/CanControl.action
+      absolute_saved_path: /home/hs/rang/ros2_dashboard/backend/src/uploaded_interface_packages/rths_interfaces/action/CanControl.action
+      raw_text: '# Goal
+
+        uint8 node_id
+
+        uint8 port
+
+        uint32 value
+
+        uint8 retries
+
+        uint32 timeout_ms
+
+
+        ---
+
+        # Result
+
+        bool success
+
+        uint8 ctrl_code
+
+        uint32 response_can_id
+
+        string message
+
+
+        ---
+
+        # Feedback
+
+        string stage
+
+        uint8 attempt
+
+        string detail
+
+        '
+      parsed:
+        goal:
+        - type: uint8
+          raw_line: uint8 node_id
+          name: node_id
+        - type: uint8
+          raw_line: uint8 port
+          name: port
+        - type: uint32
+          raw_line: uint32 value
+          name: value
+        - type: uint8
+          raw_line: uint8 retries
+          name: retries
+        - type: uint32
+          raw_line: uint32 timeout_ms
+          name: timeout_ms
+        result:
+        - type: bool
+          raw_line: bool success
+          name: success
+        - type: uint8
+          raw_line: uint8 ctrl_code
+          name: ctrl_code
+        - type: uint32
+          raw_line: uint32 response_can_id
+          name: response_can_id
+        - type: string
+          raw_line: string message
+          name: message
+        feedback:
+        - type: string
+          raw_line: string stage
+          name: stage
+        - type: uint8
+          raw_line: uint8 attempt
+          name: attempt
+        - type: string
+          raw_line: string detail
+          name: detail
+      parsed_error: null
+      dependency_candidates: []
+      import_available: true
+      import_error: null
+      import_checked_at: '2026-07-16T03:18:08.966291+00:00'
+  rebuild_required: false
+  last_build_at: '2026-07-16T03:18:06.088208+00:00'
+  import_checked_at: '2026-07-16T03:18:08.966291+00:00'
+apply_summary:
+  status: success
+  real_apply_success: true
+  ready_for_build: true
+  registry_exists: true
+  registry_path: backend/config/interface_packages.yaml
+  uploaded_packages_path: backend/src/uploaded_interface_packages
+  package_count: 1
+  total: 4
+  applied_count: 4
+  not_applied: []
+  import_pending: []
+  requires_import_available: true

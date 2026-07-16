@@ -7,7 +7,9 @@ from time import time
 from typing import Any, Callable
 
 from ros2_dashboard_backend.interface_apply import refresh_install_python_paths
+from ros2_dashboard_backend.interface_value_converter import InterfaceValidationError
 from ros2_dashboard_backend.interface_registry import registry_snapshot
+from ros2_dashboard_backend.interface_packages import registered_package_services
 from ros2_dashboard_backend.service.active_check import (
     build_request,
     load_service_class,
@@ -95,14 +97,29 @@ class ServiceCallRuntime:
             raise ServiceCallError('ROS2 monitor node가 실행 중이 아닙니다.')
 
         started_at = time()
+        sent_to_server = False
         try:
             service_class = load_service_class(service_type)
-            request = build_request(service_class, request_data)
+            try:
+                request = build_request(service_class, request_data)
+            except InterfaceValidationError as exc:
+                result = self._validation_result(
+                    service_name=service_name,
+                    service_type=service_type,
+                    request_data=request_data,
+                    started_at=started_at,
+                    timeout_sec=timeout,
+                    error=str(exc),
+                    details=exc.details,
+                )
+                self._record_history(result)
+                return result
             client = self._client(service_name, service_type, service_class)
             if not client.service_is_ready():
                 raise ServiceCallError('Service server가 준비되지 않았습니다.')
 
             future = client.call_async(request)
+            sent_to_server = True
             event = threading.Event()
             future.add_done_callback(lambda _future: event.set())
             if not event.wait(timeout=timeout):
@@ -119,6 +136,8 @@ class ServiceCallRuntime:
                 'elapsed_ms': elapsed_ms,
                 'timeout_sec': timeout,
                 'called_at': started_at,
+                'called': True,
+                'sent_to_server': True,
             }
         except Exception as exc:
             elapsed_ms = (time() - started_at) * 1000.0
@@ -131,6 +150,8 @@ class ServiceCallRuntime:
                 'elapsed_ms': elapsed_ms,
                 'timeout_sec': timeout,
                 'called_at': started_at,
+                'called': sent_to_server,
+                'sent_to_server': sent_to_server,
                 'error': str(exc),
             }
             self._record_history(result)
@@ -151,6 +172,31 @@ class ServiceCallRuntime:
                 'count': len(calls),
             },
         }
+
+    def summary_by_service(self) -> dict[tuple[str, str], dict[str, Any]]:
+        """Return last call and counters keyed by (service_name, service_type)."""
+        with self._lock:
+            calls = [item.copy() for item in self._history]
+        summaries: dict[tuple[str, str], dict[str, Any]] = {}
+        for call in reversed(calls):
+            key = (str(call.get('service_name') or ''), str(call.get('service_type') or ''))
+            if not key[0] or not key[1]:
+                continue
+            summary = summaries.setdefault(key, {
+                'call_count': 0,
+                'success_count': 0,
+                'failure_count': 0,
+                'history': [],
+            })
+            summary['call_count'] += 1
+            if call.get('success') is True:
+                summary['success_count'] += 1
+            else:
+                summary['failure_count'] += 1
+            summary['history'].insert(0, _call_summary(call))
+            summary['history'] = summary['history'][:5]
+            summary.update(_call_summary(call))
+        return summaries
 
     def _allowed_service(
         self,
@@ -192,7 +238,10 @@ class ServiceCallRuntime:
                 'saved_path': build.get('saved_path'),
                 'import_available': build.get('import_available') is True,
                 'import_error': build.get('import_error'),
+                'source': 'single_interface',
+                'package_name': package_name,
             })
+        services.extend(registered_package_services())
         return services
 
     def _service_graph(self) -> list[dict[str, Any]]:
@@ -269,12 +318,41 @@ class ServiceCallRuntime:
             'callable': callable_now,
             'reason': reason,
             'saved_path': entry.get('saved_path'),
+            'source': entry.get('source', 'single_interface'),
+            'package_name': entry.get('package_name'),
         }
 
     def _record_history(self, item: dict[str, Any]) -> None:
         with self._lock:
             self._history.insert(0, item)
             del self._history[MAX_HISTORY_ITEMS:]
+
+    def _validation_result(
+        self,
+        *,
+        service_name: str,
+        service_type: str,
+        request_data: dict[str, Any],
+        started_at: float,
+        timeout_sec: float,
+        error: str,
+        details: list[str],
+    ) -> dict[str, Any]:
+        return {
+            'success': False,
+            'called': False,
+            'sent_to_server': False,
+            'service_name': service_name,
+            'service_type': service_type,
+            'request': request_data,
+            'response': None,
+            'elapsed_ms': (time() - started_at) * 1000.0,
+            'timeout_sec': timeout_sec,
+            'called_at': started_at,
+            'error_type': 'validation_error',
+            'error': error,
+            'details': details,
+        }
 
 
 def _normalized_timeout(timeout_sec: float | None) -> float:
@@ -287,3 +365,22 @@ def _normalized_timeout(timeout_sec: float | None) -> float:
     if timeout <= 0:
         raise ServiceCallError('timeout_sec는 0보다 커야 합니다.')
     return min(timeout, MAX_TIMEOUT_SEC)
+
+
+def _call_summary(call: dict[str, Any]) -> dict[str, Any]:
+    error_type = call.get('error_type')
+    status = 'success' if call.get('success') is True else (error_type or 'failed')
+    return {
+        'status': status,
+        'success': call.get('success') is True,
+        'called': call.get('called', call.get('sent_to_server', False)),
+        'sent_to_server': call.get('sent_to_server', False),
+        'last_request_preview': call.get('request'),
+        'last_response_preview': call.get('response'),
+        'last_call_status': status,
+        'last_called_at': call.get('called_at'),
+        'last_response_time_ms': call.get('elapsed_ms'),
+        'last_error': call.get('error'),
+        'error_type': error_type,
+        'details': call.get('details', []),
+    }

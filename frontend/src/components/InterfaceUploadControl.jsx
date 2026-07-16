@@ -3,20 +3,26 @@ import {
   applyInterfaces,
   callRegisteredService,
   checkInterfaceImports,
+  deleteInterfacePackage,
   fetchActionGoalHistory,
   fetchCallableActions,
   fetchCallableServices,
   fetchInterfaceApplyStatus,
+  fetchInterfacePackages,
   fetchInterfaceRegistry,
   fetchServiceCallHistory,
   sendActionGoal,
   uploadInterface,
+  uploadInterfacePackage,
+  uploadInterfacePackageFolder,
 } from '../api/rosApi.js'
 
 const ACCEPTED_EXTENSIONS = ['.msg', '.srv', '.action']
 
 export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, websocket }) {
   const inputRef = useRef(null)
+  const packageFolderInputRef = useRef(null)
+  const packageInputRef = useRef(null)
   const lastRefreshSignalRef = useRef(refreshSignal)
   const dragCleanupRef = useRef(null)
   const [busy, setBusy] = useState(false)
@@ -28,6 +34,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   const [showRegistry, setShowRegistry] = useState(false)
   const [showCallableServices, setShowCallableServices] = useState(false)
   const [showCallableActions, setShowCallableActions] = useState(false)
+  const [showPackages, setShowPackages] = useState(false)
   const [showBuildLog, setShowBuildLog] = useState(false)
   const [buildLogTail, setBuildLogTail] = useState('')
   const [registryPanelPosition, setRegistryPanelPosition] = useState(null)
@@ -48,8 +55,13 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   const [actionGoalBusy, setActionGoalBusy] = useState(false)
   const [actionGoalResult, setActionGoalResult] = useState(null)
   const [actionGoalHistory, setActionGoalHistory] = useState([])
+  const [replacePackage, setReplacePackage] = useState(false)
+  const [packages, setPackages] = useState([])
+  const [packagePanelPosition, setPackagePanelPosition] = useState(null)
 
   const chooseFile = () => inputRef.current?.click()
+  const choosePackageFolder = () => packageFolderInputRef.current?.click()
+  const choosePackageFile = () => packageInputRef.current?.click()
   const toggleBuildLog = () => {
     setShowBuildLog((value) => {
       const nextValue = !value
@@ -67,42 +79,111 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
     (action) => actionKey(action) === selectedActionKey,
   )
 
-  const handleFile = async (event) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-
-    const extension = ACCEPTED_EXTENSIONS.find((item) =>
-      file.name.toLowerCase().endsWith(item),
+  const uploadFiles = async (files, sourceLabel) => {
+    const supportedFiles = files.filter((file) =>
+      ACCEPTED_EXTENSIONS.some((extension) => file.name.toLowerCase().endsWith(extension)),
     )
-    if (!extension) {
-      setFeedback({ tone: 'error', text: '.msg, .srv, .action 파일만 가능합니다.' })
+    if (!supportedFiles.length) {
+      setFeedback({ tone: 'error', text: `${sourceLabel}에 .msg, .srv, .action 파일이 없습니다.` })
       return
     }
 
     setBusy(true)
     setFeedback(null)
+    const succeeded = []
+    const warned = []
+    const failed = []
     try {
-      const payload = await uploadInterface(file)
-      const item = payload.data
-      const build = item.build ?? {}
-      const buildSummary = build.error
-        ? `YAML 저장됨 · 패키지 반영 실패: ${build.error}`
-        : [
-            'YAML 저장됨',
-            build.file_saved ? 'interface 파일 생성됨' : 'interface 파일 미생성',
-            build.cmake_registered ? 'CMake 등록됨' : 'CMake 미등록',
-            build.package_xml_checked ? 'package.xml 확인됨' : 'package.xml 미확인',
-            build.import_available ? 'import 가능' : '현재 import 불가, 재빌드 필요',
-          ].join(' · ')
-      const savedPath = build.saved_path ? ` · 저장 경로: ${build.saved_path}` : ''
+      for (const file of supportedFiles) {
+        try {
+          const payload = await uploadInterface(file)
+          const item = payload.data
+          if (payload.success && !item.parsed_error) succeeded.push(item.file_name)
+          else warned.push(`${item.file_name}${item.parsed_error ? ` (${item.parsed_error})` : ''}`)
+        } catch (error) {
+          failed.push(`${file.name} (${error.message})`)
+        }
+      }
+
+      const summary = [
+        `${sourceLabel}: ${supportedFiles.length}개 처리`,
+        `성공 ${succeeded.length}`,
+        warned.length ? `경고 ${warned.length}` : null,
+        failed.length ? `실패 ${failed.length}` : null,
+      ].filter(Boolean).join(' · ')
+      const details = failed[0] ?? warned[0]
       setFeedback({
-        tone: payload.success && !item.parsed_error ? 'success' : 'warning',
-        text: item.parsed_error
-          ? `${buildSummary}${savedPath} · 파싱 경고: ${item.parsed_error}`
-          : `${item.file_name}: ${buildSummary}${savedPath}`,
+        tone: failed.length ? 'error' : warned.length ? 'warning' : 'success',
+        text: details ? `${summary} · ${details}` : `${summary} · ${succeeded.join(', ')}`,
       })
       if (showRegistry) await loadRegistry(true)
+      await loadApplyStatus()
+      onStateChanged?.()
+    } catch (error) {
+      setFeedback({ tone: 'error', text: `${sourceLabel} 후 상태 갱신 실패: ${error.message}` })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleFile = async (event) => {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    if (files.length) await uploadFiles(files, '파일 업로드')
+  }
+
+  const handlePackageFile = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      setFeedback({ tone: 'error', text: 'interface package는 .zip 파일만 가능합니다.' })
+      return
+    }
+    setBusy(true)
+    setFeedback(null)
+    try {
+      const payload = await uploadInterfacePackage(file, { replace: replacePackage })
+      const item = payload.data
+      const counts = interfaceCounts(item.interfaces)
+      setFeedback({
+        tone: 'success',
+        text: `${item.name} package 업로드 완료 · msg ${counts.msg}, srv ${counts.srv}, action ${counts.action} · 적용하기로 build/import를 진행하세요.`,
+      })
+      await loadPackages(true)
+      await loadApplyStatus()
+      onStateChanged?.()
+    } catch (error) {
+      setFeedback({ tone: 'error', text: error.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handlePackageFolder = async (event) => {
+    const files = Array.from(event.target.files ?? [])
+    event.target.value = ''
+    if (!files.length) return
+    const packageFiles = files.filter((file) => {
+      const relativePath = file.webkitRelativePath || file.name
+      return /(^|\/)(package\.xml|CMakeLists\.txt)$/.test(relativePath)
+        || /\/(msg|srv|action)\/[^/]+\.(msg|srv|action)$/.test(relativePath)
+    })
+    if (!packageFiles.length) {
+      setFeedback({ tone: 'error', text: 'package.xml, CMakeLists.txt, msg/srv/action 파일이 있는 ROS2 package 폴더를 선택하세요.' })
+      return
+    }
+    setBusy(true)
+    setFeedback(null)
+    try {
+      const payload = await uploadInterfacePackageFolder(packageFiles, { replace: replacePackage })
+      const item = payload.data
+      const counts = interfaceCounts(item.interfaces)
+      setFeedback({
+        tone: 'success',
+        text: `${item.name} package 폴더 업로드 완료 · msg ${counts.msg}, srv ${counts.srv}, action ${counts.action} · 적용하기로 build/import를 진행하세요.`,
+      })
+      await loadPackages(true)
       await loadApplyStatus()
       onStateChanged?.()
     } catch (error) {
@@ -132,6 +213,43 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         setRegistryPanelPosition(defaultFloatingPosition(300, 112))
       }
       setShowRegistry(true)
+    } catch (error) {
+      setFeedback({ tone: 'error', text: error.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const loadPackages = async (keepOpen = false) => {
+    if (showPackages && !keepOpen) {
+      setShowPackages(false)
+      return
+    }
+    setBusy(true)
+    try {
+      const payload = await fetchInterfacePackages()
+      setPackages(payload.data ?? [])
+      if (!packagePanelPosition) {
+        setPackagePanelPosition(defaultFloatingPosition(420, 132))
+      }
+      setShowPackages(true)
+    } catch (error) {
+      setFeedback({ tone: 'error', text: error.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const removePackage = async (packageName) => {
+    setBusy(true)
+    try {
+      await deleteInterfacePackage(packageName)
+      setFeedback({
+        tone: 'warning',
+        text: `${packageName} package를 삭제했습니다. 적용하기로 build 상태를 갱신하세요.`,
+      })
+      await loadPackages(true)
+      onStateChanged?.()
     } catch (error) {
       setFeedback({ tone: 'error', text: error.message })
     } finally {
@@ -220,6 +338,10 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       const payload = await checkInterfaceImports()
       setRegistry(payload.data)
       setShowRegistry(true)
+      const packagePayload = await fetchInterfacePackages()
+      setPackages(packagePayload.data ?? [])
+      setPackagePanelPosition((position) => position ?? defaultFloatingPosition(420, 132))
+      setShowPackages(true)
       const summary = payload.summary ?? {}
       const notApplied = summary.not_applied ?? payload.not_applied ?? []
       if (payload.real_apply_success) {
@@ -277,6 +399,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       }
       await loadApplyStatus()
       await loadRegistry(true)
+      await loadPackages(true)
       onStateChanged?.()
     } catch (error) {
       setReloadPhase('idle')
@@ -360,6 +483,11 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
           setRegistry(registryPayload.data)
           setShowRegistry(true)
         }
+        if (showPackages) {
+          const packagesPayload = await fetchInterfacePackages()
+          setPackages(packagesPayload.data ?? [])
+          setShowPackages(true)
+        }
         if (showCallableServices) {
           const [servicesPayload, historyPayload] = await Promise.all([
             fetchCallableServices(),
@@ -418,6 +546,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
     selectedServiceKey,
     showCallableActions,
     showCallableServices,
+    showPackages,
     showRegistry,
   ])
 
@@ -447,14 +576,48 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         ref={inputRef}
         type="file"
       />
+      <input
+        accept=".zip"
+        className="interface-file-input"
+        onChange={handlePackageFile}
+        ref={packageInputRef}
+        type="file"
+      />
+      <input
+        className="interface-file-input"
+        directory=""
+        multiple
+        onChange={handlePackageFolder}
+        ref={packageFolderInputRef}
+        type="file"
+        webkitdirectory=""
+      />
       <button className="interface-upload-button" disabled={disabled} onClick={chooseFile} type="button">
         {busy ? '처리 중…' : '타입 업로드'}
       </button>
+      <button className="interface-package-button" disabled={disabled} onClick={choosePackageFile} type="button">
+        Package zip 업로드
+      </button>
+      <button className="interface-package-folder-button" disabled={disabled} onClick={choosePackageFolder} type="button">
+        Package 폴더 업로드
+      </button>
+      <label className="interface-package-replace">
+        <input
+          checked={replacePackage}
+          disabled={disabled}
+          onChange={(event) => setReplacePackage(event.target.checked)}
+          type="checkbox"
+        />
+        <span>replace</span>
+      </label>
       <button className="interface-apply-button" disabled={disabled} onClick={applyUploadedInterfaces} type="button">
         {applying ? '빌드 중…' : '적용하기'}
       </button>
       <button className="interface-registry-button" disabled={disabled} onClick={() => loadRegistry()} type="button">
         등록 목록
+      </button>
+      <button className="interface-package-list-button" disabled={disabled} onClick={() => loadPackages()} type="button">
+        Package 목록
       </button>
       <button className="interface-service-button" disabled={disabled} onClick={() => loadCallableServices()} type="button">
         Service 실행
@@ -527,6 +690,31 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
           <RegistryGroup items={registry?.messages} label="Message" />
           <RegistryGroup items={registry?.services} label="Service" />
           <RegistryGroup items={registry?.actions} label="Action" />
+        </div>
+      )}
+      {showPackages && (
+        <div
+          className="interface-package-panel"
+          style={floatingPanelStyle(packagePanelPosition)}
+        >
+          <div
+            className="interface-registry-heading interface-floating-heading"
+            onPointerDown={(event) => startFloatingDrag({
+              cleanupRef: dragCleanupRef,
+              event,
+              height: 520,
+              position: packagePanelPosition,
+              setPosition: setPackagePanelPosition,
+              width: 420,
+            })}
+          >
+            <strong>Uploaded Interface Packages</strong>
+            <button aria-label="Package 목록 닫기" onClick={() => setShowPackages(false)} type="button">×</button>
+          </div>
+          <p className="interface-package-help">
+            장비가 실제 사용하는 원본 interface package를 패키지명 그대로 등록합니다.
+          </p>
+          <PackageRegistry packages={packages} onDelete={removePackage} />
         </div>
       )}
       {showCallableServices && (
@@ -607,9 +795,10 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
                 {serviceCallBusy ? '실행 중…' : '실행'}
               </button>
               {serviceCallResult && (
-                <pre className={`interface-service-result ${serviceCallResult.success ? 'success' : 'error'}`}>
-                  {JSON.stringify(serviceCallResult.success ? serviceCallResult.response : serviceCallResult, null, 2)}
-                </pre>
+                <CallResultBlock
+                  result={serviceCallResult}
+                  successPayload={serviceCallResult.response}
+                />
               )}
               <ServiceCallHistory calls={serviceCallHistory} />
             </>
@@ -769,6 +958,113 @@ function clampFloatingPosition(position, width, height) {
   }
 }
 
+function PackageRegistry({ onDelete, packages }) {
+  if (!packages.length) {
+    return <small>업로드된 interface package가 없습니다.</small>
+  }
+  return (
+    <div className="interface-package-list">
+      {packages.map((item) => (
+        <details className="interface-package-card" key={item.name} open>
+          <summary>
+            <span>
+              <strong>{item.name}</strong>
+              <small>{packageStatusLabel(item)}</small>
+            </span>
+            <button
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onDelete(item.name)
+              }}
+              type="button"
+            >
+              삭제
+            </button>
+          </summary>
+          <dl>
+            <dt>path</dt>
+            <dd>{item.path}</dd>
+            <dt>source</dt>
+            <dd>{item.source}</dd>
+            <dt>uploaded_at</dt>
+            <dd>{item.uploaded_at}</dd>
+          </dl>
+          <InterfaceTypeList items={item.interfaces?.msg} label="msg" />
+          <InterfaceTypeList items={item.interfaces?.srv} label="srv" />
+          <InterfaceTypeList items={item.interfaces?.action} label="action" />
+          {item.import_error && <p className="interface-package-error">{item.import_error}</p>}
+        </details>
+      ))}
+    </div>
+  )
+}
+
+function InterfaceTypeList({ items = [], label }) {
+  return (
+    <div className="interface-package-types">
+      <span>{label} {items.length}</span>
+      {items.length ? (
+        <ul>
+          {items.map((item) => (
+            <li key={item.type}>
+              <code>{item.type}</code>
+              <small>{item.import_available ? 'import 가능' : item.import_error || 'import 대기'}</small>
+              <InterfaceSchema item={item} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
+function InterfaceSchema({ item }) {
+  const parsed = item.parsed ?? {}
+  const sections = [
+    ['fields', parsed.fields],
+    ['request', parsed.request],
+    ['response', parsed.response],
+    ['goal', parsed.goal],
+    ['result', parsed.result],
+    ['feedback', parsed.feedback],
+  ].filter(([, fields]) => Array.isArray(fields) && fields.length)
+
+  if (!sections.length) {
+    return item.parsed_error ? <small>{item.parsed_error}</small> : null
+  }
+
+  return (
+    <div className="interface-package-schema">
+      {sections.map(([section, fields]) => (
+        <div key={section}>
+          <small>{section}</small>
+          {fields.map((field) => (
+            <code key={`${section}-${field.name}-${field.type}`}>
+              {field.type} {field.name}
+            </code>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function interfaceCounts(interfaces = {}) {
+  return {
+    msg: interfaces.msg?.length ?? 0,
+    srv: interfaces.srv?.length ?? 0,
+    action: interfaces.action?.length ?? 0,
+  }
+}
+
+function packageStatusLabel(item) {
+  if (item.import_available) return 'import available'
+  if (item.last_build_status === 'failed') return 'build failed'
+  if (item.last_build_status === 'success') return 'import pending'
+  return item.rebuild_required ? 'build required' : 'uploaded'
+}
+
 function ActionGoalResult({ result }) {
   return (
     <div className="interface-action-result">
@@ -787,10 +1083,24 @@ function ActionGoalResult({ result }) {
           </ul>
         </div>
       )}
-      <pre className={`interface-service-result ${result.success ? 'success' : 'error'}`}>
-        {JSON.stringify(result.success ? result.result : result, null, 2)}
-      </pre>
+      <CallResultBlock result={result} successPayload={result.result} />
     </div>
+  )
+}
+
+function CallResultBlock({ result, successPayload }) {
+  const validationError = result.error_type === 'validation_error'
+  return (
+    <>
+      {validationError && (
+        <div className="interface-validation-warning">
+          입력값이 서비스/액션 타입과 맞지 않아 호출하지 않았습니다. 서버에는 요청을 보내지 않았습니다.
+        </div>
+      )}
+      <pre className={`interface-service-result ${result.success ? 'success' : 'error'}`}>
+        {JSON.stringify(result.success ? successPayload : result, null, 2)}
+      </pre>
+    </>
   )
 }
 
@@ -799,7 +1109,7 @@ function RequestField({ disabled = false, field, onChange, value }) {
     return null
   }
   const type = field.type ?? ''
-  if (type === 'bool') {
+  if (type === 'bool' || type === 'boolean') {
     return (
       <label className="interface-service-field inline">
         <input
@@ -809,6 +1119,25 @@ function RequestField({ disabled = false, field, onChange, value }) {
           type="checkbox"
         />
         <span>{field.name}</span>
+      </label>
+    )
+  }
+  if (isComplexType(type)) {
+    return (
+      <label className="interface-service-field">
+        <span>{field.name} <small>{type} · JSON</small></span>
+        <textarea
+          disabled={disabled}
+          onChange={(event) => {
+            try {
+              onChange(JSON.parse(event.target.value || 'null'))
+            } catch {
+              onChange(event.target.value)
+            }
+          }}
+          rows={type.includes('[') || type.startsWith('sequence<') ? 4 : 3}
+          value={typeof value === 'string' ? value : JSON.stringify(value ?? defaultFieldValue(type), null, 2)}
+        />
       </label>
     )
   }
@@ -893,13 +1222,27 @@ function defaultRequestValues(schema = []) {
 }
 
 function defaultFieldValue(type = '') {
-  if (type === 'bool') return false
+  if (type === 'bool' || type === 'boolean') return false
+  if (isArrayType(type)) return []
+  if (isCustomType(type)) return {}
   if (isNumericType(type)) return 0
   return ''
 }
 
 function isNumericType(type = '') {
   return /^(?:u?int(?:8|16|32|64)|float(?:32|64)|double)$/.test(type)
+}
+
+function isArrayType(type = '') {
+  return /\[[0-9]*\]$/.test(type) || /^sequence<.+>$/.test(type)
+}
+
+function isCustomType(type = '') {
+  return /^[A-Za-z][A-Za-z0-9_]*\/(?:msg\/)?[A-Z][A-Za-z0-9_]*$/.test(type)
+}
+
+function isComplexType(type = '') {
+  return isArrayType(type) || isCustomType(type)
 }
 
 function RegistryGroup({ items = [], label }) {

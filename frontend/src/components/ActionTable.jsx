@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { formatMs } from '../utils/format.js'
+import { formatMs, formatRelativeTime } from '../utils/format.js'
 import { nextSortState, sortRows } from '../utils/sort.js'
 import { SortableHeader } from './SortableHeader.jsx'
 import { StatusBadge } from './StatusBadge.jsx'
@@ -17,6 +17,8 @@ const ACTION_SORT_COLUMNS = {
     value: (action) => action.client_count,
   },
   last_goal_status: { value: (action) => action.runtime?.last_goal_status },
+  callable: { value: (action) => (action.callable ? 1 : 0), defaultDirection: 'desc' },
+  last_goal_sent: { value: (action) => action.last_goal_summary?.last_goal_sent_at, defaultDirection: 'desc' },
   feedback_supported: {
     defaultDirection: 'desc',
     value: (action) => feedbackDisplay(action).sortValue,
@@ -65,6 +67,9 @@ export function ActionTable({
             <SortableHeader columnKey="server_count" label="서버" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="client_count" label="클라이언트" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="last_goal_status" label="마지막 Goal" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="callable" label="실행 가능" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="last_goal_sent" label="Goal 전송" onSort={onSort} sort={sort} />
+            <th>마지막 Goal</th>
             <SortableHeader columnKey="feedback_supported" label="피드백" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="result_supported" label="결과" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="elapsed_time_ms" label="실행 시간" onSort={onSort} sort={sort} />
@@ -74,6 +79,7 @@ export function ActionTable({
         <tbody>
           {sortedActions.map((action) => {
             const runtime = action.runtime ?? {}
+            const summary = action.last_goal_summary
             const selected = action.name === selectedActionName
             return (
               <tr
@@ -92,12 +98,17 @@ export function ActionTable({
                 <td>
                   <StatusBadge
                     value={
-                      runtime.last_goal_status === 'unknown'
+                      summary?.last_goal_status
+                        ? summary.last_goal_status
+                        : runtime.last_goal_status === 'unknown'
                         ? 'goal_unobserved'
                         : runtime.last_goal_status ?? 'goal_unobserved'
                     }
                   />
                 </td>
+                <td>{action.callable ? '예' : action.allowlisted ? '등록됨' : '아니오'}</td>
+                <td>{formatRelativeTime(summary?.last_goal_sent_at)}</td>
+                <td><PreviewText value={summary?.last_goal_preview} /></td>
                 <td>
                   <FeedbackBadge action={action} />
                 </td>
@@ -121,6 +132,13 @@ function FeedbackBadge({ action }) {
 }
 
 function feedbackDisplay(action) {
+  const summary = action.last_goal_summary
+  if (summary?.last_feedback_preview) {
+    return resultState('feedback_received', '수신됨', 9)
+  }
+  if (summary?.error_type === 'validation_error') {
+    return resultState('validation_error', '검증 실패', 1)
+  }
   const runtime = action.runtime ?? {}
   const lastGoalStatus = String(runtime.last_goal_status || '').toLowerCase()
 
@@ -149,6 +167,13 @@ function ResultBadge({ action }) {
 }
 
 function resultDisplay(action) {
+  const summary = action.last_goal_summary
+  if (summary?.last_result_preview) {
+    return resultState(summary.success ? 'success' : 'failed', summary.success ? '성공' : '실패', 9)
+  }
+  if (summary?.error_type === 'validation_error') {
+    return resultState('validation_error', '검증 실패', 1)
+  }
   const runtime = action.runtime ?? {}
   const resultStatus = String(runtime.result_status || '').toLowerCase()
   const lastGoalStatus = String(runtime.last_goal_status || '').toLowerCase()
@@ -196,4 +221,10 @@ function resultDisplay(action) {
 
 function resultState(value, label, sortValue) {
   return { label, sortValue, value }
+}
+
+function PreviewText({ value }) {
+  if (value === undefined || value === null || value === '') return <span className="muted">-</span>
+  const text = typeof value === 'string' ? value : JSON.stringify(value)
+  return <code className="table-preview-text">{text}</code>
 }

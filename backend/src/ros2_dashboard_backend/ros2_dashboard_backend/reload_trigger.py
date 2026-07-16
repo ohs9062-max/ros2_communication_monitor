@@ -1,3 +1,3 @@
 """Dedicated uvicorn reload trigger for interface apply builds."""
 
-RELOAD_VERSION = '2026-07-15T07:17:48.660980+00:00'
+RELOAD_VERSION = '2026-07-16T03:18:06.853394+00:00'

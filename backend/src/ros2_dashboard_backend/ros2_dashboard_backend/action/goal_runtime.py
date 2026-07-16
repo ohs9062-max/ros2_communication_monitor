@@ -15,7 +15,12 @@ from rclpy.action.graph import (
 from rosidl_runtime_py.utilities import get_action
 
 from ros2_dashboard_backend.interface_apply import refresh_install_python_paths
+from ros2_dashboard_backend.interface_value_converter import (
+    InterfaceValidationError,
+    build_ros_message,
+)
 from ros2_dashboard_backend.interface_registry import registry_snapshot
+from ros2_dashboard_backend.interface_packages import registered_package_actions
 from ros2_dashboard_backend.service.active_check import response_to_preview
 
 
@@ -100,9 +105,29 @@ class ActionGoalRuntime:
 
         started_at = time()
         feedback_items: list[dict[str, Any]] = []
+        sent_to_server = False
         try:
             action_class = get_action(action_type)
-            goal = _build_goal(action_class, goal_data)
+            try:
+                goal = _build_goal(action_class, goal_data)
+            except InterfaceValidationError as exc:
+                result = self._result(
+                    success=False,
+                    action_name=action_name,
+                    action_type=action_type,
+                    goal_data=goal_data,
+                    accepted=False,
+                    feedback=feedback_items,
+                    result=None,
+                    started_at=started_at,
+                    timeout_sec=timeout,
+                    error=str(exc),
+                    error_type='validation_error',
+                    details=exc.details,
+                    sent_to_server=False,
+                )
+                self._record_history(result)
+                return result
             client = self._client(action_name, action_type, action_class)
             if not client.server_is_ready():
                 raise ActionGoalError('Action server가 준비되지 않았습니다.')
@@ -114,6 +139,7 @@ class ActionGoalRuntime:
                     response_to_preview(feedback.feedback),
                 ),
             )
+            sent_to_server = True
             send_future.add_done_callback(lambda _future: send_event.set())
             if not send_event.wait(timeout=timeout):
                 raise TimeoutError(f'action goal accept timeout after {timeout:.2f}s')
@@ -132,6 +158,7 @@ class ActionGoalRuntime:
                     started_at=started_at,
                     timeout_sec=timeout,
                     error='goal rejected',
+                    sent_to_server=sent_to_server,
                 )
                 self._record_history(result)
                 return result
@@ -157,6 +184,7 @@ class ActionGoalRuntime:
                 started_at=started_at,
                 timeout_sec=timeout,
                 status=status,
+                sent_to_server=sent_to_server,
             )
         except Exception as exc:
             result = self._result(
@@ -170,6 +198,7 @@ class ActionGoalRuntime:
                 started_at=started_at,
                 timeout_sec=timeout,
                 error=str(exc),
+                sent_to_server=sent_to_server,
             )
             self._record_history(result)
             if isinstance(exc, ActionGoalError):
@@ -189,6 +218,34 @@ class ActionGoalRuntime:
                 'count': len(goals),
             },
         }
+
+    def summary_by_action(self) -> dict[tuple[str, str], dict[str, Any]]:
+        """Return last goal and counters keyed by (action_name, action_type)."""
+        with self._lock:
+            goals = [item.copy() for item in self._history]
+        summaries: dict[tuple[str, str], dict[str, Any]] = {}
+        for goal in reversed(goals):
+            key = (str(goal.get('action_name') or ''), str(goal.get('action_type') or ''))
+            if not key[0] or not key[1]:
+                continue
+            summary = summaries.setdefault(key, {
+                'goal_count': 0,
+                'success_count': 0,
+                'failure_count': 0,
+                'canceled_count': 0,
+                'history': [],
+            })
+            summary['goal_count'] += 1
+            if goal.get('success') is True:
+                summary['success_count'] += 1
+            else:
+                summary['failure_count'] += 1
+            if str(goal.get('status')).lower() == 'canceled':
+                summary['canceled_count'] += 1
+            summary['history'].insert(0, _goal_summary(goal))
+            summary['history'] = summary['history'][:5]
+            summary.update(_goal_summary(goal))
+        return summaries
 
     def _allowed_action(
         self,
@@ -231,7 +288,10 @@ class ActionGoalRuntime:
                 'saved_path': build.get('saved_path'),
                 'import_available': build.get('import_available') is True,
                 'import_error': build.get('import_error'),
+                'source': 'single_interface',
+                'package_name': package_name,
             })
+        actions.extend(registered_package_actions())
         return actions
 
     def _action_graph(self) -> list[dict[str, Any]]:
@@ -356,6 +416,8 @@ class ActionGoalRuntime:
             'callable': callable_now,
             'reason': reason,
             'saved_path': entry.get('saved_path'),
+            'source': entry.get('source', 'single_interface'),
+            'package_name': entry.get('package_name'),
         }
 
     @staticmethod
@@ -385,6 +447,9 @@ class ActionGoalRuntime:
         timeout_sec: float,
         status: int | None = None,
         error: str | None = None,
+        error_type: str | None = None,
+        details: list[str] | None = None,
+        sent_to_server: bool = False,
     ) -> dict[str, Any]:
         payload = {
             'success': success,
@@ -397,19 +462,21 @@ class ActionGoalRuntime:
             'result': result,
             'timeout_sec': timeout_sec,
             'sent_at': started_at,
+            'sent_to_server': sent_to_server,
         }
         if status is not None:
             payload['status'] = status
         if error is not None:
             payload['error'] = error
+        if error_type is not None:
+            payload['error_type'] = error_type
+        if details is not None:
+            payload['details'] = details
         return payload
 
 
 def _build_goal(action_class: type, goal_data: dict[str, Any]) -> Any:
-    goal = action_class.Goal()
-    for key, value in goal_data.items():
-        _set_field(goal, key, value)
-    return goal
+    return build_ros_message(action_class.Goal, goal_data, label='goal')
 
 
 def _set_field(target: Any, key: str, value: Any) -> None:
@@ -433,3 +500,30 @@ def _normalized_timeout(timeout_sec: float | None) -> float:
     if timeout <= 0:
         raise ActionGoalError('timeout_sec는 0보다 커야 합니다.')
     return min(timeout, MAX_TIMEOUT_SEC)
+
+
+def _goal_summary(goal: dict[str, Any]) -> dict[str, Any]:
+    error_type = goal.get('error_type')
+    status = (
+        'success'
+        if goal.get('success') is True
+        else error_type or goal.get('status') or 'failed'
+    )
+    feedback = goal.get('feedback') if isinstance(goal.get('feedback'), list) else []
+    return {
+        'status': status,
+        'success': goal.get('success') is True,
+        'accepted': goal.get('accepted') is True,
+        'sent_to_server': goal.get('sent_to_server', False),
+        'last_goal_preview': goal.get('goal'),
+        'last_goal_sent_at': goal.get('sent_at'),
+        'last_feedback_preview': feedback[-1] if feedback else None,
+        'last_feedback_at': goal.get('sent_at') if feedback else None,
+        'last_result_preview': goal.get('result'),
+        'last_result_at': goal.get('sent_at') if goal.get('result') is not None else None,
+        'last_goal_status': status,
+        'execution_time_ms': goal.get('elapsed_ms'),
+        'last_error': goal.get('error'),
+        'error_type': error_type,
+        'details': goal.get('details', []),
+    }

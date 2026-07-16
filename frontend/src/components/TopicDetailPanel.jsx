@@ -16,7 +16,7 @@ export function TopicDetailPanel({ topic, latest, hz, participants }) {
 
   const latestData = latest.data?.data
   const hzData = hz.data?.data
-  const preview = latestData?.message_preview
+  const preview = latestData?.message_preview ?? topic.last_message_preview
   const values = preview?.values
   const neverReceived =
     hzData?.status === 'never_received' || latestData?.received === false
@@ -123,7 +123,19 @@ export function TopicDetailPanel({ topic, latest, hz, participants }) {
         </div>
         <div className="detail-line">
           <span>마지막 수신</span>
-          <strong>{formatTime(latestData?.last_received_at)}</strong>
+          <strong>{formatTime(latestData?.last_received_at ?? topic.last_received_at)}</strong>
+        </div>
+        <div className="detail-line">
+          <span>상세 감시</span>
+          <strong className={topic.detailed_monitoring_enabled ? 'detail-value-good' : 'detail-value-muted'}>
+            {topic.detailed_monitoring_enabled ? '예' : '아니오'}
+          </strong>
+        </div>
+        <div className="detail-line">
+          <span>관찰됨</span>
+          <strong className={topic.observed ? 'detail-value-good' : 'detail-value-muted'}>
+            {topic.observed ? '예' : '아니오'}
+          </strong>
         </div>
       </section>
 

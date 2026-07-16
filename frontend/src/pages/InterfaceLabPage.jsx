@@ -4,6 +4,7 @@ import {
   fetchCallableActions,
   fetchCallableServices,
   fetchInterfaceApplyStatus,
+  fetchInterfacePackages,
   fetchInterfaceRegistry,
   fetchActionGoalHistory,
   fetchServiceCallHistory,
@@ -20,6 +21,7 @@ export function InterfaceLabPage({ websocket }) {
   const [applyStatus, setApplyStatus] = useState(null)
   const [callableServices, setCallableServices] = useState([])
   const [callableActions, setCallableActions] = useState([])
+  const [packages, setPackages] = useState([])
   const [serviceHistory, setServiceHistory] = useState([])
   const [actionHistory, setActionHistory] = useState([])
   const [activeGroup, setActiveGroup] = useState('services')
@@ -37,6 +39,7 @@ export function InterfaceLabPage({ websocket }) {
         statusPayload,
         servicesPayload,
         actionsPayload,
+        packagesPayload,
         serviceHistoryPayload,
         actionHistoryPayload,
       ] = await Promise.all([
@@ -44,6 +47,7 @@ export function InterfaceLabPage({ websocket }) {
         fetchInterfaceApplyStatus(),
         fetchCallableServices(),
         fetchCallableActions(),
+        fetchInterfacePackages(),
         fetchServiceCallHistory(),
         fetchActionGoalHistory(),
       ])
@@ -51,6 +55,7 @@ export function InterfaceLabPage({ websocket }) {
       setApplyStatus(statusPayload.data ?? null)
       setCallableServices(servicesPayload.data ?? [])
       setCallableActions(actionsPayload.data ?? [])
+      setPackages(packagesPayload.data ?? [])
       setServiceHistory(serviceHistoryPayload.data ?? [])
       setActionHistory(actionHistoryPayload.data ?? [])
       setLastRefreshedAt(new Date())
@@ -77,7 +82,8 @@ export function InterfaceLabPage({ websocket }) {
     registry,
     callableActions,
     callableServices,
-  }), [registry, callableActions, callableServices])
+    packages,
+  }), [registry, callableActions, callableServices, packages])
   const selectedDetail = selected ?? firstItem(registry, activeGroup)
 
   return (
@@ -116,6 +122,7 @@ export function InterfaceLabPage({ websocket }) {
         <SummaryCard label="Action" value={summary.actions} />
         <SummaryCard label="import 가능" value={summary.importable} />
         <SummaryCard label="build 필요" value={summary.rebuildRequired} tone={summary.rebuildRequired ? 'warning' : 'success'} />
+        <SummaryCard label="Package" value={summary.packages} />
         <SummaryCard label="실행 가능 Service" value={summary.callableServices} />
         <SummaryCard label="실행 가능 Action" value={summary.callableActions} />
       </section>
@@ -266,7 +273,7 @@ function CollapsibleText({ title, value }) {
   )
 }
 
-function buildSummary({ callableActions, callableServices, registry }) {
+function buildSummary({ callableActions, callableServices, packages, registry }) {
   const items = [
     ...(registry.messages ?? []),
     ...(registry.services ?? []),
@@ -278,6 +285,7 @@ function buildSummary({ callableActions, callableServices, registry }) {
     callableServices: callableServices.filter((item) => item.callable).length,
     importable: items.filter((item) => item.build?.import_available).length,
     messages: registry.messages?.length ?? 0,
+    packages: packages?.length ?? 0,
     rebuildRequired: items.filter((item) => item.build?.rebuild_required).length,
     services: registry.services?.length ?? 0,
   }

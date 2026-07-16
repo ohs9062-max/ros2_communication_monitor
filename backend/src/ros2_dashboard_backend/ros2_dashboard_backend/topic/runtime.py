@@ -71,7 +71,26 @@ class TopicRuntime:
         """Return a thread-safe snapshot of the cached topic list."""
         with self._lock:
             topics = [topic.copy() for topic in self._topics]
+            subscriptions = {
+                name: {
+                    'message_preview': copy_message_preview(entry.get('message_preview')),
+                    'last_received_at': entry.get('last_received_at'),
+                    'message_count': len(entry.get('timestamps', [])),
+                }
+                for name, entry in self._subscriptions.items()
+            }
             last_updated = self._last_updated
+
+        for topic in topics:
+            latest = subscriptions.get(topic.get('name'), {})
+            preview = latest.get('message_preview')
+            topic['allowlisted'] = bool(topic.get('supported_type') or topic.get('deep_monitoring'))
+            topic['observed'] = preview is not None
+            topic['last_message_preview'] = preview
+            topic['last_received_at'] = latest.get('last_received_at')
+            topic['message_count'] = latest.get('message_count', 0)
+            topic['detailed_monitoring_enabled'] = bool(topic.get('deep_monitoring'))
+            topic['last_error'] = None
 
         return {
             'topics': topics,

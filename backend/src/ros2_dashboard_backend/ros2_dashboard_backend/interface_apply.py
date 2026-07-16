@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,11 +22,19 @@ from ros2_dashboard_backend.interface_registry import (
     registry_apply_summary,
     refresh_registry_imports,
 )
+from ros2_dashboard_backend.interface_packages import (
+    mark_packages_build_applied,
+    package_apply_summary,
+    packages_snapshot,
+    refresh_package_imports,
+)
 
 
 _APPLY_LOCK = threading.Lock()
 _STATUS_LOCK = threading.Lock()
 _LOG_TAIL_LINES = 80
+_PACKAGE_NAME_PATTERN = re.compile(r'^[a-z][a-z0-9_]*$')
+_PACKAGE_NAME_XML_PATTERN = re.compile(r'<name>\s*([^<]+)\s*</name>')
 
 
 class InterfaceApplyInProgress(RuntimeError):
@@ -106,16 +116,16 @@ def run_interface_apply() -> dict[str, Any]:
 
     command = 'source /opt/ros/jazzy/setup.bash && colcon build --symlink-install'
     try:
-        preflight = registry_apply_summary(require_import_available=False)
+        preflight = combined_apply_summary(require_import_available=False)
         blocking_not_applied = [
             item for item in preflight['not_applied']
             if 'import_available false' not in item['reason']
         ]
-        if not preflight['registry_exists'] or blocking_not_applied or preflight['total'] == 0:
+        if blocking_not_applied or preflight['total'] == 0:
             finished_at = datetime.now(timezone.utc).isoformat()
             message = (
-                'interface_registry.yaml 파일이 없습니다.'
-                if not preflight['registry_exists']
+                '등록된 interface 또는 interface package가 없습니다.'
+                if preflight['total'] == 0
                 else '일부 interface가 파일 생성 또는 CMake 등록되지 않았습니다.'
             )
             _write_text(
@@ -152,6 +162,61 @@ def run_interface_apply() -> dict[str, Any]:
             status['log_tail'] = _read_log_tail(log_path)
             return status
 
+        uploaded_package_names = uploaded_interface_package_names()
+        duplicates = duplicate_workspace_packages(workspace, uploaded_package_names)
+        if duplicates:
+            finished_at = datetime.now(timezone.utc).isoformat()
+            message = '중복 ROS2 package가 감지되어 build를 중단했습니다.'
+            duplicate_lines = [
+                f'{name}: {", ".join(paths)}'
+                for name, paths in sorted(duplicates.items())
+            ]
+            _write_text(
+                log_path,
+                '\n'.join([
+                    f'started_at: {started_at}',
+                    f'finished_at: {finished_at}',
+                    f'workspace: {workspace}',
+                    'command: skipped',
+                    f'reason: {message}',
+                    '',
+                    '[duplicates]',
+                    *duplicate_lines,
+                    '',
+                ]),
+            )
+            status = {
+                'running': False,
+                'status': 'failed',
+                'build_status': 'skipped',
+                'real_apply_success': False,
+                'started_at': started_at,
+                'finished_at': finished_at,
+                'returncode': None,
+                'workspace_path': str(workspace),
+                'log_path': str(log_path),
+                'reload_scheduled': False,
+                'reload_trigger_path': str(trigger_path),
+                'error': f'{message} {"; ".join(duplicate_lines)}',
+                'summary': preflight,
+                'not_applied': preflight['not_applied'],
+                'install_python_paths': [],
+                'install_python_paths_added': [],
+                'import_check': None,
+                'cleanup': {
+                    'package_names': uploaded_package_names,
+                    'removed': [],
+                    'duplicates': duplicates,
+                },
+            }
+            _write_status(status_path, status)
+            status['log_tail'] = _read_log_tail(log_path)
+            return status
+
+        cleanup_result = cleanup_uploaded_package_build_artifacts(
+            workspace,
+            uploaded_package_names,
+        )
         completed = subprocess.run(
             ['/bin/bash', '-lc', command],
             cwd=workspace,
@@ -166,6 +231,7 @@ def run_interface_apply() -> dict[str, Any]:
             started_at=started_at,
             finished_at=finished_at,
             workspace=workspace,
+            cleanup=cleanup_result,
         )
         _write_text(log_path, output)
         build_success = completed.returncode == 0
@@ -176,11 +242,12 @@ def run_interface_apply() -> dict[str, Any]:
         }
         if build_success:
             mark_registry_build_applied()
+            mark_packages_build_applied()
             path_refresh = refresh_install_python_paths(workspace)
             import_check = run_import_check_and_update_registry(workspace)
             summary = import_check['summary']
         else:
-            summary = registry_apply_summary(require_import_available=False)
+            summary = combined_apply_summary(require_import_available=False)
         real_apply_success = build_success and bool(summary['real_apply_success'])
         status_name = 'success' if real_apply_success else 'partial'
         if not build_success:
@@ -211,6 +278,7 @@ def run_interface_apply() -> dict[str, Any]:
             'install_python_paths': path_refresh['site_packages'],
             'install_python_paths_added': path_refresh['added'],
             'import_check': import_check,
+            'cleanup': cleanup_result,
         }
         _write_status(status_path, status)
         status['log_tail'] = _read_log_tail(log_path)
@@ -241,7 +309,7 @@ def run_interface_apply() -> dict[str, Any]:
             'reload_scheduled': False,
             'reload_trigger_path': str(trigger_path),
             'error': str(exc),
-            'summary': registry_apply_summary(require_import_available=False),
+            'summary': combined_apply_summary(require_import_available=False),
             'not_applied': [],
             'install_python_paths': [],
             'install_python_paths_added': [],
@@ -278,7 +346,9 @@ def _format_build_log(
     started_at: str,
     finished_at: str,
     workspace: Path,
+    cleanup: dict[str, Any] | None = None,
 ) -> str:
+    cleanup = cleanup or {'package_names': [], 'removed': [], 'duplicates': {}}
     return '\n'.join([
         f'started_at: {started_at}',
         f'finished_at: {finished_at}',
@@ -286,12 +356,105 @@ def _format_build_log(
         f'command: {command}',
         f'returncode: {completed.returncode}',
         '',
+        '[pre_build_cleanup]',
+        f'package_names: {", ".join(cleanup.get("package_names", []))}',
+        f'removed: {", ".join(cleanup.get("removed", []))}',
+        '',
         '[stdout]',
         completed.stdout or '',
         '',
         '[stderr]',
         completed.stderr or '',
     ])
+
+
+def uploaded_interface_package_names() -> list[str]:
+    """Return package names from the uploaded interface package registry."""
+    try:
+        registry = packages_snapshot()
+    except Exception:
+        return []
+    names = []
+    for package in registry.get('packages', []):
+        name = str(package.get('name') or '')
+        if _PACKAGE_NAME_PATTERN.fullmatch(name):
+            names.append(name)
+    return sorted(set(names))
+
+
+def cleanup_uploaded_package_build_artifacts(
+    workspace: Path,
+    package_names: list[str],
+) -> dict[str, Any]:
+    """Remove stale build/install/log artifacts for uploaded interface packages."""
+    removed: list[str] = []
+    for package_name in sorted(set(package_names)):
+        if not _PACKAGE_NAME_PATTERN.fullmatch(package_name):
+            continue
+        for relative in (
+            Path('build') / package_name,
+            Path('install') / package_name,
+            Path('log') / 'latest' / package_name,
+            Path('log') / 'latest_build' / package_name,
+        ):
+            target = _safe_workspace_child(workspace, relative)
+            if target.exists() or target.is_symlink():
+                shutil.rmtree(target) if target.is_dir() and not target.is_symlink() else target.unlink()
+                removed.append(_display_workspace_path(workspace, target))
+    return {
+        'package_names': sorted(set(package_names)),
+        'removed': removed,
+        'duplicates': {},
+    }
+
+
+def duplicate_workspace_packages(
+    workspace: Path,
+    package_names: list[str],
+) -> dict[str, list[str]]:
+    """Find duplicate package.xml declarations for selected package names under src/."""
+    selected = set(package_names)
+    if not selected:
+        return {}
+    found: dict[str, list[str]] = {name: [] for name in selected}
+    src_root = _safe_workspace_child(workspace, Path('src'))
+    if not src_root.is_dir():
+        return {}
+    for package_xml in src_root.glob('**/package.xml'):
+        try:
+            text = package_xml.read_text(encoding='utf-8')
+        except (OSError, UnicodeError):
+            continue
+        match = _PACKAGE_NAME_XML_PATTERN.search(text)
+        if not match:
+            continue
+        package_name = match.group(1).strip()
+        if package_name in found:
+            found[package_name].append(_display_workspace_path(workspace, package_xml.parent))
+    return {
+        name: sorted(paths)
+        for name, paths in found.items()
+        if len(paths) > 1
+    }
+
+
+def _safe_workspace_child(workspace: Path, relative: Path) -> Path:
+    root = workspace.resolve()
+    if relative.is_absolute() or '..' in relative.parts:
+        raise InterfaceApplyError(f'workspace 밖 경로는 정리할 수 없습니다: {relative}')
+    target = root / relative
+    try:
+        target.resolve().relative_to(root)
+    except ValueError as exc:
+        raise InterfaceApplyError(f'workspace 밖 경로는 정리할 수 없습니다: {target}') from exc
+    return target
+
+
+def _display_workspace_path(workspace: Path, path: Path) -> str:
+    try:
+        return path.relative_to(workspace.resolve()).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def _empty_status() -> dict[str, Any]:
@@ -323,7 +486,10 @@ def run_import_check_and_update_registry(workspace_path: Path | None = None) -> 
     workspace = workspace_path or backend_workspace_path()
     path_refresh = refresh_install_python_paths(workspace)
     registry = refresh_registry_imports()
-    summary = registry.get('apply_summary') or registry_apply_summary(
+    package_registry = refresh_package_imports()
+    summary = combined_apply_summary(
+        registry_summary=registry.get('apply_summary'),
+        package_summary=package_registry.get('apply_summary'),
         require_import_available=True,
     )
     return {
@@ -333,6 +499,55 @@ def run_import_check_and_update_registry(workspace_path: Path | None = None) -> 
         'not_applied': summary['not_applied'],
         'install_python_paths': path_refresh['site_packages'],
         'install_python_paths_added': path_refresh['added'],
+    }
+
+
+def combined_apply_summary(
+    *,
+    registry_summary: dict[str, Any] | None = None,
+    package_summary: dict[str, Any] | None = None,
+    require_import_available: bool = False,
+) -> dict[str, Any]:
+    """Combine single-file and package-upload apply summaries."""
+    single = registry_summary or registry_apply_summary(
+        require_import_available=require_import_available,
+    )
+    packages = package_summary or package_apply_summary(
+        require_import_available=require_import_available,
+    )
+    single_not_applied = list(single.get('not_applied', []))
+    if single.get('total', 0) == 0 and packages.get('total', 0) > 0:
+        single_not_applied = [
+            item for item in single_not_applied
+            if 'interface_registry.yaml 파일이 없습니다' not in str(item.get('reason', ''))
+        ]
+    not_applied = [
+        *single_not_applied,
+        *list(packages.get('not_applied', [])),
+    ]
+    total = int(single.get('total') or 0) + int(packages.get('total') or 0)
+    import_pending = [
+        *list(single.get('import_pending', [])),
+        *list(packages.get('import_pending', [])),
+    ]
+    real_apply_success = total > 0 and not not_applied
+    ready_for_build = total > 0 and not any(
+        item for item in not_applied
+        if 'import_available false' not in str(item.get('reason', ''))
+    )
+    status = 'success' if real_apply_success else ('empty' if total == 0 else 'partial')
+    return {
+        'status': status,
+        'real_apply_success': real_apply_success,
+        'ready_for_build': ready_for_build,
+        'registry_exists': bool(single.get('registry_exists') or packages.get('registry_exists')),
+        'single_registry': single,
+        'package_registry': packages,
+        'total': total,
+        'applied_count': total - len(not_applied),
+        'not_applied': not_applied,
+        'import_pending': import_pending,
+        'requires_import_available': require_import_available,
     }
 
 

@@ -114,9 +114,29 @@ class RosMonitor:
         include_hidden: bool = False,
     ) -> dict[str, Any]:
         """Return a thread-safe snapshot of the cached service list."""
-        return self._service_runtime.snapshot(
+        snapshot = self._service_runtime.snapshot(
             include_hidden=include_hidden,
         )
+        summaries = self._service_call_runtime.summary_by_service()
+        callable_items = self._service_call_runtime.callable_services()['services']
+        allowlisted_types = {item.get('service_type') for item in callable_items}
+        callable_names = {
+            (item.get('service_name'), item.get('service_type'))
+            for item in callable_items
+            if item.get('callable') is True
+        }
+        for service in snapshot['services']:
+            key = (service.get('name'), service.get('type'))
+            summary = summaries.get(key)
+            allowlisted = service.get('type') in allowlisted_types
+            service['allowlisted'] = allowlisted
+            service['callable'] = key in callable_names
+            if summary:
+                service['last_call_summary'] = summary
+            service['call_count'] = summary.get('call_count', 0) if summary else 0
+            service['success_count'] = summary.get('success_count', 0) if summary else 0
+            service['failure_count'] = summary.get('failure_count', 0) if summary else 0
+        return snapshot
 
     def callable_services(self) -> dict[str, Any]:
         """Return registered services that can be explicitly called."""
@@ -144,7 +164,28 @@ class RosMonitor:
 
     def action_snapshot(self) -> dict[str, Any]:
         """Return a thread-safe snapshot of the cached action list."""
-        return self._action_runtime.snapshot()
+        snapshot = self._action_runtime.snapshot()
+        summaries = self._action_goal_runtime.summary_by_action()
+        callable_items = self._action_goal_runtime.callable_actions()['actions']
+        allowlisted_types = {item.get('action_type') for item in callable_items}
+        callable_names = {
+            (item.get('action_name'), item.get('action_type'))
+            for item in callable_items
+            if item.get('callable') is True
+        }
+        for action in snapshot['actions']:
+            key = (action.get('name'), action.get('type'))
+            summary = summaries.get(key)
+            allowlisted = action.get('type') in allowlisted_types
+            action['allowlisted'] = allowlisted
+            action['callable'] = key in callable_names
+            if summary:
+                action['last_goal_summary'] = summary
+            action['goal_count'] = summary.get('goal_count', 0) if summary else 0
+            action['success_count'] = summary.get('success_count', 0) if summary else 0
+            action['failure_count'] = summary.get('failure_count', 0) if summary else 0
+            action['canceled_count'] = summary.get('canceled_count', 0) if summary else 0
+        return snapshot
 
     def callable_actions(self) -> dict[str, Any]:
         """Return registered actions that can receive explicit goals."""
@@ -191,6 +232,7 @@ class RosMonitor:
                     topic_snapshot['topics'],
                 ),
                 'services': self._websocket_service_meta(
+                    service_snapshot['services'],
                     service_snapshot['meta'],
                 ),
                 'actions': self._websocket_action_meta(
@@ -288,7 +330,10 @@ class RosMonitor:
         }
 
     @staticmethod
-    def _websocket_service_meta(meta: dict[str, Any]) -> dict[str, int]:
+    def _websocket_service_meta(
+        services: list[dict[str, Any]],
+        meta: dict[str, Any],
+    ) -> dict[str, int]:
         active_check_problem_count = sum(
             int(meta.get(key) or 0)
             for key in (
@@ -306,6 +351,8 @@ class RosMonitor:
                 meta.get('active_check_supported_count') or 0,
             ),
             'active_check_problem_count': active_check_problem_count,
+            'callable_count': sum(1 for service in services if service.get('callable') is True),
+            'last_call_count': sum(1 for service in services if service.get('last_call_summary')),
         }
 
     @staticmethod
@@ -331,6 +378,8 @@ class RosMonitor:
                 if action.get('runtime', {}).get('last_goal_status')
                 == 'aborted'
             ),
+            'callable_count': sum(1 for action in actions if action.get('callable') is True),
+            'last_goal_count': sum(1 for action in actions if action.get('last_goal_summary')),
         }
 
     @staticmethod

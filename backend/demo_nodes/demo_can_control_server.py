@@ -6,7 +6,14 @@ import rclpy
 from rclpy.action import ActionServer
 from rclpy.node import Node
 
-from ros2_dashboard_interfaces.action import CanControl
+from demo_interface_imports import import_demo_interface
+
+
+CanControl = import_demo_interface(
+    "action",
+    "CanControl",
+    ["rths_interfaces", "can_interfaces", "ros2_dashboard_interfaces"],
+)
 
 
 class DemoCanControlServer(Node):

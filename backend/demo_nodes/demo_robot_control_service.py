@@ -3,7 +3,14 @@
 import rclpy
 from rclpy.node import Node
 
-from ros2_dashboard_interfaces.srv import RobotControl
+from demo_interface_imports import import_demo_interface
+
+
+RobotControl = import_demo_interface(
+    "srv",
+    "RobotControl",
+    ["rths_interfaces", "ros2_dashboard_interfaces"],
+)
 
 
 class DemoRobotControlService(Node):

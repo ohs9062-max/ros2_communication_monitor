@@ -5,36 +5,38 @@
 ROS2 시스템에는 여러 Node가 Topic, Service, Action으로 연결됩니다. 규모가 커지면
 이름 목록만으로는 어떤 통신이 정상이고 어디에서 데이터가 끊겼는지 알기 어렵습니다.
 이 프로젝트는 현재 통신 구조와 상태를 Backend가 모아 React 화면에 보여주는
-읽기 중심 모니터링 대시보드입니다.
+읽기 중심 모니터링 대시보드이며, 추가로 Interface Lab을 통해 ROS2 인터페이스를
+동적으로 관리하고 로봇과 상호작용할 수 있습니다.
 
 ## 2. 전체 데이터 흐름
 
 로봇이나 시뮬레이터의 ROS2 상태를 Python Backend가 관찰하고, FastAPI가 그 결과를
-웹 API로 공개하며, React가 API를 읽어 화면을 만듭니다.
+웹 API로 공개하며, React가 API를 읽어 화면을 만듭니다. Interface Lab은 사용자의
+인터페이스 업로드/작성을 처리하고 ROS2 실행 환경에 이를 적용합니다.
 
 ```text
 ROS2 Node/Topic/Service/Action 발생
   — 실제 ROS2 실행 환경
 
 → rclpy Node가 ROS2 Graph와 메시지 관찰
-  — backend/.../ros_monitor.py L59-L73, L292-L309
-  — RosMonitor.start(), _spin(), _update_graph()
+  — backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py L65-L77
+
+→ Interface Lab이 사용자 정의 인터페이스 적용 및 관리
+  — backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_registry.py, backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_apply.py
 
 → 네 Runtime이 최근 상태를 메모리에 저장
-  — ros_monitor.py L32-L57, L304-L309
-  — TopicRuntime, ServiceRuntime, ActionRuntime, NodeRuntime
+  — ros_monitor.py L32-L57
 
 → FastAPI가 REST와 WebSocket으로 공개
-  — backend/.../main.py L54-L147
-  — 각 REST endpoint, monitor_websocket()
+  — backend/src/ros2_dashboard_backend/ros2_dashboard_backend/main.py L55-L163
 
 → React hook이 데이터를 가져와 화면에 전달
-  — frontend/src/App.jsx L20-L70
-  — useTopicDashboard() 외 도메인 hook
+  — frontend/src/App.jsx, frontend/src/hooks/
 
 → Page가 Table/Detail/React Flow 렌더링
   — frontend/src/pages/, frontend/src/components/
 ```
+
 
 ROS2의 현재 이름과 연결 관계를 코드로 묻는 기능을 **Graph API**라고 합니다.
 Backend는 ROS2 CLI 출력을 분석하지 않고 rclpy Graph API를 사용합니다. Frontend와

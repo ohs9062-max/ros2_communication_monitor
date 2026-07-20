@@ -4,22 +4,22 @@
 
 **Node**는 센서 읽기나 로봇 제어처럼 하나의 역할을 수행하는 ROS2 프로그램
 단위입니다. 이 프로젝트는 Node 이름뿐 아니라 각 Node가 연결한 Topic, Service,
-Action 관계도 수집합니다. Backend 구현은 `node/runtime.py` L69-L147,
-Frontend 표시는 `NodesPage.jsx` L16-L163입니다.
+Action 관계도 수집합니다. Backend 구현은 `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/node/runtime.py`,
+Frontend 표시는 `frontend/src/pages/NodesPage.jsx`입니다.
 
 **Topic**은 데이터를 계속 발행하고 구독하는 통신 채널입니다. `TopicRuntime`은
 Graph에서 Topic을 찾고 지원 type을 구독하여 최근 메시지와 Hz를 기록합니다.
-Backend 구현은 `topic/runtime.py` L101-L158, L296-L440이고 화면은
-`TopicsPage.jsx` L13-L181입니다.
+Backend 구현은 `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic/runtime.py`이고 화면은
+`frontend/src/pages/TopicsPage.jsx`입니다.
 
 **Service**는 client가 한 번 요청하고 server가 응답하는 통신입니다. 기본 감시는
 server/client 존재 여부를 확인하며, 실제 요청은 allowlist 대상만 수행합니다.
-Backend 구현은 `service/runtime.py` L86-L134이고 화면은 `ServicesPage.jsx` L73-L231입니다.
+Backend 구현은 `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/service/runtime.py`이고 화면은 `frontend/src/pages/ServicesPage.jsx`입니다.
 
 **Action**은 오래 걸리는 작업을 Goal, Feedback, Result로 나눈 통신입니다. 이
 대시보드는 Goal이나 cancel을 보내지 않고 status/feedback을 관찰합니다. 관찰한 종료
-Goal만 result를 조회합니다. 구현은 `action/runtime.py` L84-L137, L258-L433과
-`action/result_runtime.py` L82-L223입니다.
+Goal만 result를 조회합니다. 구현은 `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/action/runtime.py`와
+`backend/src/ros2_dashboard_backend/ros2_dashboard_backend/action/goal_runtime.py`입니다.
 
 ## 2. 상태를 수집하는 구조
 

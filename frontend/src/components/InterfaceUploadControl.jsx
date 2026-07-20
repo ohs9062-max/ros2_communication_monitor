@@ -185,11 +185,27 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         tone: failed.length ? 'error' : warned.length ? 'warning' : 'success',
         text: details ? `${summary} · ${details}` : `${summary} · ${succeeded.join(', ')}`,
       })
-      if (showRegistry) await loadRegistry(true)
-      await loadApplyStatus()
+      const refreshResults = await Promise.allSettled([
+        fetchInterfaceRegistry(),
+        fetchInterfaceApplyStatus(),
+      ])
+      if (refreshResults[0].status === 'fulfilled') {
+        setRegistry(refreshResults[0].value.data)
+      }
+      if (refreshResults[1].status === 'fulfilled') {
+        setApplyStatus(refreshResults[1].value.data)
+        setBuildLogTail(refreshResults[1].value.data?.log_tail ?? '')
+      }
+      const refreshFailure = refreshResults.find((result) => result.status === 'rejected')
+      if (refreshFailure && succeeded.length) {
+        setFeedback({
+          tone: 'warning',
+          text: `${summary} · 등록은 완료됐지만 일부 상태 갱신에 실패했습니다. 상태 새로고침을 눌러 다시 확인하세요. · ${refreshFailure.reason.message}`,
+        })
+      }
       onStateChanged?.()
     } catch (error) {
-      setFeedback({ tone: 'error', text: `${sourceLabel} 후 상태 갱신 실패: ${error.message}` })
+      setFeedback({ tone: 'error', text: `${sourceLabel} 처리 중 오류가 발생했습니다. · ${error.message}` })
     } finally {
       setBusy(false)
     }
@@ -758,6 +774,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         ? selectedServiceKey
         : services[0] ? serviceKey(services[0]) : ''
       setSelectedServiceKey(nextSelected)
+      setSelectedReceiveServiceKey(nextSelected)
       const nextService = services.find(
         (service) => serviceKey(service) === nextSelected,
       )
@@ -795,6 +812,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         ? selectedActionKey
         : actions[0] ? actionKey(actions[0]) : ''
       setSelectedActionKey(nextSelected)
+      setSelectedReceiveActionKey(nextSelected)
       const nextAction = actions.find(
         (action) => actionKey(action) === nextSelected,
       )
@@ -1107,14 +1125,30 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       <button className="interface-package-list-button" disabled={disabled} onClick={() => loadPackages()} type="button">
         Package 목록
       </button>
-      <button className="interface-service-button" disabled={disabled} onClick={() => loadCallableServices()} type="button">
+      <button className="interface-service-button" disabled={disabled} onClick={async () => {
+        setShowReceivePanel(true)
+        setReceiveMode('service')
+        await loadCallableServices()
+        await loadReceiveState({ silent: true })
+      }} type="button">
         Service 실행
       </button>
-      <button className="interface-action-button" disabled={disabled} onClick={() => loadCallableActions()} type="button">
+      <button className="interface-action-button" disabled={disabled} onClick={async () => {
+        setShowReceivePanel(true)
+        setReceiveMode('action')
+        await loadCallableActions()
+        await loadReceiveState({ silent: true })
+      }} type="button">
         Action 실행
       </button>
       <button className="interface-receive-button" disabled={disabled} onClick={() => {
-        setShowReceivePanel((value) => !value)
+        setShowReceivePanel(true)
+        setShowCallableServices(false)
+        setShowCallableActions(false)
+        setShowManualInput(false)
+        setShowRegistry(false)
+        setShowPackages(false)
+        setShowBuildLog(false)
         loadReceiveState()
       }} type="button">
         수신
@@ -1206,6 +1240,9 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       )}
       {showReceivePanel && (
         <div className="interface-receive-panel">
+          <div className="interface-registry-heading">
+            <strong>수신</strong>
+          </div>
           <div className="interface-manual-tabs">
             <button className={receiveMode === 'topic' ? 'active' : ''} onClick={() => setReceiveMode('topic')} type="button">Topic 수신</button>
             <button className={receiveMode === 'service' ? 'active' : ''} onClick={() => setReceiveMode('service')} type="button">Service 수신</button>
@@ -1263,7 +1300,14 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
               </label>
               <label className="interface-service-field">
                 <span>Service · {filteredReceiveServices.length}/{callableServices.length}</span>
-                <select value={selectedReceiveServiceKey} onChange={(event) => setSelectedReceiveServiceKey(event.target.value)}>
+                <select value={selectedReceiveServiceKey} onChange={(event) => {
+                  const key = event.target.value
+                  const service = callableServices.find((item) => serviceKey(item) === key)
+                  setSelectedReceiveServiceKey(key)
+                  setSelectedServiceKey(key)
+                  setRequestValues(defaultRequestValues(service?.request_schema ?? []))
+                  setServiceCallResult(null)
+                }}>
                   {filteredReceiveServices.map((service) => (
                     <option key={serviceKey(service)} value={serviceKey(service)}>
                       {service.service_name || service.file_name} · {service.service_type}
@@ -1275,7 +1319,14 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
                 )}
               </label>
               <div className="interface-receive-actions">
-                <button className="interface-receive-action-button primary" onClick={startSelectedServiceReceive} type="button">수신 시작</button>
+                <button
+                  className={selectedReceiveServiceKey && activeReceiveServiceKey === selectedReceiveServiceKey ? 'interface-receive-action-button receiving' : 'interface-receive-action-button primary'}
+                  disabled={!selectedReceiveServiceKey || activeReceiveServiceKey === selectedReceiveServiceKey}
+                  onClick={startSelectedServiceReceive}
+                  type="button"
+                >
+                  {selectedReceiveServiceKey && activeReceiveServiceKey === selectedReceiveServiceKey ? '수신 중' : '수신 시작'}
+                </button>
                 <button className="interface-receive-action-button" onClick={stopSelectedServiceReceive} type="button">수신 중지</button>
                 <button className="interface-receive-action-button warning" onClick={resetSelectedServiceReceiveHistory} type="button">선택 이력 리셋</button>
                 <button className="interface-receive-action-button warning" onClick={resetServiceReceiveHistory} type="button">전체 이력 리셋</button>
@@ -1296,7 +1347,14 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
               </label>
               <label className="interface-service-field">
                 <span>Action · {filteredReceiveActions.length}/{callableActions.length}</span>
-                <select value={selectedReceiveActionKey} onChange={(event) => setSelectedReceiveActionKey(event.target.value)}>
+                <select value={selectedReceiveActionKey} onChange={(event) => {
+                  const key = event.target.value
+                  const action = callableActions.find((item) => actionKey(item) === key)
+                  setSelectedReceiveActionKey(key)
+                  setSelectedActionKey(key)
+                  setGoalValues(defaultRequestValues(action?.goal_schema ?? []))
+                  setActionGoalResult(null)
+                }}>
                   {filteredReceiveActions.map((action) => (
                     <option key={actionKey(action)} value={actionKey(action)}>
                       {action.action_name || action.file_name} · {action.action_type}
@@ -1308,7 +1366,14 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
                 )}
               </label>
               <div className="interface-receive-actions">
-                <button className="interface-receive-action-button primary" onClick={startSelectedActionReceive} type="button">수신 시작</button>
+                <button
+                  className={selectedReceiveActionKey && activeReceiveActionKey === selectedReceiveActionKey ? 'interface-receive-action-button receiving' : 'interface-receive-action-button primary'}
+                  disabled={!selectedReceiveActionKey || activeReceiveActionKey === selectedReceiveActionKey}
+                  onClick={startSelectedActionReceive}
+                  type="button"
+                >
+                  {selectedReceiveActionKey && activeReceiveActionKey === selectedReceiveActionKey ? '수신 중' : '수신 시작'}
+                </button>
                 <button className="interface-receive-action-button" onClick={stopSelectedActionReceive} type="button">수신 중지</button>
                 <button className="interface-receive-action-button warning" onClick={resetSelectedActionReceiveHistory} type="button">선택 이력 리셋</button>
                 <button className="interface-receive-action-button warning" onClick={resetActionReceiveHistory} type="button">전체 이력 리셋</button>
@@ -1373,7 +1438,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         </div>
       )}
       {showCallableServices && (
-        <div className="interface-service-panel">
+        <div className="interface-service-panel interface-execution-panel">
           <div className="interface-registry-heading">
             <strong>등록 Service 실행</strong>
           </div>
@@ -1386,6 +1451,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
                     const key = event.target.value
                     const service = callableServices.find((item) => serviceKey(item) === key)
                     setSelectedServiceKey(key)
+                    setSelectedReceiveServiceKey(key)
                     setRequestValues(defaultRequestValues(service?.request_schema ?? []))
                     setServiceCallResult(null)
                   }}
@@ -1454,7 +1520,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         </div>
       )}
       {showCallableActions && (
-        <div className="interface-service-panel">
+        <div className="interface-service-panel interface-execution-panel">
           <div className="interface-registry-heading">
             <strong>등록 Action 실행</strong>
           </div>
@@ -1467,6 +1533,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
                     const key = event.target.value
                     const action = callableActions.find((item) => actionKey(item) === key)
                     setSelectedActionKey(key)
+                    setSelectedReceiveActionKey(key)
                     setGoalValues(defaultRequestValues(action?.goal_schema ?? []))
                     setActionGoalResult(null)
                   }}

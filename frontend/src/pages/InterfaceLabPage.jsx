@@ -52,50 +52,47 @@ export function InterfaceLabPage({ websocket }) {
   const [refreshing, setRefreshing] = useState(false)
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null)
   const [refreshSignal, setRefreshSignal] = useState(0)
+  const [workbenchResetKey, setWorkbenchResetKey] = useState(0)
 
   const refresh = async ({ notifyWorkbench = true } = {}) => {
     setRefreshing(true)
+    const requests = [
+      ['registry', fetchInterfaceRegistry()],
+      ['status', fetchInterfaceApplyStatus()],
+      ['callableServices', fetchCallableServices()],
+      ['callableActions', fetchCallableActions()],
+      ['packages', fetchInterfacePackages()],
+      ['serviceHistory', fetchServiceCallHistory()],
+      ['actionHistory', fetchActionGoalHistory()],
+      ['topics', fetchTopics()],
+      ['graphServices', fetchServices({ includeHidden: true })],
+      ['graphActions', fetchActions()],
+    ]
     try {
-      const [
-        registryPayload,
-        statusPayload,
-        servicesPayload,
-        actionsPayload,
-        packagesPayload,
-        serviceHistoryPayload,
-        actionHistoryPayload,
-        topicsPayload,
-        graphServicesPayload,
-        graphActionsPayload,
-      ] = await Promise.all([
-        fetchInterfaceRegistry(),
-        fetchInterfaceApplyStatus(),
-        fetchCallableServices(),
-        fetchCallableActions(),
-        fetchInterfacePackages(),
-        fetchServiceCallHistory(),
-        fetchActionGoalHistory(),
-        fetchTopics(),
-        fetchServices({ includeHidden: true }),
-        fetchActions(),
-      ])
-      setRegistry(registryPayload.data ?? { messages: [], services: [], actions: [] })
-      setApplyStatus(statusPayload.data ?? null)
-      setCallableServices(servicesPayload.data ?? [])
-      setCallableActions(actionsPayload.data ?? [])
-      setPackages(packagesPayload.data ?? [])
-      setServiceHistory(serviceHistoryPayload.data ?? [])
-      setActionHistory(actionHistoryPayload.data ?? [])
-      setTopics(topicsPayload.data?.topics ?? topicsPayload.data ?? [])
-      setGraphServices(graphServicesPayload.data?.services ?? graphServicesPayload.data ?? [])
-      setGraphActions(graphActionsPayload.data?.actions ?? graphActionsPayload.data ?? [])
+      const results = await Promise.allSettled(requests.map(([, request]) => request))
+      const payloads = Object.fromEntries(
+        results.flatMap((result, index) =>
+          result.status === 'fulfilled' ? [[requests[index][0], result.value]] : []),
+      )
+      if (payloads.registry) setRegistry(payloads.registry.data ?? { messages: [], services: [], actions: [] })
+      if (payloads.status) setApplyStatus(payloads.status.data ?? null)
+      if (payloads.callableServices) setCallableServices(payloads.callableServices.data ?? [])
+      if (payloads.callableActions) setCallableActions(payloads.callableActions.data ?? [])
+      if (payloads.packages) setPackages(payloads.packages.data ?? [])
+      if (payloads.serviceHistory) setServiceHistory(payloads.serviceHistory.data ?? [])
+      if (payloads.actionHistory) setActionHistory(payloads.actionHistory.data ?? [])
+      if (payloads.topics) setTopics(payloads.topics.data?.topics ?? payloads.topics.data ?? [])
+      if (payloads.graphServices) setGraphServices(payloads.graphServices.data?.services ?? payloads.graphServices.data ?? [])
+      if (payloads.graphActions) setGraphActions(payloads.graphActions.data?.actions ?? payloads.graphActions.data ?? [])
+
+      const failures = results.filter((result) => result.status === 'rejected')
       setLastRefreshedAt(new Date())
-      setError(null)
+      setError(failures.length
+        ? new Error(`일부 상태를 불러오지 못했습니다(${failures.length}/${requests.length}). 연결 가능한 항목의 상태는 화면에 반영했습니다. ${failures[0].reason?.message ?? ''}`)
+        : null)
       if (notifyWorkbench) {
         setRefreshSignal((value) => value + 1)
       }
-    } catch (nextError) {
-      setError(nextError)
     } finally {
       setRefreshing(false)
     }
@@ -103,6 +100,20 @@ export function InterfaceLabPage({ websocket }) {
 
   const handleWorkbenchStateChanged = () => {
     refresh({ notifyWorkbench: false })
+  }
+
+  const resetInterfaceLab = async () => {
+    setActiveGroup('all')
+    setSelected(null)
+    setSelectedHistoryItem(null)
+    setRequestValues({})
+    setGoalValues({})
+    setTimeoutSec(2)
+    setGoalTimeoutSec(10)
+    setInlineResult(null)
+    setError(null)
+    setWorkbenchResetKey((value) => value + 1)
+    await refresh({ notifyWorkbench: false })
   }
 
   useEffect(() => {
@@ -216,6 +227,14 @@ export function InterfaceLabPage({ websocket }) {
         </div>
         <div className="interface-lab-actions">
           <button
+            className="interface-reset-button"
+            disabled={refreshing}
+            onClick={resetInterfaceLab}
+            type="button"
+          >
+            초기화
+          </button>
+          <button
             className="interface-refresh-button"
             disabled={refreshing}
             onClick={() => refresh()}
@@ -250,11 +269,12 @@ export function InterfaceLabPage({ websocket }) {
             <p className="eyebrow">Upload / Apply / Run</p>
             <h2>인터페이스 작업 도구</h2>
           </div>
-          <span className={applyStatus?.real_apply_success ? 'status-pill success' : 'status-pill warning'}>
-            {applyStatus?.status ?? 'idle'}
+          <span className={applyStatus?.real_apply_success && !summary.rebuildRequired ? 'status-pill success' : 'status-pill warning'}>
+            {applyStatusLabel(applyStatus, summary.rebuildRequired > 0)}
           </span>
         </div>
         <InterfaceUploadControl
+          key={workbenchResetKey}
           onStateChanged={handleWorkbenchStateChanged}
           refreshSignal={refreshSignal}
           websocket={websocket}
@@ -337,6 +357,21 @@ function SummaryCard({ label, tone = 'neutral', value }) {
       <strong>{value}</strong>
     </div>
   )
+}
+
+function applyStatusLabel(status, rebuildRequired = false) {
+  if (rebuildRequired) return '등록 변경됨 · 빌드 필요'
+  const value = status?.status ?? status?.build_status ?? 'idle'
+  const labels = {
+    failed: '빌드 실패',
+    idle: '대기 중',
+    import_failed: '빌드 성공 · import 확인 실패',
+    partial: '일부 적용 필요',
+    rebuild_required: '재빌드 필요',
+    running: '빌드 진행 중',
+    success: '적용 완료',
+  }
+  return labels[value] ?? value
 }
 
 function InterfaceCard({ item, onClick, selected }) {

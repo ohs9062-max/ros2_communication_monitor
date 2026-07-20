@@ -229,6 +229,13 @@ h3 {
   position: relative;
 }
 
+.interface-upload-control::before {
+  content: "";
+  flex: 0 0 100%;
+  height: 0;
+  order: 19;
+}
+
 .interface-file-input {
   display: none;
 }
@@ -307,10 +314,27 @@ h3 {
   background: #0d141d;
   border: 1px solid rgba(14, 165, 233, 0.34);
   border-radius: 10px;
-  flex: 1 0 100%;
+  flex: 1 1 calc(50% - 8px);
   margin-top: 8px;
+  min-width: 0;
+  order: 21;
   padding: 14px;
-  width: 100%;
+  width: auto;
+}
+
+.interface-service-panel.interface-execution-panel {
+  flex: 1 1 calc(50% - 8px);
+  min-width: 0;
+  order: 20;
+  width: auto;
+}
+
+@media (max-width: 1180px) {
+  .interface-receive-panel,
+  .interface-service-panel.interface-execution-panel {
+    flex-basis: 100%;
+    width: 100%;
+  }
 }
 
 .interface-receive-button {
@@ -543,6 +567,17 @@ h3 {
   width: 100%;
 }
 
+.interface-receive-panel,
+.interface-service-panel.interface-execution-panel {
+  align-self: stretch;
+  box-sizing: border-box;
+  height: min(650px, 70vh);
+  margin-top: 8px;
+  max-height: none;
+  overflow-y: auto;
+  padding: 14px;
+}
+
 .interface-package-panel {
   background: #0d141d;
   border: 1px solid var(--border);
@@ -553,6 +588,14 @@ h3 {
   overflow-y: auto;
   padding: 12px;
   width: 100%;
+}
+
+@media (max-width: 1180px) {
+  .interface-receive-panel,
+  .interface-service-panel.interface-execution-panel {
+    height: auto;
+    max-height: none;
+  }
 }
 
 .interface-package-help {
@@ -882,7 +925,8 @@ h3 {
 }
 
 .interface-lab-link-button,
-.interface-refresh-button {
+.interface-refresh-button,
+.interface-reset-button {
   background: rgba(14, 165, 233, 0.16);
   border: 1px solid rgba(14, 165, 233, 0.42);
   border-radius: 7px;
@@ -892,6 +936,12 @@ h3 {
   padding: 7px 10px;
 }
 
+.interface-reset-button {
+  background: rgba(245, 158, 11, 0.14);
+  border-color: rgba(245, 158, 11, 0.42);
+}
+
+.interface-reset-button:disabled,
 .interface-refresh-button:disabled {
   cursor: wait;
   opacity: 0.62;

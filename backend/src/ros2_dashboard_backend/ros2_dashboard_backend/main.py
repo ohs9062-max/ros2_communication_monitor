@@ -136,7 +136,7 @@ def get_ros_services(
         include_hidden=include_hidden,
     )
     return {
-        'ok': True,
+        'success': True,
         'data': {
             'services': snapshot['services'],
             'meta': snapshot['meta'],
@@ -149,7 +149,7 @@ def get_ros_actions() -> dict[str, Any]:
     """Return the cached ROS 2 action snapshot."""
     snapshot = ros_monitor.action_snapshot()
     return {
-        'ok': True,
+        'success': True,
         'data': {
             'actions': snapshot['actions'],
             'meta': snapshot['meta'],
@@ -162,7 +162,7 @@ def get_ros_nodes() -> dict[str, Any]:
     """Return the cached ROS 2 node snapshot."""
     snapshot = ros_monitor.node_snapshot()
     return {
-        'ok': True,
+        'success': True,
         'data': {
             'nodes': snapshot['nodes'],
             'meta': snapshot['meta'],

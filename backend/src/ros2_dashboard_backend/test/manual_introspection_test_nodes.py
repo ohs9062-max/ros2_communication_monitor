@@ -1,4 +1,8 @@
-"""Manual test nodes for ROS 2 service introspection."""
+"""Manual ROS 2 service introspection test nodes.
+
+This file is intentionally kept under test/ so the production backend package
+does not install demo-only console scripts.
+"""
 
 from __future__ import annotations
 

@@ -4,109 +4,86 @@
 
 **Node**는 센서 읽기나 로봇 제어처럼 하나의 역할을 수행하는 ROS2 프로그램
 단위입니다. 이 프로젝트는 Node 이름뿐 아니라 각 Node가 연결한 Topic, Service,
-Action 관계도 수집합니다. Backend 구현은 `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/node/runtime.py`,
-Frontend 표시는 `frontend/src/pages/NodesPage.jsx`입니다.
+Action 관계도 수집합니다.
 
-**Topic**은 데이터를 계속 발행하고 구독하는 통신 채널입니다. `TopicRuntime`은
-Graph에서 Topic을 찾고 지원 type을 구독하여 최근 메시지와 Hz를 기록합니다.
-Backend 구현은 `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic/runtime.py`이고 화면은
-`frontend/src/pages/TopicsPage.jsx`입니다.
+**Topic**은 데이터를 계속 발행하고 구독하는 통신 채널입니다.
 
-**Service**는 client가 한 번 요청하고 server가 응답하는 통신입니다. 기본 감시는
-server/client 존재 여부를 확인하며, 실제 요청은 allowlist 대상만 수행합니다.
-Backend 구현은 `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/service/runtime.py`이고 화면은 `frontend/src/pages/ServicesPage.jsx`입니다.
+**Service**는 client가 한 번 요청하고 server가 응답하는 통신입니다.
 
-**Action**은 오래 걸리는 작업을 Goal, Feedback, Result로 나눈 통신입니다. 이
-대시보드는 Goal이나 cancel을 보내지 않고 status/feedback을 관찰합니다. 관찰한 종료
-Goal만 result를 조회합니다. 구현은 `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/action/runtime.py`와
-`backend/src/ros2_dashboard_backend/ros2_dashboard_backend/action/goal_runtime.py`입니다.
+**Action**은 오래 걸리는 작업을 Goal, Feedback, Result로 나눈 통신입니다.
 
-## 2. 상태를 수집하는 구조
+## 2. Interface Lab 관련 개념
+
+Interface Lab은 ROS2 인터페이스를 동적으로 관리하고 로봇과 상호작용하는 핵심 기능입니다.
+
+- **registry**: 등록된 모든 인터페이스의 메타데이터를 관리하는 저장소 (`interface_registry.yaml`).
+- **full_type**: 패키지명을 포함한 ROS2 인터페이스의 고유 식별자 (예: `can_interfaces/action/CanControl`).
+- **인터페이스 등록 방식**:
+    - **manual_type**: 사용자가 수동으로 타입 정의.
+    - **manual_definition**: 사용자가 직접 `.msg/.srv/.action` 정의.
+    - **single_upload**: 단일 파일 업로드.
+    - **package_upload**: 완전한 패키지 폴더 업로드.
+- **build/apply**: `manual_definition`, `single_upload`, `package_upload` 방식으로 등록한 인터페이스 파일을 실제 ROS2 패키지 구조로 만들고 `colcon build`를 실행하는 과정입니다. CMakeLists.txt와 package.xml 재생성은 `manual_interfaces.py`가 담당하고, `interface_apply.py`가 colcon build를 실행합니다. `manual_type`은 파일을 생성하지 않으므로 build가 필요 없습니다.
+- **callable**: 서비스나 액션이 현재 로봇에서 호출 가능한지 여부 (스키마와 타입 일치 여부 확인).
+- **exact match**: 이름뿐만 아니라 `full_type`까지 일치해야 정확한 호출이 가능함.
+
+## 3. 모니터링 vs 실행 (Monitor vs Execute)
+
+| 구분 | 모니터링 (Monitor) | 실행 (Execute) |
+|---|---|---|
+| 목적 | 시스템 상태 관찰 (Graph) | 사용자 요청 전송 (Lab) |
+| 담당 | `RosMonitor` / `Runtime` | `Interface Lab` / `CallRuntime` |
+| 동작 | 주기적 Graph 스캔, 구독 | 동적 API 호출, Goal 전송 |
+| 데이터 | `snapshot` | `history`, `sent_to_server` |
+
+## 4. 상태를 수집하는 구조
 
 ROS2의 현재 이름과 연결 관계를 코드로 조회하는 기능이 **Graph API**입니다.
-Runtime은 Graph API를 사용해 목록을 조사합니다. Topic 메시지 본문은 Graph API가
-아니라 **subscription(구독)**으로 받습니다.
-
-메시지 도착처럼 나중에 사건이 생겼을 때 자동 호출할 함수를 **callback(콜백)**이라고
-합니다. Topic callback은 preview와 timestamp를 저장하고 Action callback은 Goal
-상태와 feedback을 저장합니다.
+Runtime은 Graph API를 사용해 목록을 조사합니다.
 
 ```text
-timer가 Runtime.update() 호출
-  — ros_monitor.py L66-L70, L304-L309
+timer가 Runtime.update() 호출 (모니터링)
+  — ros_monitor.py
 
 → Runtime이 Graph API로 통신 구조 조사
-  — topic/runtime.py L101-L147 등 각 runtime.py
+  — topic/runtime.py 등 각 runtime.py
 
-→ 필요한 Topic subscription 생성
-  — topic/runtime.py L296-L323, action/runtime.py L325-L397
-
-→ 메시지 도착 시 callback 실행
-  — topic/runtime.py L385-L401, action/runtime.py L403-L433
-
-→ cache 저장 후 snapshot으로 API 전달
-  — 각 runtime.py의 snapshot(), main.py L54-L127
+→ 필요한 Topic subscription 생성 및 callback 실행
+  — 메시지 도착 시 정보 저장
 ```
 
-## 3. Runtime, cache, snapshot
+## 5. Runtime, cache, snapshot
 
 **Runtime**은 서버가 실행되는 동안 특정 영역의 상태와 기능을 묶어 관리하는
-객체입니다. `TopicRuntime`은 Topic 목록·구독·latest·Hz를, 다른 Runtime도 각자
-Service, Action, Node 상태를 맡습니다. 생성 위치는 `ros_monitor.py` L32-L57입니다.
+객체입니다.
 
 **cache**는 Runtime이 메모리에 보관하는 최신 결과이고, **snapshot**은 API가 안전하게
-읽도록 cache를 복사한 한 시점의 값입니다. `snapshot()`은 Graph를 새로 조회하는
-함수가 아닙니다. 예를 들어 Topic snapshot은 `topic/runtime.py` L70-L80에서 만듭니다.
+읽도록 cache를 복사한 한 시점의 값입니다.
 
 **coordinator(조정자)**인 `RosMonitor`는 세부 로직을 직접 반복하지 않고 Runtime의
-`update()`와 `snapshot()`을 호출합니다. 전체 조립은 `ros_monitor.py` L23-L57,
-갱신 순서는 L304-L309입니다.
+`update()`와 `snapshot()`을 호출합니다.
 
-## 4. 동시에 실행되는 작업
+## 6. 동시에 실행되는 작업
 
 **thread(스레드)**는 하나의 프로그램 안에서 별도로 진행되는 작업 흐름입니다.
 FastAPI는 웹 요청을 처리하고 ROS2 spin thread는 timer와 subscription callback을
-처리합니다. 생성 위치는 `ros_monitor.py` L72-L73, 실제 spin은 L292-L302입니다.
+처리합니다.
 
 두 실행 흐름이 같은 cache에 접근하므로 **Lock(락)**이 갱신 중인 데이터를 다른
-쪽에서 읽지 못하게 잠시 보호합니다. cache 구조는 수집과 API 제공을 분리하기 위한
-설계이고, Lock은 그 cache를 안전하게 공유하기 위한 도구입니다.
-
-## 5. 함수 전달과 비동기 결과
-
-`node_getter`는 Runtime이 현재 ROS2 Node를 가져오는 함수입니다.
-`node_getter=lambda: self._node`의 **lambda**는 짧은 이름 없는 함수이며, 호출 시점의
-Node를 반환합니다. 전달 위치는 `ros_monitor.py` L32-L57입니다.
-
-Service `call_async()`는 응답을 기다리지 않고 **Future**, 즉 나중에 완료될 결과
-객체를 반환합니다. `async def`가 없어도 이 요청은 비동기로 진행됩니다. 시작은
-`active_check_runtime.py` L147-L214, 완료·timeout 처리는 L76-L145입니다.
-
-## 6. 세 가지 반복 주기
-
-**polling(폴링)**은 일정 간격마다 다시 확인하는 방식입니다.
-
-- Backend `poll_interval_sec`: Graph를 다시 조사해 cache 갱신
-  (`ros_monitor.py` L66-L70)
-- Frontend 1·3·5초: REST snapshot 다시 요청
-  (`useTopicDashboard.js` L14-L17, 각 도메인 hook, `useVisualizationGraph.js` L17-L46)
-- WebSocket 1초: 경량 snapshot 전송 (`main.py` L15, L130-L147)
-
-세 주기는 서로 독립적입니다.
+쪽에서 읽지 못하게 잠시 보호합니다.
 
 ## 7. 전체 흐름 한 문장
 
-timer와 subscription callback이 Runtime cache를 갱신하고 Lock이 이를 보호하면
-FastAPI가 snapshot을 REST와 WebSocket으로 전달합니다.
+ROS2 상태 모니터링을 위한 Runtime cache 갱신과, Interface Lab을 통한 동적 인터페이스 관리 및 서비스/액션 상호작용이 동시에 수행됩니다.
 
 ## 초보자가 자주 틀리는 부분
 
-- Graph API는 메시지 본문이 아니라 이름과 연결 관계를 알려줍니다.
-- class는 설계도이고 `TopicRuntime(...)`으로 만든 값이 실제 실행 객체입니다.
-- stale은 Graph에서 사라진 흔적이지 운영체제 process 종료를 확정한 값이 아닙니다.
+- 모니터링(관찰)과 실행(요청)은 다른 Runtime 흐름을 가집니다.
+- `full_type` 매칭 없이 이름만으로 호출하면 타입 오류가 발생합니다.
+- 인터페이스 파일 변경 후 `apply/build` 과정 없이는 사용할 수 없습니다.
 
 ## 내가 반드시 알아야 할 것 3줄 요약
 
-1. Node, Topic, Service, Action은 서로 다른 통신 역할을 가집니다.
-2. Runtime cache와 snapshot이 ROS2 수집과 웹 API 사이를 연결합니다.
-3. thread, callback, Future, Lock은 동시에 진행되는 수집 결과를 안전하게 관리합니다.
+1. 모니터링(Graph)과 실행(Interface Lab) 기능이 공존합니다.
+2. `registry`, `full_type`, `apply` 개념이 Interface Lab의 핵심입니다.
+3. `snapshot`은 모니터링 데이터의 안전한 API 전달 방식입니다.

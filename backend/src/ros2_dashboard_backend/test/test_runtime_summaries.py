@@ -50,6 +50,89 @@ def test_action_history_summary_includes_result_and_feedback():
     assert summary['success_count'] == 1
 
 
+def test_action_graph_preserves_each_type_and_exact_type_counts():
+    runtime = ActionGoalRuntime(lock=_NoopLock(), node_getter=lambda: object())
+    runtime._action_count_maps = lambda: (
+        {
+            ('/CanControl', 'can_interfaces/action/CanControl'): 1,
+            ('/CanControl', 'rths_interfaces/action/CanControl'): 2,
+        },
+        {
+            ('/CanControl', 'rths_interfaces/action/CanControl'): 1,
+        },
+    )
+    runtime._action_servers_by_node = lambda _name, _namespace: []
+    runtime._action_clients_by_node = lambda _name, _namespace: []
+
+    import ros2_dashboard_backend.action.goal_runtime as goal_runtime
+
+    original = goal_runtime.get_action_names_and_types
+    goal_runtime.get_action_names_and_types = lambda _node: [
+        (
+            '/CanControl',
+            [
+                'can_interfaces/action/CanControl',
+                'rths_interfaces/action/CanControl',
+            ],
+        ),
+    ]
+    try:
+        graph = runtime._action_graph()
+    finally:
+        goal_runtime.get_action_names_and_types = original
+
+    assert graph == [
+        {
+            'name': '/CanControl',
+            'type': 'can_interfaces/action/CanControl',
+            'server_count': 1,
+            'client_count': 0,
+        },
+        {
+            'name': '/CanControl',
+            'type': 'rths_interfaces/action/CanControl',
+            'server_count': 2,
+            'client_count': 1,
+        },
+    ]
+
+
+def test_action_client_cache_is_keyed_by_name_and_type():
+    created = []
+    runtime = ActionGoalRuntime(lock=_NoopLock(), node_getter=lambda: object())
+
+    import ros2_dashboard_backend.action.goal_runtime as goal_runtime
+
+    original = goal_runtime.ActionClient
+    goal_runtime.ActionClient = lambda _node, action_class, name: created.append(
+        (name, action_class),
+    ) or object()
+    try:
+        rths_client = runtime._client(
+            '/CanControl',
+            'rths_interfaces/action/CanControl',
+            'rths-class',
+        )
+        can_client = runtime._client(
+            '/CanControl',
+            'can_interfaces/action/CanControl',
+            'can-class',
+        )
+        assert runtime._client(
+            '/CanControl',
+            'rths_interfaces/action/CanControl',
+            'rths-class',
+        ) is rths_client
+    finally:
+        goal_runtime.ActionClient = original
+
+    assert rths_client is not can_client
+    assert created == [
+        ('/CanControl', 'rths-class'),
+        ('/CanControl', 'can-class'),
+    ]
+
+
 class _NoopLock:
     def __enter__(self):
         return self

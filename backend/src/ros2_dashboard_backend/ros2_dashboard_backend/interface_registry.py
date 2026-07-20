@@ -131,6 +131,9 @@ def register_interface(
             entry['build'] = _install_interface(safe_name, kind, type_name, raw_text)
         except InterfaceUploadError as exc:
             entry['build'] = _failed_build_info(raw_text, str(exc))
+        package_name = str(entry['build'].get('interface_package') or '')
+        entry['source'] = 'single_upload'
+        entry['full_type'] = f'{package_name}/{kind}/{type_name}' if package_name else None
         collection[:] = [
             item for item in collection
             if item.get('file_name') != safe_name
@@ -170,8 +173,16 @@ def _install_interface(
     destination.parent.mkdir(parents=True, exist_ok=True)
     try:
         _atomic_write(destination, raw_text)
-        cmake_changed = _update_cmake(cmake_path, f'{kind}/{safe_name}', dependencies)
-        package_changed = _update_package_xml(package_xml, dependencies)
+        if package_name == 'uploaded_interfaces':
+            from ros2_dashboard_backend.manual_interfaces import (
+                regenerate_uploaded_interfaces_package,
+            )
+            regenerate_uploaded_interfaces_package(package_path)
+            cmake_changed = True
+            package_changed = True
+        else:
+            cmake_changed = _update_cmake(cmake_path, f'{kind}/{safe_name}', dependencies)
+            package_changed = _update_package_xml(package_xml, dependencies)
     except (OSError, UnicodeError) as exc:
         raise InterfaceUploadError(f'interface 패키지 반영에 실패했습니다: {exc}') from exc
 

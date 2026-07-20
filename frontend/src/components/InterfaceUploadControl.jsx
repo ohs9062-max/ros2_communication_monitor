@@ -364,9 +364,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       if (editingManualDefinition?.kind === item.file_kind && editingManualDefinition?.typeName === item.type_name) {
         setEditingManualDefinition(null)
       }
-      await loadRegistry(true)
-      await loadApplyStatus()
-      onStateChanged?.()
+      await refreshInterfaceListsAfterDelete()
     } catch (error) {
       setFeedback({ tone: 'error', text: error.message })
     } finally {
@@ -671,6 +669,23 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
     }
   }
 
+  const refreshInterfaceListsAfterDelete = async () => {
+    const [registryPayload, packagesPayload, servicesPayload, actionsPayload, statusPayload] = await Promise.all([
+      fetchInterfaceRegistry(),
+      fetchInterfacePackages(),
+      fetchCallableServices(),
+      fetchCallableActions(),
+      fetchInterfaceApplyStatus(),
+    ])
+    setRegistry(registryPayload.data)
+    setPackages(packagesPayload.data ?? [])
+    setCallableServices(servicesPayload.data ?? [])
+    setCallableActions(actionsPayload.data ?? [])
+    setApplyStatus(statusPayload.data)
+    setBuildLogTail(statusPayload.data?.log_tail ?? '')
+    onStateChanged?.()
+  }
+
   const removePackage = async (packageName) => {
     setBusy(true)
     try {
@@ -679,8 +694,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         tone: 'warning',
         text: `${packageName} package를 삭제했습니다. 적용하기로 build 상태를 갱신하세요.`,
       })
-      await loadPackages(true)
-      onStateChanged?.()
+      await refreshInterfaceListsAfterDelete()
     } catch (error) {
       setFeedback({ tone: 'error', text: error.message })
     } finally {
@@ -691,7 +705,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   const removeRegistryEntry = async (item) => {
     setBusy(true)
     try {
-      await deleteInterfaceRegistryEntry({
+      const payload = await deleteInterfaceRegistryEntry({
         kind: item.file_kind,
         fileName: item.file_name,
         source: item.source,
@@ -708,10 +722,11 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       ].slice(0, 3))
       setFeedback({
         tone: 'warning',
-        text: `${item.file_name} 등록을 삭제했습니다. 생성된 파일은 삭제하지 않았습니다.`,
+        text: payload.data?.file_deleted
+          ? `${item.file_name} 파일과 등록을 삭제하고 package metadata를 재생성했습니다.`
+          : `${item.file_name} 등록을 삭제했습니다. 생성된 파일은 삭제하지 않았습니다.`,
       })
-      await loadRegistry(true)
-      onStateChanged?.()
+      await refreshInterfaceListsAfterDelete()
     } catch (error) {
       setFeedback({ tone: 'error', text: error.message })
     } finally {
@@ -879,7 +894,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       const payload = await callRegisteredService({
         service_name: selectedService.service_name,
         service_type: selectedService.service_type,
-        request: requestValues,
+        request: normalizeNumericValues(requestValues, selectedService.request_schema),
         timeout_sec: timeoutSec,
       })
       setServiceCallResult(payload)
@@ -904,7 +919,8 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       const payload = await sendActionGoal({
         action_name: selectedAction.action_name,
         action_type: selectedAction.action_type,
-        goal: goalValues,
+        full_type: selectedAction.full_type ?? selectedAction.selected_import_type ?? selectedAction.action_type,
+        goal: normalizeNumericValues(goalValues, selectedAction.goal_schema),
         timeout_sec: goalTimeoutSec,
       })
       setActionGoalResult(payload)
@@ -1708,7 +1724,7 @@ function RequestField({ disabled = false, field, onChange, value }) {
       <span>{field.name} <small>{type}</small></span>
       <input
         disabled={disabled}
-        onChange={(event) => onChange(numeric ? Number(event.target.value) : event.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         type={numeric ? 'number' : 'text'}
         value={value ?? ''}
       />
@@ -1803,6 +1819,20 @@ function defaultRequestValues(schema = []) {
     schema
       .filter((field) => field.name)
       .map((field) => [field.name, defaultFieldValue(field.type)]),
+  )
+}
+
+function normalizeNumericValues(values, schema = []) {
+  const numericFields = new Set(
+    schema
+      .filter((field) => field.name && isNumericType(field.type))
+      .map((field) => field.name),
+  )
+  return Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [
+      name,
+      numericFields.has(name) && value !== '' ? Number(value) : value,
+    ]),
   )
 }
 

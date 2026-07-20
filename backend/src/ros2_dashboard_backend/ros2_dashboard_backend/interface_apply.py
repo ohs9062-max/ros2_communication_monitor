@@ -81,6 +81,23 @@ def apply_status() -> dict[str, Any]:
     return status
 
 
+def mark_interface_change_pending(message: str) -> dict[str, Any]:
+    """Persist that interface package changes require a new build."""
+    status = _read_status()
+    status.update({
+        'running': False,
+        'status': 'rebuild_required',
+        'build_status': 'rebuild_required',
+        'real_apply_success': False,
+        'build_required': True,
+        'change_message': message,
+        'changed_at': datetime.now(timezone.utc).isoformat(),
+        'reload_scheduled': False,
+    })
+    _write_status(default_apply_status_path(), status)
+    return status
+
+
 def run_interface_apply() -> dict[str, Any]:
     """Run colcon build for the backend workspace and persist the result."""
     if not _APPLY_LOCK.acquire(blocking=False):

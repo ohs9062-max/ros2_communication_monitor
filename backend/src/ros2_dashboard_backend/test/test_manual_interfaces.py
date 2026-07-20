@@ -4,6 +4,7 @@ import pytest
 
 from ros2_dashboard_backend import manual_interfaces
 from ros2_dashboard_backend.interface_registry import InterfaceUploadError
+from ros2_dashboard_backend import interface_registry
 from ros2_dashboard_backend.interface_registry import registry_snapshot
 
 
@@ -155,4 +156,61 @@ def test_delete_manual_definition_removes_file_and_cmake_entry(tmp_path, monkeyp
     assert result['deleted_file'] is True
     assert not (package_root / 'srv' / 'MyControl.srv').exists()
     assert 'srv/MyControl.srv' not in (package_root / 'CMakeLists.txt').read_text()
+    assert 'rosidl_generate_interfaces' not in (package_root / 'CMakeLists.txt').read_text()
+    assert 'rosidl_default_generators' not in (package_root / 'package.xml').read_text()
+    assert 'rosidl_interface_packages' not in (package_root / 'package.xml').read_text()
     assert registry_snapshot(registry_path)['interface_registry']['services'] == []
+
+
+def test_regeneration_scans_all_remaining_files_and_rewrites_metadata(tmp_path, monkeypatch):
+    monkeypatch.setattr(manual_interfaces, 'backend_workspace_root', lambda: tmp_path)
+    package_root = tmp_path / 'src' / 'uploaded_interfaces'
+    (package_root / 'msg').mkdir(parents=True)
+    (package_root / 'srv').mkdir()
+    (package_root / 'action').mkdir()
+    (package_root / 'msg' / 'Status.msg').write_text('std_msgs/Header header\n')
+    (package_root / 'CMakeLists.txt').write_text('stale content\n')
+    (package_root / 'package.xml').write_text('<package>stale content</package>\n')
+
+    result = manual_interfaces.regenerate_uploaded_interfaces_package(package_root)
+
+    cmake = (package_root / 'CMakeLists.txt').read_text()
+    package_xml = (package_root / 'package.xml').read_text()
+    assert result['interfaces'] == ['msg/Status.msg']
+    assert '"msg/Status.msg"' in cmake
+    assert 'rosidl_generate_interfaces(${PROJECT_NAME}' in cmake
+    assert 'find_package(std_msgs REQUIRED)' in cmake
+    assert '<depend>std_msgs</depend>' in package_xml
+    assert '<member_of_group>rosidl_interface_packages</member_of_group>' in package_xml
+
+
+def test_single_upload_can_recreate_and_delete_from_empty_package(tmp_path, monkeypatch):
+    registry_path = tmp_path / 'config' / 'interface_registry.yaml'
+    package_root = tmp_path / 'src' / 'uploaded_interfaces'
+    monkeypatch.setattr(manual_interfaces, 'backend_workspace_root', lambda: tmp_path)
+    manual_interfaces.regenerate_uploaded_interfaces_package(package_root)
+    monkeypatch.setattr(
+        interface_registry,
+        'default_interface_package',
+        lambda: ('uploaded_interfaces', package_root),
+    )
+    monkeypatch.setattr(interface_registry, '_check_import', lambda *_args: (False, 'not built yet'))
+
+    entry = interface_registry.register_interface(
+        'SingleUpload.msg',
+        b'string value\n',
+        registry_path=registry_path,
+    )
+    deleted = manual_interfaces.delete_uploaded_interface(
+        kind='msg',
+        file_name='SingleUpload.msg',
+        source='single_upload',
+        full_type='uploaded_interfaces/msg/SingleUpload',
+        registry_path=registry_path,
+    )
+
+    assert entry['source'] == 'single_upload'
+    assert '"msg/SingleUpload.msg"' not in (package_root / 'CMakeLists.txt').read_text()
+    assert 'rosidl_generate_interfaces' not in (package_root / 'CMakeLists.txt').read_text()
+    assert deleted['build_required'] is True
+    assert registry_snapshot(registry_path)['interface_registry']['messages'] == []

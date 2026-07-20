@@ -116,8 +116,8 @@ def write_manual_definition(
     destination = package_root / kind / file_name
     destination.parent.mkdir(parents=True, exist_ok=True)
     _atomic_write(destination, raw_text)
-    dependencies = _dependency_candidates(raw_text, package_name)
-    _regenerate_uploaded_cmake(package_root, package_name, dependencies)
+    package_state = regenerate_uploaded_interfaces_package(package_root)
+    dependencies = package_state['dependencies']
 
     import_available, import_error = _check_import(package_name, kind, type_name)
     entry = {
@@ -180,41 +180,111 @@ def delete_manual_definition(
         raise InterfaceUploadError('type_name은 대문자로 시작하는 PascalCase여야 합니다.')
     package_name = 'uploaded_interfaces'
     package_root = backend_workspace_root() / 'src' / package_name
-    suffix = {'msg': 'msg', 'srv': 'srv', 'action': 'action'}[kind]
-    target = package_root / kind / f'{type_name}.{suffix}'
-    deleted_file = False
-    if target.is_file():
-        target.unlink()
-        deleted_file = True
-    _ensure_uploaded_interfaces_package(package_root, package_name)
-    _regenerate_uploaded_cmake(package_root, package_name, _dependencies_from_existing_files(package_root, package_name))
-    _remove_registry_entry(
+    return delete_uploaded_interface(
         kind=kind,
+        file_name=f'{type_name}.{kind}',
         full_type=f'{package_name}/{kind}/{type_name}',
+        source='manual_definition',
         registry_path=registry_path,
     )
-    return {
-        'deleted_file': deleted_file,
-        'file_path': _display_path(target),
-        'full_type': f'{package_name}/{kind}/{type_name}',
-        'rebuild_required': True,
-    }
 
 
 def rebuild_uploaded_interfaces_cmake() -> dict[str, Any]:
-    """Regenerate uploaded_interfaces CMakeLists.txt from actual files only."""
+    """Regenerate uploaded_interfaces package metadata from actual files only."""
     package_name = 'uploaded_interfaces'
     package_root = backend_workspace_root() / 'src' / package_name
-    _ensure_uploaded_interfaces_package(package_root, package_name)
-    dependencies = _dependencies_from_existing_files(package_root, package_name)
-    _regenerate_uploaded_cmake(package_root, package_name, dependencies)
+    package_state = regenerate_uploaded_interfaces_package(package_root)
     return {
         'package': package_name,
         'package_path': _display_path(package_root),
-        'dependencies': dependencies,
-        'interfaces': _existing_interface_paths(package_root),
+        **package_state,
         'rebuild_required': True,
     }
+
+
+def delete_uploaded_interface(
+    *,
+    kind: str,
+    file_name: str,
+    source: str | None = None,
+    full_type: str | None = None,
+    registry_path: Path | None = None,
+) -> dict[str, Any]:
+    """Delete one single-file uploaded_interfaces entry and rebuild metadata."""
+    if kind not in ALLOWED_KINDS:
+        raise InterfaceUploadError('kind는 msg, srv, action 중 하나여야 합니다.')
+    expected_suffix = f'.{kind}'
+    if Path(file_name).name != file_name or not file_name.endswith(expected_suffix):
+        raise InterfaceUploadError(f'file_name은 안전한 {expected_suffix} 파일명이어야 합니다.')
+
+    path = registry_path or default_registry_path()
+    registry = _load_registry(path)
+    collection = registry['interface_registry'][KIND_COLLECTIONS[kind]]
+    removed = next(
+        (
+            item for item in collection
+            if item.get('file_name') == file_name
+            and (source is None or item.get('source') == source)
+            and (full_type is None or item.get('full_type') == full_type)
+        ),
+        None,
+    )
+    if removed is None:
+        raise InterfaceUploadError('삭제할 registry 항목을 찾을 수 없습니다.')
+    package_name = str(
+        removed.get('build', {}).get('interface_package')
+        or str(removed.get('full_type', '')).split('/', 1)[0]
+    )
+    if package_name != 'uploaded_interfaces':
+        raise InterfaceUploadError('이 삭제 경로는 uploaded_interfaces 단일 파일만 지원합니다.')
+
+    package_root = backend_workspace_root() / 'src' / package_name
+    target = package_root / kind / file_name
+    deleted_file = target.is_file()
+    if deleted_file:
+        target.unlink()
+    package_state = regenerate_uploaded_interfaces_package(package_root)
+    remove_uploaded_interface_registry_entry(
+        kind=kind,
+        file_name=file_name,
+        source=removed.get('source'),
+        full_type=removed.get('full_type'),
+        registry_path=path,
+    )
+    return {
+        'deleted_file': deleted_file,
+        'file_deleted': deleted_file,
+        'file_path': _display_path(target),
+        'full_type': removed.get('full_type'),
+        'removed': removed,
+        **package_state,
+        'rebuild_required': True,
+        'build_required': True,
+        'message': 'interface 파일과 registry 항목을 삭제하고 package metadata를 재생성했습니다.',
+    }
+
+
+def remove_uploaded_interface_registry_entry(
+    *,
+    kind: str,
+    file_name: str,
+    source: str | None,
+    full_type: str | None,
+    registry_path: Path | None = None,
+) -> None:
+    """Remove exactly one uploaded_interfaces registry record."""
+    path = registry_path or default_registry_path()
+    registry = _load_registry(path)
+    collection = registry['interface_registry'][KIND_COLLECTIONS[kind]]
+    collection[:] = [
+        item for item in collection
+        if not (
+            item.get('file_name') == file_name
+            and item.get('source') == source
+            and item.get('full_type') == full_type
+        )
+    ]
+    _write_registry(path, registry)
 
 
 def validate_manual_definition(
@@ -329,65 +399,95 @@ def _strip_array_suffix(field_type: str) -> str:
 def _ensure_uploaded_interfaces_package(package_root: Path, package_name: str) -> None:
     for folder in ('msg', 'srv', 'action'):
         (package_root / folder).mkdir(parents=True, exist_ok=True)
-    package_xml = package_root / 'package.xml'
-    if not package_xml.is_file():
-        _atomic_write(package_xml, f'''<?xml version="1.0"?>
-<package format="3">
-  <name>{package_name}</name>
-  <version>0.0.0</version>
-  <description>User-authored interfaces from ros2_dashboard.</description>
-  <maintainer email="user@example.com">ros2_dashboard</maintainer>
-  <license>Apache-2.0</license>
-  <buildtool_depend>ament_cmake</buildtool_depend>
-  <build_depend>rosidl_default_generators</build_depend>
-  <exec_depend>rosidl_default_runtime</exec_depend>
-  <member_of_group>rosidl_interface_packages</member_of_group>
-</package>
-''')
 
 
-def _regenerate_uploaded_cmake(
-    package_root: Path,
-    package_name: str,
-    dependencies: list[str],
-) -> None:
-    interface_paths = []
+def scan_uploaded_interface_files(package_root: Path | None = None) -> list[str]:
+    """Return the current msg/srv/action files in deterministic CMake order."""
+    root = package_root or backend_workspace_root() / 'src' / 'uploaded_interfaces'
+    interface_paths: list[str] = []
     for folder, suffix in (('msg', '.msg'), ('srv', '.srv'), ('action', '.action')):
         interface_paths.extend(
             f'{folder}/{path.name}'
-            for path in sorted((package_root / folder).glob(f'*{suffix}'))
+            for path in sorted((root / folder).glob(f'*{suffix}'))
         )
+    return interface_paths
+
+
+def regenerate_uploaded_interfaces_package(package_root: Path | None = None) -> dict[str, Any]:
+    """Rewrite CMakeLists.txt and package.xml from the files currently on disk."""
+    root = package_root or backend_workspace_root() / 'src' / 'uploaded_interfaces'
+    package_name = 'uploaded_interfaces'
+    _ensure_uploaded_interfaces_package(root, package_name)
+    interface_paths = scan_uploaded_interface_files(root)
+    dependencies = _dependencies_from_existing_files(root, package_name)
+    regenerate_uploaded_interfaces_cmake(root, interface_paths, dependencies)
+    regenerate_uploaded_interfaces_package_xml(root, bool(interface_paths), dependencies)
+    return {'interfaces': interface_paths, 'dependencies': dependencies}
+
+
+def regenerate_uploaded_interfaces_cmake(
+    package_root: Path,
+    interface_paths: list[str],
+    dependencies: list[str],
+) -> None:
+    """Completely rewrite CMakeLists.txt; never retain stale interface entries."""
+    if not interface_paths:
+        cmake = '''cmake_minimum_required(VERSION 3.8)
+project(uploaded_interfaces)
+
+find_package(ament_cmake REQUIRED)
+
+ament_package()
+'''
+        _atomic_write(package_root / 'CMakeLists.txt', cmake)
+        return
     dependency_lines = ''.join(f'find_package({name} REQUIRED)\n' for name in dependencies)
     dependency_arg = f'  DEPENDENCIES {" ".join(dependencies)}\n' if dependencies else ''
     interface_block = '\n'.join(f'  "{path}"' for path in interface_paths)
-    rosidl_block = (
-        f'''rosidl_generate_interfaces(${{PROJECT_NAME}}
-{interface_block}
-{dependency_arg})
-'''
-        if interface_paths else ''
-    )
     cmake = f'''cmake_minimum_required(VERSION 3.8)
-project({package_name})
+project(uploaded_interfaces)
 
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 {dependency_lines}
-{rosidl_block}
+rosidl_generate_interfaces(${{PROJECT_NAME}}
+{interface_block}
+{dependency_arg})
+
 ament_export_dependencies(rosidl_default_runtime)
 ament_package()
 '''
     _atomic_write(package_root / 'CMakeLists.txt', cmake)
 
 
+def regenerate_uploaded_interfaces_package_xml(
+    package_root: Path,
+    has_interfaces: bool,
+    dependencies: list[str],
+) -> None:
+    """Completely rewrite package.xml to match an interface or empty package."""
+    rosidl_dependencies = ''
+    if has_interfaces:
+        dependency_tags = ''.join(f'  <depend>{name}</depend>\n' for name in dependencies)
+        rosidl_dependencies = f'''  <build_depend>rosidl_default_generators</build_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+{dependency_tags}  <member_of_group>rosidl_interface_packages</member_of_group>
+'''
+    _atomic_write(package_root / 'package.xml', f'''<?xml version="1.0"?>
+<package format="3">
+  <name>uploaded_interfaces</name>
+  <version>0.0.0</version>
+  <description>User-authored interfaces from ros2_dashboard.</description>
+  <maintainer email="user@example.com">ros2_dashboard</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+{rosidl_dependencies}
+</package>
+''')
+
+
 def _existing_interface_paths(package_root: Path) -> list[str]:
-    interface_paths: list[str] = []
-    for folder, suffix in (('msg', '.msg'), ('srv', '.srv'), ('action', '.action')):
-        interface_paths.extend(
-            f'{folder}/{path.name}'
-            for path in sorted((package_root / folder).glob(f'*{suffix}'))
-        )
-    return interface_paths
+    return scan_uploaded_interface_files(package_root)
 
 
 def _dependencies_from_existing_files(package_root: Path, package_name: str) -> list[str]:

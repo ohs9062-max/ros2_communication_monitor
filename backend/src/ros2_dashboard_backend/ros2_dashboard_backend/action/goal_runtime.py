@@ -311,23 +311,23 @@ class ActionGoalRuntime:
         server_counts, client_counts = self._action_count_maps()
         graph = []
         for name, types in names_and_types:
-            action_type = types[0] if types else None
-            if not action_type:
-                continue
-            graph.append({
-                'name': name,
-                'type': action_type,
-                'server_count': server_counts.get(name, 0),
-                'client_count': client_counts.get(name, 0),
-            })
+            for action_type in sorted(set(types)):
+                graph.append({
+                    'name': name,
+                    'type': action_type,
+                    'server_count': server_counts.get((name, action_type), 0),
+                    'client_count': client_counts.get((name, action_type), 0),
+                })
         return graph
 
-    def _action_count_maps(self) -> tuple[dict[str, int], dict[str, int]]:
+    def _action_count_maps(
+        self,
+    ) -> tuple[dict[tuple[str, str], int], dict[tuple[str, str], int]]:
         node = self._node_getter()
         if node is None:
             return {}, {}
-        server_counts: dict[str, int] = {}
-        client_counts: dict[str, int] = {}
+        server_counts: dict[tuple[str, str], int] = {}
+        client_counts: dict[tuple[str, str], int] = {}
         try:
             node_names = node.get_node_names_and_namespaces()
         except Exception:
@@ -409,6 +409,9 @@ class ActionGoalRuntime:
         return {
             'action_name': graph_item['name'] if graph_item else '',
             'action_type': entry['action_type'],
+            'full_type': entry['action_type'],
+            'graph_type': graph_item['type'] if graph_item else None,
+            'selected_import_type': entry['action_type'],
             'file_name': entry['file_name'],
             'type_name': entry['type_name'],
             'goal_schema': entry['goal_schema'],
@@ -420,6 +423,7 @@ class ActionGoalRuntime:
             'server_count': server_count,
             'client_count': int(graph_item.get('client_count') or 0) if graph_item else 0,
             'callable': callable_now,
+            'executable': callable_now,
             'reason': reason,
             'saved_path': entry.get('saved_path'),
             'source': entry.get('source', 'single_interface'),
@@ -428,11 +432,13 @@ class ActionGoalRuntime:
 
     @staticmethod
     def _merge_action_counts(
-        counts: dict[str, int],
+        counts: dict[tuple[str, str], int],
         names_and_types: list[tuple[str, list[str]]],
     ) -> None:
-        for name, _types in names_and_types:
-            counts[name] = counts.get(name, 0) + 1
+        for name, types in names_and_types:
+            for action_type in set(types):
+                key = (name, action_type)
+                counts[key] = counts.get(key, 0) + 1
 
     def _record_history(self, item: dict[str, Any]) -> None:
         with self._lock:

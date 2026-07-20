@@ -21,6 +21,7 @@ from ros2_dashboard_backend.interface_apply import (
     InterfaceApplyError,
     InterfaceApplyInProgress,
     apply_status,
+    mark_interface_change_pending,
     record_import_check_status,
     run_interface_apply,
     run_import_check_and_update_registry,
@@ -47,6 +48,7 @@ from ros2_dashboard_backend.interface_packages import (
     upload_interface_package_folder,
 )
 from ros2_dashboard_backend.manual_interfaces import (
+    delete_uploaded_interface,
     delete_manual_definition,
     rebuild_uploaded_interfaces_cmake,
     register_manual_type,
@@ -243,14 +245,34 @@ def delete_interface_registry_entry(
     source: str | None = Query(default=None),
     full_type: str | None = Query(default=None),
 ) -> dict[str, Any]:
-    """Delete one registry entry without deleting interface files."""
+    """Delete a registry entry and its file when it belongs to uploaded_interfaces."""
     try:
-        result = delete_registry_entry(
-            kind=kind,
-            file_name=file_name,
-            source=source,
-            full_type=full_type,
+        collection_name = {'msg': 'messages', 'srv': 'services', 'action': 'actions'}.get(kind)
+        items = registry_snapshot()['interface_registry'].get(collection_name, [])
+        selected = next((
+            item for item in items
+            if item.get('file_name') == file_name
+            and (source is None or item.get('source') == source)
+            and (full_type is None or item.get('full_type') == full_type)
+        ), None)
+        package_name = str(
+            (selected or {}).get('build', {}).get('interface_package')
+            or str((selected or {}).get('full_type', '')).split('/', 1)[0]
         )
+        if package_name == 'uploaded_interfaces':
+            result = delete_uploaded_interface(
+                kind=kind, file_name=file_name, source=source, full_type=full_type,
+            )
+            mark_interface_change_pending(
+                f'{result.get("full_type") or file_name} 삭제됨; rebuild 필요',
+            )
+        else:
+            result = delete_registry_entry(
+                kind=kind,
+                file_name=file_name,
+                source=source,
+                full_type=full_type,
+            )
     except InterfaceUploadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
@@ -366,6 +388,9 @@ def delete_manual_interface_definition(kind: str, type_name: str) -> dict[str, A
     """Delete a user-authored interface file and registry entry."""
     try:
         result = delete_manual_definition(kind=kind, type_name=type_name)
+        mark_interface_change_pending(
+            f'{result.get("full_type") or type_name} 삭제됨; rebuild 필요',
+        )
     except InterfaceUploadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
@@ -379,6 +404,7 @@ def delete_manual_interface_definition(kind: str, type_name: str) -> dict[str, A
 def rebuild_uploaded_interfaces_cmake_endpoint() -> dict[str, Any]:
     """Regenerate uploaded_interfaces CMakeLists.txt from actual files."""
     result = rebuild_uploaded_interfaces_cmake()
+    mark_interface_change_pending('uploaded_interfaces package metadata 재생성됨; rebuild 필요')
     return {
         'success': True,
         'data': result,
@@ -664,18 +690,26 @@ async def send_registered_action_goal(request: Request) -> dict[str, Any]:
 
     action_name = payload.get('action_name')
     action_type = payload.get('action_type')
+    full_type = payload.get('full_type')
     goal_data = payload.get('goal')
     if not isinstance(action_name, str) or not action_name:
         raise HTTPException(status_code=400, detail='action_name이 필요합니다.')
-    if not isinstance(action_type, str) or not action_type:
-        raise HTTPException(status_code=400, detail='action_type이 필요합니다.')
+    if full_type is not None and (not isinstance(full_type, str) or not full_type):
+        raise HTTPException(status_code=400, detail='full_type은 비어 있지 않은 문자열이어야 합니다.')
+    if action_type is not None and (not isinstance(action_type, str) or not action_type):
+        raise HTTPException(status_code=400, detail='action_type은 비어 있지 않은 문자열이어야 합니다.')
+    if full_type and action_type and full_type != action_type:
+        raise HTTPException(status_code=400, detail='action_type과 full_type이 일치해야 합니다.')
+    selected_type = full_type or action_type
+    if not selected_type:
+        raise HTTPException(status_code=400, detail='full_type 또는 action_type이 필요합니다.')
     if not isinstance(goal_data, dict):
         raise HTTPException(status_code=400, detail='goal object가 필요합니다.')
 
     try:
         result = ros_monitor.send_action_goal(
             action_name=action_name,
-            action_type=action_type,
+            action_type=selected_type,
             goal_data=goal_data,
             timeout_sec=payload.get('timeout_sec'),
         )

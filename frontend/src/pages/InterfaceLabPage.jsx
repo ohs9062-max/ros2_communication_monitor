@@ -160,7 +160,7 @@ export function InterfaceLabPage({ websocket }) {
       const result = await callRegisteredService({
         service_name: target.service_name,
         service_type: target.service_type,
-        request: requestValues,
+        request: normalizeNumericValues(requestValues, selectedDetail.schema),
         timeout_sec: timeoutSec,
       })
       setInlineResult(result)
@@ -185,7 +185,8 @@ export function InterfaceLabPage({ websocket }) {
       const result = await sendActionGoal({
         action_name: target.action_name,
         action_type: target.action_type,
-        goal: goalValues,
+        full_type: target.full_type ?? target.selected_import_type ?? target.action_type,
+        goal: normalizeNumericValues(goalValues, selectedDetail.schema),
         timeout_sec: goalTimeoutSec,
       })
       setInlineResult(result)
@@ -639,7 +640,15 @@ function ActionWorkspaceDetail({
       <ConnectionList
         empty="이 타입으로 열린 Action이 없습니다."
         items={item.connectedActions}
-        render={(action) => `${action.action_name || '서버 없음'} · servers ${action.server_count ?? 0} · ${action.callable ? '실행 가능' : action.reason ?? '실행 불가'}`}
+        render={(action) => [
+          `action name ${action.action_name || '서버 없음'}`,
+          `graph type ${action.graph_type ?? action.action_type ?? '-'}`,
+          `selected/import type ${action.selected_import_type ?? action.full_type ?? item.fullType ?? '-'}`,
+          `exact-type servers ${action.server_count ?? 0}`,
+          (action.executable ?? action.callable)
+            ? 'exact-type 실행 가능'
+            : action.reason ?? 'exact-type 실행 불가',
+        ].join(' · ')}
       />
       <SectionTitle title="Goal 입력 폼" />
       {callableTarget ? (
@@ -1210,7 +1219,7 @@ function RequestField({ field, onChange, value }) {
     <label className="interface-service-field">
       <span>{field.name} <small>{type}</small></span>
       <input
-        onChange={(event) => onChange(numeric ? Number(event.target.value) : event.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         type={numeric ? 'number' : 'text'}
         value={value ?? ''}
       />
@@ -1223,6 +1232,20 @@ function defaultValues(schema = []) {
     schemaFields(schema)
       .filter((field) => field.name)
       .map((field) => [field.name, defaultValue(field.type)]),
+  )
+}
+
+function normalizeNumericValues(values, schema = []) {
+  const numericFields = new Set(
+    schemaFields(schema)
+      .filter((field) => field.name && isNumericType(field.type))
+      .map((field) => field.name),
+  )
+  return Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [
+      name,
+      numericFields.has(name) && value !== '' ? Number(value) : value,
+    ]),
   )
 }
 

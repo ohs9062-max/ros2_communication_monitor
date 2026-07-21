@@ -23,7 +23,7 @@ Interface Lab은 ROS2 인터페이스를 동적으로 관리하고 로봇과 상
     - **manual_definition**: 사용자가 직접 `.msg/.srv/.action` 정의.
     - **single_upload**: 단일 파일 업로드.
     - **package_upload**: 완전한 패키지 폴더 업로드.
-- **build/apply**: `manual_definition`, `single_upload`, `package_upload` 방식으로 등록한 인터페이스 파일을 실제 ROS2 패키지 구조로 만들고 `colcon build`를 실행하는 과정입니다. CMakeLists.txt와 package.xml 재생성은 `manual_interfaces.py`가 담당하고, `interface_apply.py`가 colcon build를 실행합니다. `manual_type`은 파일을 생성하지 않으므로 build가 필요 없습니다.
+- **build/apply**: `manual_definition`, `single_upload`, `package_upload` 방식으로 등록한 인터페이스 파일을 실제 ROS2 패키지 구조로 만들고 `colcon build`를 실행하는 과정입니다. CMakeLists.txt와 package.xml 재생성은 `interface_lab/management/manual_interfaces.py`가 담당하고, `interface_lab/apply/runtime.py`가 colcon build를 실행합니다. `manual_type`은 파일을 생성하지 않으므로 build가 필요 없습니다.
 - **callable**: 서비스나 액션이 현재 로봇에서 호출 가능한지 여부 (스키마와 타입 일치 여부 확인).
 - **exact match**: 이름뿐만 아니라 `full_type`까지 일치해야 정확한 호출이 가능함.
 

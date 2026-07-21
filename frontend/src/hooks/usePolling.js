@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export function usePolling(fetcher, intervalMs, options = {}) {
   const { enabled = true, initialData = null } = options
@@ -6,12 +6,17 @@ export function usePolling(fetcher, intervalMs, options = {}) {
   const [error, setError] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [loading, setLoading] = useState(Boolean(enabled))
+  const refreshInFlightRef = useRef(false)
 
   const refresh = useCallback(async () => {
     if (!enabled) {
       return
     }
+    if (refreshInFlightRef.current) {
+      return
+    }
 
+    refreshInFlightRef.current = true
     setLoading(true)
     try {
       const result = await fetcher()
@@ -21,6 +26,7 @@ export function usePolling(fetcher, intervalMs, options = {}) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Request failed')
     } finally {
+      refreshInFlightRef.current = false
       setLoading(false)
     }
   }, [enabled, fetcher])
@@ -32,8 +38,14 @@ export function usePolling(fetcher, intervalMs, options = {}) {
     }
 
     let cancelled = false
+    let pollInFlight = false
 
     async function poll() {
+      if (pollInFlight) {
+        return
+      }
+
+      pollInFlight = true
       try {
         const result = await fetcher()
         if (cancelled) {
@@ -51,6 +63,7 @@ export function usePolling(fetcher, intervalMs, options = {}) {
         if (!cancelled) {
           setLoading(false)
         }
+        pollInFlight = false
       }
     }
 

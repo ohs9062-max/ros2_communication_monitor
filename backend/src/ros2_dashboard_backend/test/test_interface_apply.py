@@ -1,8 +1,12 @@
 from pathlib import Path
 
-from ros2_dashboard_backend.interface_apply import (
+from ros2_dashboard_backend.interface_lab.apply.runtime import (
+    backend_workspace_path,
     cleanup_uploaded_package_build_artifacts,
+    default_apply_log_path,
+    default_apply_status_path,
     duplicate_workspace_packages,
+    reload_trigger_path,
 )
 
 
@@ -31,6 +35,24 @@ def test_cleanup_uploaded_package_build_artifacts_is_package_scoped(tmp_path: Pa
     ])
     assert all(not target.exists() for target in targets)
     assert (keep / 'keep.txt').is_file()
+
+
+def test_default_apply_paths_stay_backend_workspace_relative(monkeypatch):
+    monkeypatch.delenv('INTERFACE_APPLY_STATUS_PATH', raising=False)
+    monkeypatch.delenv('INTERFACE_APPLY_LOG_PATH', raising=False)
+
+    workspace = backend_workspace_path()
+
+    assert workspace.name == 'backend'
+    assert default_apply_status_path() == workspace / 'config' / 'interface_apply_status.yaml'
+    assert default_apply_log_path() == workspace / 'config' / 'interface_apply_last.log'
+    assert reload_trigger_path() == (
+        workspace
+        / 'src'
+        / 'ros2_dashboard_backend'
+        / 'ros2_dashboard_backend'
+        / 'reload_trigger.py'
+    )
 
 
 def test_duplicate_workspace_packages_reports_selected_package(tmp_path: Path):

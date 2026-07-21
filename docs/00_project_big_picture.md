@@ -35,16 +35,16 @@ ROS2 Node/Topic/Service/Action 발생
 ### 사용자 실행 흐름 (Interface Lab)
 ```text
 Interface 등록/업로드 (manual, single, package)
-  — backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_registry.py
+  — backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/registry.py
 
-→ build/apply (파일 저장/삭제 시 manual_interfaces.py가 CMakeLists.txt·package.xml 재생성, interface_apply.py가 colcon build 실행)
-  — backend/src/ros2_dashboard_backend/ros2_dashboard_backend/manual_interfaces.py
-  — backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_apply.py
+→ build/apply (파일 저장/삭제 시 interface_lab/management/manual_interfaces.py가 CMakeLists.txt·package.xml 재생성, interface_lab/apply/runtime.py가 colcon build 실행)
+  — backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/manual_interfaces.py
+  — backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/apply/runtime.py
 
 → import check 및 registry 갱신
 
 → Service Call / Action Goal / Topic Receive
-  — 관련 Runtime 실행 (backend/src/ros2_dashboard_backend/ros2_dashboard_backend/service/call_runtime.py 등)
+  — 관련 Runtime 실행 (backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/service_call_runtime.py 등)
 
 → history 및 결과 UI 반영
 ```

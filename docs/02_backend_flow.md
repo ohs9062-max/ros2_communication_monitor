@@ -15,8 +15,8 @@ FastAPI 서버가 시작되면 `RosMonitor`가 감시 작업을 조정하고, In
 
 - `main.py`: 모든 엔드포인트 정의 및 FastAPI 앱 설정.
 - `RosMonitor`: 모니터링 흐름 조정 (timer, spin thread, Runtime).
-- `interface_registry.py`, `interface_apply.py`: Interface Lab의 핵심 관리 로직.
-- `service/call_runtime.py`, `action/goal_runtime.py`: Interface Lab의 실행 로직.
+- `interface_lab/management/registry.py`, `interface_lab/apply/runtime.py`: Interface Lab의 핵심 관리 로직.
+- `interface_lab/execution/service_call_runtime.py`, `interface_lab/execution/action_goal_runtime.py`: Interface Lab의 실행 로직.
 
 ## 3. 두 가지 핵심 흐름
 
@@ -26,8 +26,8 @@ FastAPI 서버가 시작되면 `RosMonitor`가 감시 작업을 조정하고, In
 - REST 및 WebSocket 요청은 이 캐시에서 안전하게 데이터를 읽어(snapshot) 반환합니다.
 
 ### 3-2. Interface Lab 실행 흐름
-- **등록**: 사용자가 인터페이스 업로드/작성 요청을 하면 `interface_registry.py`를 통해 저장되고 registry가 갱신됩니다.
-- **빌드/적용**: `manual_interfaces.py`의 `regenerate_uploaded_interfaces_package()`가 CMakeLists.txt와 package.xml을 재생성하고(파일 저장/삭제 시점), `interface_apply.py`의 `run_interface_apply()`가 `colcon build --symlink-install`을 실행하여 ROS2 환경에 인터페이스를 적용합니다.
+- **등록**: 사용자가 인터페이스 업로드/작성 요청을 하면 `interface_lab/management/registry.py`를 통해 저장되고 registry가 갱신됩니다.
+- **빌드/적용**: `interface_lab/management/manual_interfaces.py`의 `regenerate_uploaded_interfaces_package()`가 CMakeLists.txt와 package.xml을 재생성하고(파일 저장/삭제 시점), `interface_lab/apply/runtime.py`의 `run_interface_apply()`가 `colcon build --symlink-install`을 실행하여 ROS2 환경에 인터페이스를 적용합니다.
 - **실행**: Interface Lab을 통해 요청되는 서비스/액션 호출은 별도의 `CallRuntime`에서 처리되어 `history`에 저장됩니다.
 
 ## 4. API 엔드포인트 분류
@@ -35,9 +35,9 @@ FastAPI 서버가 시작되면 `RosMonitor`가 감시 작업을 조정하고, In
 | 분류 | 관련 엔드포인트 예시 | 담당 모듈 |
 |---|---|---|
 | 모니터링 | `GET /ros/topics`, `GET /ros/services` | `RosMonitor` / `Runtime` |
-| Interface 등록 | `POST /ros/interfaces/upload` | `interface_registry.py` |
-| Interface 빌드 | `POST /ros/interfaces/apply` | `interface_apply.py` |
-| 상호작용(실행) | `POST /ros/interfaces/service-call` | `service/call_runtime.py` |
+| Interface 등록 | `POST /ros/interfaces/upload` | `interface_lab/management/registry.py` |
+| Interface 빌드 | `POST /ros/interfaces/apply` | `interface_lab/apply/runtime.py` |
+| 상호작용(실행) | `POST /ros/interfaces/service-call` | `interface_lab/execution/service_call_runtime.py` |
 
 ## 5. 자주 틀리는 이해
 

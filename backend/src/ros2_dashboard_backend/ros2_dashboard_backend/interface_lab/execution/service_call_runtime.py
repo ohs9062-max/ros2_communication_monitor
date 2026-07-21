@@ -6,14 +6,17 @@ import threading
 from time import time
 from typing import Any, Callable
 
-from ros2_dashboard_backend.interface_apply import refresh_install_python_paths
-from ros2_dashboard_backend.interface_value_converter import InterfaceValidationError
-from ros2_dashboard_backend.interface_registry import registry_snapshot
-from ros2_dashboard_backend.interface_packages import registered_package_services
+from ros2_dashboard_backend.interface_lab.apply.runtime import refresh_install_python_paths
+from ros2_dashboard_backend.interface_lab.common.value_converter import (
+    InterfaceValidationError,
+    build_ros_message,
+    ros_message_to_json,
+    schema_from_message_class,
+)
+from ros2_dashboard_backend.interface_lab.management.registry import registry_snapshot
+from ros2_dashboard_backend.interface_lab.management.packages import registered_package_services
 from ros2_dashboard_backend.service.active_check import (
-    build_request,
     load_service_class,
-    response_to_preview,
 )
 
 
@@ -39,12 +42,16 @@ class ServiceCallRuntime:
         self._node_getter = node_getter
         self._clients: dict[tuple[str, str], Any] = {}
         self._history: list[dict[str, Any]] = []
+        self._receive_reset_at: float | None = None
+        self._receive_reset_by_key: dict[tuple[str | None, str | None], float] = {}
 
     def clear(self) -> None:
         """Clear cached clients and call history."""
         with self._lock:
             self._clients = {}
             self._history = []
+            self._receive_reset_at = None
+            self._receive_reset_by_key = {}
 
     def callable_services(self) -> dict[str, Any]:
         """Return registered services with explicit call eligibility state."""
@@ -101,7 +108,7 @@ class ServiceCallRuntime:
         try:
             service_class = load_service_class(service_type)
             try:
-                request = build_request(service_class, request_data)
+                request = build_ros_message(service_class.Request, request_data, label='request')
             except InterfaceValidationError as exc:
                 result = self._validation_result(
                     service_name=service_name,
@@ -126,7 +133,7 @@ class ServiceCallRuntime:
                 raise TimeoutError(f'service call timeout after {timeout:.2f}s')
             response = future.result()
             elapsed_ms = (time() - started_at) * 1000.0
-            response_preview = response_to_preview(response)
+            response_preview = ros_message_to_json(response)
             result = {
                 'success': True,
                 'service_name': service_name,
@@ -172,6 +179,60 @@ class ServiceCallRuntime:
                 'count': len(calls),
             },
         }
+
+    def receive_history(self) -> dict[str, Any]:
+        """Return service call history in the Interface Lab receive format."""
+        calls = self.history()['calls']
+        events = []
+        for index, call in enumerate(calls):
+            called_at = call.get('called_at')
+            if (
+                self._receive_reset_at is not None
+                and called_at is not None
+                and called_at <= self._receive_reset_at
+            ):
+                continue
+            reset_at = self._receive_reset_by_key.get(
+                (call.get('service_name'), call.get('service_type')),
+            )
+            if reset_at is not None and called_at is not None and called_at <= reset_at:
+                continue
+            events.append({
+                'id': f"service-{call.get('called_at', index)}-{index}",
+                'direction': 'service_response',
+                'service_name': call.get('service_name'),
+                'service_type': call.get('service_type'),
+                'request': call.get('request'),
+                'response': call.get('response'),
+                'status': 'success' if call.get('success') else call.get('error_type') or 'failed',
+                'success': call.get('success') is True,
+                'error_type': call.get('error_type'),
+                'error': call.get('error'),
+                'sent_to_server': call.get('sent_to_server', False),
+                'called_at': call.get('called_at'),
+                'received_at': call.get('called_at'),
+                'response_time_ms': call.get('elapsed_ms'),
+                'raw': call,
+            })
+        return {'history': events, 'meta': {'count': len(events)}}
+
+    def reset_receive_history(
+        self,
+        *,
+        service_name: str | None = None,
+        service_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Hide previous receive-shaped history without clearing call history."""
+        previous = len([
+            item for item in self.receive_history()['history']
+            if not service_name
+            or (item.get('service_name') == service_name and item.get('service_type') == service_type)
+        ])
+        if service_name:
+            self._receive_reset_by_key[(service_name, service_type)] = time()
+        else:
+            self._receive_reset_at = time()
+        return {'cleared': previous}
 
     def summary_by_service(self) -> dict[tuple[str, str], dict[str, Any]]:
         """Return last call and counters keyed by (service_name, service_type)."""
@@ -379,18 +440,6 @@ def _schema_from_service_class(service_type: str) -> tuple[list[dict[str, str]],
         )
     except Exception:
         return [], []
-
-
-def _schema_from_message_class(message_class: type) -> list[dict[str, str]]:
-    try:
-        message = message_class()
-        fields = message.get_fields_and_field_types()
-    except Exception:
-        return []
-    return [
-        {'name': name, 'type': field_type, 'raw_line': f'{field_type} {name}'}
-        for name, field_type in fields.items()
-    ]
 
 
 def _call_summary(call: dict[str, Any]) -> dict[str, Any]:

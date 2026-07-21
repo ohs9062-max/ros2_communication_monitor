@@ -3,7 +3,10 @@ from zipfile import ZipFile
 
 import yaml
 
-from ros2_dashboard_backend.interface_packages import (
+from ros2_dashboard_backend.interface_lab.management.packages import (
+    backend_workspace_root,
+    default_packages_registry_path,
+    default_uploaded_packages_root,
     packages_snapshot,
     upload_interface_package,
     upload_interface_package_folder,
@@ -106,6 +109,17 @@ def test_package_upload_stays_independent_from_dashboard_interfaces(
     assert saved['packages'][0]['path'].endswith(
         'src/uploaded_interface_packages/rths_interfaces',
     )
+
+
+def test_default_package_paths_stay_backend_workspace_relative(monkeypatch):
+    monkeypatch.delenv('INTERFACE_PACKAGES_REGISTRY_PATH', raising=False)
+    monkeypatch.delenv('INTERFACE_UPLOADED_PACKAGES_PATH', raising=False)
+
+    workspace = backend_workspace_root()
+
+    assert workspace.name == 'backend'
+    assert default_packages_registry_path() == workspace / 'config' / 'interface_packages.yaml'
+    assert default_uploaded_packages_root() == workspace / 'src' / 'uploaded_interface_packages'
 
 
 def test_package_folder_upload_restores_tree_without_single_registry(

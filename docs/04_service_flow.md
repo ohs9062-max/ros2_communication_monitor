@@ -16,7 +16,7 @@
 
 ## 3. Interface Lab: 사용자 Service Call 흐름
 
-Interface Lab에서 이루어지는 실제 요청은 `service/call_runtime.py`가 담당합니다.
+Interface Lab에서 이루어지는 실제 요청은 `interface_lab/execution/service_call_runtime.py`가 담당합니다.
 
 - **기능**: 사용자의 `POST /ros/interfaces/service-call` 요청을 처리.
 - **처리 흐름**:

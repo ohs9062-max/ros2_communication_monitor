@@ -7,13 +7,14 @@ from typing import Any, Callable
 
 from rosidl_runtime_py.utilities import get_message
 
-from ros2_dashboard_backend.interface_apply import refresh_install_python_paths
-from ros2_dashboard_backend.interface_packages import registered_package_messages
-from ros2_dashboard_backend.interface_registry import registry_snapshot
-from ros2_dashboard_backend.interface_value_converter import (
+from ros2_dashboard_backend.interface_lab.apply.runtime import refresh_install_python_paths
+from ros2_dashboard_backend.interface_lab.management.packages import registered_package_messages
+from ros2_dashboard_backend.interface_lab.management.registry import registry_snapshot
+from ros2_dashboard_backend.interface_lab.common.value_converter import (
     InterfaceValidationError,
     build_ros_message,
     ros_message_to_json,
+    schema_from_message_type,
 )
 
 
@@ -69,7 +70,7 @@ class InterfaceReceiveRuntime:
             raise InterfaceReceiveError('registry에 등록된 Message full_type이 아닙니다.')
         schema = entry.get('message_schema') or []
         if entry.get('import_available') is True and not schema:
-            schema = _schema_from_message_type(message_type)
+            schema = schema_from_message_type(message_type)
         return {
             **entry,
             'message_schema': schema,
@@ -94,7 +95,7 @@ class InterfaceReceiveRuntime:
                 'full_type': message_type,
                 'topic_type': message_type,
                 'message_schema': entry.get('message_schema') or (
-                    _schema_from_message_type(message_type)
+                    schema_from_message_type(message_type)
                     if entry.get('import_available') is True else []
                 ),
                 'graph_topics': matching,
@@ -528,19 +529,6 @@ def _normalize_limit(value: int) -> int:
     except (TypeError, ValueError):
         limit = DEFAULT_TOPIC_HISTORY_LIMIT
     return max(1, min(limit, MAX_TOPIC_HISTORY_LIMIT))
-
-
-def _schema_from_message_type(message_type: str) -> list[dict[str, str]]:
-    try:
-        message_class = get_message(message_type)
-        message = message_class()
-        fields = message.get_fields_and_field_types()
-    except Exception:
-        return []
-    return [
-        {'name': name, 'type': field_type, 'raw_line': f'{field_type} {name}'}
-        for name, field_type in fields.items()
-    ]
 
 
 def _default_qos(topic_type: str) -> int:

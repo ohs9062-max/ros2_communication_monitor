@@ -17,7 +17,8 @@ from typing import Any
 
 import yaml
 
-from ros2_dashboard_backend.interface_registry import (
+from ros2_dashboard_backend.interface_lab.paths import backend_workspace_root
+from ros2_dashboard_backend.interface_lab.management.registry import (
     InterfaceUploadError,
     _dependency_candidates,
     _display_path,
@@ -36,11 +37,6 @@ PACKAGE_LOCK = None
 
 class InterfacePackageError(ValueError):
     """Raised when an uploaded interface package is invalid."""
-
-
-def backend_workspace_root() -> Path:
-    """Return the backend workspace root."""
-    return Path(__file__).resolve().parents[3]
 
 
 def default_packages_registry_path() -> Path:

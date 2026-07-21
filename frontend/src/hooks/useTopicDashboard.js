@@ -72,11 +72,13 @@ export function useTopicDashboard() {
   )
   const hzTopicNames = useMemo(
     () =>
-      topicItems
+      Array.from(new Set(topicItems
         .filter((topic) => topic.deep_monitoring)
-        .map((topic) => topic.name),
-    [topicItems],
+        .map((topic) => topic.name)
+        .filter((name) => name && name !== selectedTopicName))).sort(),
+    [selectedTopicName, topicItems],
   )
+  const hzTopicNamesKey = useMemo(() => hzTopicNames.join('\n'), [hzTopicNames])
 
   useEffect(() => {
     if (selectedTopicName && selectedTopic) {
@@ -87,31 +89,42 @@ export function useTopicDashboard() {
   }, [defaultTopicName, selectedTopic, selectedTopicName])
 
   useEffect(() => {
-    if (!hzTopicNames.length) {
+    const names = hzTopicNamesKey ? hzTopicNamesKey.split('\n') : []
+    if (!names.length) {
       setTopicHzByName({})
       return undefined
     }
 
     let cancelled = false
+    let pollInFlight = false
 
     async function pollTopicHz() {
-      const results = await Promise.allSettled(
-        hzTopicNames.map(async (name) => [name, await fetchTopicHz(name)]),
-      )
-
-      if (cancelled) {
+      if (pollInFlight) {
         return
       }
 
-      const nextHzByName = {}
-      for (const result of results) {
-        if (result.status === 'fulfilled') {
-          const [name, data] = result.value
-          nextHzByName[name] = data
-        }
-      }
+      pollInFlight = true
+      try {
+        const results = await Promise.allSettled(
+          names.map(async (name) => [name, await fetchTopicHz(name)]),
+        )
 
-      setTopicHzByName(nextHzByName)
+        if (cancelled) {
+          return
+        }
+
+        const nextHzByName = {}
+        for (const result of results) {
+          if (result.status === 'fulfilled') {
+            const [name, data] = result.value
+            nextHzByName[name] = data
+          }
+        }
+
+        setTopicHzByName(nextHzByName)
+      } finally {
+        pollInFlight = false
+      }
     }
 
     pollTopicHz()
@@ -121,7 +134,7 @@ export function useTopicDashboard() {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [hzTopicNames])
+  }, [hzTopicNamesKey])
 
   const lastUpdated =
     topics.lastUpdated ??

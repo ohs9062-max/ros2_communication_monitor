@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from ros2_dashboard_backend import manual_interfaces
-from ros2_dashboard_backend.interface_registry import InterfaceUploadError
-from ros2_dashboard_backend import interface_registry
-from ros2_dashboard_backend.interface_registry import registry_snapshot
+from ros2_dashboard_backend.interface_lab.management import manual_interfaces
+from ros2_dashboard_backend.interface_lab.management import registry as interface_registry
+from ros2_dashboard_backend.interface_lab.management.registry import InterfaceUploadError
+from ros2_dashboard_backend.interface_lab.management.registry import registry_snapshot
 
 
 def test_manual_type_registration_does_not_create_files(tmp_path, monkeypatch):

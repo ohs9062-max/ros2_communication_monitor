@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ros2_dashboard_backend.interface_registry import (
+from ros2_dashboard_backend.interface_lab.management.registry import (
     ALLOWED_KINDS,
     KIND_COLLECTIONS,
     TYPE_NAME_PATTERN,

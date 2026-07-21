@@ -2,8 +2,11 @@ from pathlib import Path
 
 import pytest
 
-from ros2_dashboard_backend.interface_registry import (
+from ros2_dashboard_backend.interface_lab.management.registry import (
     InterfaceUploadError,
+    backend_workspace_root,
+    default_interface_package,
+    default_registry_path,
     parse_interface,
     register_interface,
     registry_snapshot,
@@ -46,6 +49,20 @@ def test_parse_message_fields_and_constant():
     assert parsed['fields'][0]['name'] == 'success'
     assert parsed['fields'][1]['is_constant'] is True
     assert parsed['fields'][2]['default'] == 'default'
+
+
+def test_default_registry_paths_stay_backend_workspace_relative(monkeypatch):
+    monkeypatch.delenv('INTERFACE_REGISTRY_PATH', raising=False)
+    monkeypatch.delenv('INTERFACE_PACKAGE_PATH', raising=False)
+    monkeypatch.delenv('INTERFACE_PACKAGE_NAME', raising=False)
+
+    workspace = backend_workspace_root()
+    package_name, package_path = default_interface_package()
+
+    assert workspace.name == 'backend'
+    assert default_registry_path() == workspace / 'config' / 'interface_registry.yaml'
+    assert package_name == 'ros2_dashboard_interfaces'
+    assert package_path == (workspace / 'src' / 'ros2_dashboard_interfaces').resolve()
 
 
 def test_parse_service_and_action_sections():

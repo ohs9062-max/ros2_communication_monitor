@@ -17,12 +17,16 @@ from typing import Any
 
 import yaml
 
-from ros2_dashboard_backend.interface_registry import (
+from ros2_dashboard_backend.interface_lab.paths import (
+    backend_workspace_root,
+    reload_trigger_path,
+)
+from ros2_dashboard_backend.interface_lab.management.registry import (
     mark_registry_build_applied,
     registry_apply_summary,
     refresh_registry_imports,
 )
-from ros2_dashboard_backend.interface_packages import (
+from ros2_dashboard_backend.interface_lab.management.packages import (
     mark_packages_build_applied,
     package_apply_summary,
     packages_snapshot,
@@ -47,7 +51,7 @@ class InterfaceApplyError(RuntimeError):
 
 def backend_workspace_path() -> Path:
     """Return the backend workspace root."""
-    return Path(__file__).resolve().parents[3]
+    return backend_workspace_root()
 
 
 def default_apply_status_path() -> Path:
@@ -66,11 +70,6 @@ def default_apply_log_path() -> Path:
         os.getenv('INTERFACE_APPLY_LOG_PATH', 'config/interface_apply_last.log'),
     )
     return configured if configured.is_absolute() else backend_root / configured
-
-
-def reload_trigger_path() -> Path:
-    """Return the Python file watched by uvicorn --reload."""
-    return Path(__file__).resolve().parent / 'reload_trigger.py'
 
 
 def apply_status() -> dict[str, Any]:

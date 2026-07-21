@@ -1,5 +1,5 @@
-from ros2_dashboard_backend.action.goal_runtime import ActionGoalRuntime
-from ros2_dashboard_backend.service.call_runtime import ServiceCallRuntime
+from ros2_dashboard_backend.interface_lab.execution.action_goal_runtime import ActionGoalRuntime
+from ros2_dashboard_backend.interface_lab.execution.service_call_runtime import ServiceCallRuntime
 
 
 def test_service_history_summary_includes_validation_not_sent():
@@ -27,6 +27,31 @@ def test_service_history_summary_includes_validation_not_sent():
     assert summary['history'][0]['last_error'] == 'bad cmd'
 
 
+def test_service_receive_history_and_reset_are_runtime_owned():
+    runtime = ServiceCallRuntime(lock=_NoopLock(), node_getter=lambda: None)
+    runtime._record_history({
+        'success': True,
+        'service_name': '/ScheduleCrud',
+        'service_type': 'rths_interfaces/srv/ScheduleCrud',
+        'request': {'cmd': 1},
+        'response': {'ok': True},
+        'elapsed_ms': 1.2,
+        'called_at': 10.0,
+        'called': True,
+        'sent_to_server': True,
+    })
+
+    history = runtime.receive_history()
+
+    assert history['meta']['count'] == 1
+    assert history['history'][0]['direction'] == 'service_response'
+    assert runtime.reset_receive_history(service_name='/ScheduleCrud', service_type='rths_interfaces/srv/ScheduleCrud') == {
+        'cleared': 1,
+    }
+    assert runtime.receive_history()['meta']['count'] == 0
+    assert runtime.history()['meta']['count'] == 1
+
+
 def test_action_history_summary_includes_result_and_feedback():
     runtime = ActionGoalRuntime(lock=_NoopLock(), node_getter=lambda: None)
     runtime._record_history({
@@ -50,6 +75,35 @@ def test_action_history_summary_includes_result_and_feedback():
     assert summary['success_count'] == 1
 
 
+def test_action_receive_history_and_reset_are_runtime_owned():
+    runtime = ActionGoalRuntime(lock=_NoopLock(), node_getter=lambda: None)
+    runtime._record_history({
+        'success': True,
+        'action_name': '/CanControl',
+        'action_type': 'rths_interfaces/action/CanControl',
+        'goal': {'node_id': 1},
+        'accepted': True,
+        'feedback': [{'stage': 'sending'}],
+        'result': {'success': True},
+        'elapsed_ms': 12.0,
+        'sent_at': 20.0,
+        'sent_to_server': True,
+    })
+
+    history = runtime.receive_history()
+
+    assert history['meta']['count'] == 2
+    assert [item['direction'] for item in history['history']] == [
+        'action_feedback',
+        'action_result',
+    ]
+    assert runtime.reset_receive_history(action_name='/CanControl', action_type='rths_interfaces/action/CanControl') == {
+        'cleared': 2,
+    }
+    assert runtime.receive_history()['meta']['count'] == 0
+    assert runtime.history()['meta']['count'] == 1
+
+
 def test_action_graph_preserves_each_type_and_exact_type_counts():
     runtime = ActionGoalRuntime(lock=_NoopLock(), node_getter=lambda: object())
     runtime._action_count_maps = lambda: (
@@ -64,7 +118,7 @@ def test_action_graph_preserves_each_type_and_exact_type_counts():
     runtime._action_servers_by_node = lambda _name, _namespace: []
     runtime._action_clients_by_node = lambda _name, _namespace: []
 
-    import ros2_dashboard_backend.action.goal_runtime as goal_runtime
+    import ros2_dashboard_backend.interface_lab.execution.action_goal_runtime as goal_runtime
 
     original = goal_runtime.get_action_names_and_types
     goal_runtime.get_action_names_and_types = lambda _node: [
@@ -101,7 +155,7 @@ def test_action_client_cache_is_keyed_by_name_and_type():
     created = []
     runtime = ActionGoalRuntime(lock=_NoopLock(), node_getter=lambda: object())
 
-    import ros2_dashboard_backend.action.goal_runtime as goal_runtime
+    import ros2_dashboard_backend.interface_lab.execution.action_goal_runtime as goal_runtime
 
     original = goal_runtime.ActionClient
     goal_runtime.ActionClient = lambda _node, action_class, name: created.append(

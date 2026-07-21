@@ -17,6 +17,8 @@ from typing import Any
 
 import yaml
 
+from ros2_dashboard_backend.interface_lab.paths import backend_workspace_root
+
 
 ALLOWED_KINDS = {'msg', 'srv', 'action'}
 KIND_COLLECTIONS = {
@@ -39,7 +41,7 @@ class InterfaceUploadError(ValueError):
 
 def default_registry_path() -> Path:
     """Return the registry path without coupling it to monitor.yaml."""
-    backend_root = Path(__file__).resolve().parents[3]
+    backend_root = backend_workspace_root()
     configured = Path(
         os.getenv('INTERFACE_REGISTRY_PATH', 'config/interface_registry.yaml'),
     )
@@ -48,7 +50,7 @@ def default_registry_path() -> Path:
 
 def default_interface_package() -> tuple[str, Path]:
     """Return the configured, existing ROS interface package."""
-    backend_root = Path(__file__).resolve().parents[3]
+    backend_root = backend_workspace_root()
     package_name = os.getenv(
         'INTERFACE_PACKAGE_NAME', 'ros2_dashboard_interfaces',
     ).strip()
@@ -174,7 +176,7 @@ def _install_interface(
     try:
         _atomic_write(destination, raw_text)
         if package_name == 'uploaded_interfaces':
-            from ros2_dashboard_backend.manual_interfaces import (
+            from ros2_dashboard_backend.interface_lab.management.manual_interfaces import (
                 regenerate_uploaded_interfaces_package,
             )
             regenerate_uploaded_interfaces_package(package_path)
@@ -187,7 +189,7 @@ def _install_interface(
         raise InterfaceUploadError(f'interface 패키지 반영에 실패했습니다: {exc}') from exc
 
     import_available, import_error = _check_import(package_name, kind, type_name)
-    backend_root = Path(__file__).resolve().parents[3]
+    backend_root = backend_workspace_root()
     saved_path = _display_path(destination)
     return {
         'interface_package': package_name,
@@ -790,11 +792,6 @@ def _read_optional_text(path: Path) -> str:
         return path.read_text(encoding='utf-8')
     except (OSError, UnicodeError):
         return ''
-
-
-def backend_workspace_root() -> Path:
-    """Return the backend workspace root used by interface registry paths."""
-    return Path(__file__).resolve().parents[3]
 
 
 def _display_path(path: Path) -> str:

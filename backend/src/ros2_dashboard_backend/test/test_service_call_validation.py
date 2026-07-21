@@ -1,11 +1,11 @@
 import pytest
 
-from ros2_dashboard_backend.service.call_runtime import ServiceCallRuntime
+from ros2_dashboard_backend.interface_lab.execution.service_call_runtime import ServiceCallRuntime
 
 
 def test_validation_error_does_not_create_service_client(monkeypatch):
     from rths_interfaces.srv import ScheduleCrud
-    import ros2_dashboard_backend.service.call_runtime as call_runtime
+    import ros2_dashboard_backend.interface_lab.execution.service_call_runtime as call_runtime
 
     runtime = ServiceCallRuntime(lock=None, node_getter=lambda: object())
     runtime._lock = _NoopLock()

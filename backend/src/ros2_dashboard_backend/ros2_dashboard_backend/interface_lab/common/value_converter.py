@@ -127,6 +127,28 @@ def ros_message_to_json(message: Any) -> dict[str, Any]:
     }
 
 
+def schema_from_message_class(message_class: type) -> list[dict[str, str]]:
+    """Return the public Interface Lab schema for a generated message class."""
+    try:
+        message = message_class()
+        fields = message.get_fields_and_field_types()
+    except Exception:
+        return []
+    return [
+        {'name': name, 'type': field_type, 'raw_line': f'{field_type} {name}'}
+        for name, field_type in fields.items()
+    ]
+
+
+def schema_from_message_type(message_type: str) -> list[dict[str, str]]:
+    """Return the public Interface Lab schema for a generated message type."""
+    try:
+        message_class = get_message(message_type)
+    except Exception:
+        return []
+    return schema_from_message_class(message_class)
+
+
 def _convert_custom_message(value: Any, field_type: str, label: str) -> Any:
     if not isinstance(value, dict):
         raise InterfaceValidationError(

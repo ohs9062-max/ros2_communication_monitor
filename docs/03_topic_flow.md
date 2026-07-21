@@ -15,7 +15,7 @@
 
 ## 3. Interface Lab: Topic Publish/Receive 흐름
 
-`InterfaceReceiveRuntime`(`interface_receive_runtime.py`)을 통해 처리됩니다.
+`InterfaceReceiveRuntime`(`interface_lab/execution/topic_runtime.py`)을 통해 처리됩니다.
 
 - **Message 목록/schema**: `GET /ros/interfaces/callable-messages`, `GET /ros/interfaces/message-schema?full_type=...`로 등록된 msg와 schema를 조회.
 - **Publish**: `POST /ros/interfaces/topic-publish`가 Message schema를 기준으로 payload를 generated message로 변환한 뒤 1회 publish.

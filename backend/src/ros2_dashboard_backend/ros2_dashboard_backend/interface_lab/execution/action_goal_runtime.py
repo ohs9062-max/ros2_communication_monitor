@@ -14,14 +14,15 @@ from rclpy.action.graph import (
 )
 from rosidl_runtime_py.utilities import get_action
 
-from ros2_dashboard_backend.interface_apply import refresh_install_python_paths
-from ros2_dashboard_backend.interface_value_converter import (
+from ros2_dashboard_backend.interface_lab.apply.runtime import refresh_install_python_paths
+from ros2_dashboard_backend.interface_lab.common.value_converter import (
     InterfaceValidationError,
     build_ros_message,
+    ros_message_to_json,
+    schema_from_message_class,
 )
-from ros2_dashboard_backend.interface_registry import registry_snapshot
-from ros2_dashboard_backend.interface_packages import registered_package_actions
-from ros2_dashboard_backend.service.active_check import response_to_preview
+from ros2_dashboard_backend.interface_lab.management.registry import registry_snapshot
+from ros2_dashboard_backend.interface_lab.management.packages import registered_package_actions
 
 
 MAX_HISTORY_ITEMS = 30
@@ -46,12 +47,16 @@ class ActionGoalRuntime:
         self._node_getter = node_getter
         self._clients: dict[tuple[str, str], ActionClient] = {}
         self._history: list[dict[str, Any]] = []
+        self._receive_reset_at: float | None = None
+        self._receive_reset_by_key: dict[tuple[str | None, str | None], float] = {}
 
     def clear(self) -> None:
         """Clear cached clients and goal history."""
         with self._lock:
             self._clients = {}
             self._history = []
+            self._receive_reset_at = None
+            self._receive_reset_by_key = {}
 
     def callable_actions(self) -> dict[str, Any]:
         """Return registered actions with explicit goal eligibility state."""
@@ -109,7 +114,7 @@ class ActionGoalRuntime:
         try:
             action_class = get_action(action_type)
             try:
-                goal = _build_goal(action_class, goal_data)
+                goal = build_ros_message(action_class.Goal, goal_data, label='goal')
             except InterfaceValidationError as exc:
                 result = self._result(
                     success=False,
@@ -136,7 +141,7 @@ class ActionGoalRuntime:
             send_future = client.send_goal_async(
                 goal,
                 feedback_callback=lambda feedback: feedback_items.append(
-                    response_to_preview(feedback.feedback),
+                    ros_message_to_json(feedback.feedback),
                 ),
             )
             sent_to_server = True
@@ -180,7 +185,7 @@ class ActionGoalRuntime:
                 goal_data=goal_data,
                 accepted=True,
                 feedback=feedback_items,
-                result=response_to_preview(result_msg),
+                result=ros_message_to_json(result_msg),
                 started_at=started_at,
                 timeout_sec=timeout,
                 status=status,
@@ -218,6 +223,81 @@ class ActionGoalRuntime:
                 'count': len(goals),
             },
         }
+
+    def receive_history(self) -> dict[str, Any]:
+        """Return action goal feedback/result history in the receive format."""
+        goals = self.history()['goals']
+        events = []
+        for goal_index, goal in enumerate(goals):
+            sent_at = goal.get('sent_at')
+            if (
+                self._receive_reset_at is not None
+                and sent_at is not None
+                and sent_at <= self._receive_reset_at
+            ):
+                continue
+            reset_at = self._receive_reset_by_key.get(
+                (goal.get('action_name'), goal.get('action_type')),
+            )
+            if reset_at is not None and sent_at is not None and sent_at <= reset_at:
+                continue
+            feedback_items = goal.get('feedback') if isinstance(goal.get('feedback'), list) else []
+            for feedback_index, feedback in enumerate(feedback_items):
+                events.append({
+                    'id': f"action-feedback-{goal.get('sent_at', goal_index)}-{feedback_index}",
+                    'direction': 'action_feedback',
+                    'action_name': goal.get('action_name'),
+                    'action_type': goal.get('action_type'),
+                    'goal': goal.get('goal'),
+                    'feedback': feedback,
+                    'result': None,
+                    'status': 'feedback',
+                    'success': goal.get('success') is True,
+                    'error_type': goal.get('error_type'),
+                    'error': goal.get('error'),
+                    'sent_to_server': goal.get('sent_to_server', False),
+                    'goal_sent_at': goal.get('sent_at'),
+                    'received_at': goal.get('sent_at'),
+                    'execution_time_ms': goal.get('elapsed_ms'),
+                    'raw': goal,
+                })
+            events.append({
+                'id': f"action-result-{goal.get('sent_at', goal_index)}-{goal_index}",
+                'direction': 'action_result',
+                'action_name': goal.get('action_name'),
+                'action_type': goal.get('action_type'),
+                'goal': goal.get('goal'),
+                'feedback': None,
+                'result': goal.get('result'),
+                'status': 'success' if goal.get('success') else goal.get('error_type') or goal.get('status') or 'failed',
+                'success': goal.get('success') is True,
+                'error_type': goal.get('error_type'),
+                'error': goal.get('error'),
+                'sent_to_server': goal.get('sent_to_server', False),
+                'goal_sent_at': goal.get('sent_at'),
+                'received_at': goal.get('sent_at'),
+                'execution_time_ms': goal.get('elapsed_ms'),
+                'raw': goal,
+            })
+        return {'history': events, 'meta': {'count': len(events)}}
+
+    def reset_receive_history(
+        self,
+        *,
+        action_name: str | None = None,
+        action_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Hide previous receive-shaped history without clearing goal history."""
+        previous = len([
+            item for item in self.receive_history()['history']
+            if not action_name
+            or (item.get('action_name') == action_name and item.get('action_type') == action_type)
+        ])
+        if action_name:
+            self._receive_reset_by_key[(action_name, action_type)] = time()
+        else:
+            self._receive_reset_at = time()
+        return {'cleared': previous}
 
     def summary_by_action(self) -> dict[tuple[str, str], dict[str, Any]]:
         """Return last goal and counters keyed by (action_name, action_type)."""
@@ -487,21 +567,6 @@ class ActionGoalRuntime:
         return payload
 
 
-def _build_goal(action_class: type, goal_data: dict[str, Any]) -> Any:
-    return build_ros_message(action_class.Goal, goal_data, label='goal')
-
-
-def _set_field(target: Any, key: str, value: Any) -> None:
-    if not hasattr(target, key):
-        raise ValueError(f'unknown goal field: {key}')
-    current = getattr(target, key)
-    if isinstance(value, dict):
-        for nested_key, nested_value in value.items():
-            _set_field(current, nested_key, nested_value)
-        return
-    setattr(target, key, value)
-
-
 def _normalized_timeout(timeout_sec: float | None) -> float:
     if timeout_sec is None:
         return DEFAULT_TIMEOUT_SEC
@@ -524,18 +589,6 @@ def _schema_from_action_class(action_type: str) -> tuple[list[dict[str, str]], l
         )
     except Exception:
         return [], [], []
-
-
-def _schema_from_message_class(message_class: type) -> list[dict[str, str]]:
-    try:
-        message = message_class()
-        fields = message.get_fields_and_field_types()
-    except Exception:
-        return []
-    return [
-        {'name': name, 'type': field_type, 'raw_line': f'{field_type} {name}'}
-        for name, field_type in fields.items()
-    ]
 
 
 def _goal_summary(goal: dict[str, Any]) -> dict[str, Any]:

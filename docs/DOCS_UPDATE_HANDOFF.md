@@ -17,14 +17,14 @@
 
 - `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/main.py`
 - `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py`
-- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_registry.py`
-- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/manual_interfaces.py`
-- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_packages.py`
-- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_apply.py`
-- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_value_converter.py`
-- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/service/call_runtime.py`
-- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/action/goal_runtime.py`
-- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_receive_runtime.py`
+- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/registry.py`
+- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/manual_interfaces.py`
+- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/packages.py`
+- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/apply/runtime.py`
+- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/common/value_converter.py`
+- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/service_call_runtime.py`
+- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/action_goal_runtime.py`
+- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py`
 - `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/action/runtime.py`
 - `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/action/result_runtime.py`
 - `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/service/runtime.py`
@@ -47,14 +47,14 @@
 |---|---|---|---|
 | `main.py` | FastAPI 애플리케이션 | Interface endpoint 처리 함수들 | 요청 검증, `RosMonitor`/interface 모듈 호출, HTTP 응답 |
 | `ros_monitor.py` | `RosMonitor` | callable/call/goal/receive/history 공개 메서드 | Service Call, Action Goal, Receive runtime을 조립하고 API용 snapshot 제공 |
-| `interface_registry.py` | 해당 없음 | `register_interface`, `_install_interface`, `delete_uploaded_interface`, `scan_uploaded_interface_files`, `regenerate_uploaded_interfaces_package`, `regenerate_uploaded_interfaces_cmake`, `regenerate_uploaded_interfaces_package_xml` | 단일 파일 등록, 실제 파일 스캔, metadata 전체 재생성, 정확한 파일/registry 삭제 |
-| `manual_interfaces.py` | 해당 없음 | `register_manual_type`, `validate_manual_definition`, `write_manual_definition` | 기존 타입 선언 등록과 직접 작성 interface 검증/저장 |
-| `interface_packages.py` | 해당 없음 | `upload_interface_package`, 폴더 업로드 함수, `_store_package_root`, `delete_interface_package` | zip/폴더 ROS interface package를 별도 저장·등록·삭제 |
-| `interface_apply.py` | 해당 없음 | `mark_interface_change_pending`, `run_interface_apply`, `run_import_check_and_update_registry`, `record_import_check_status` | pending 상태, colcon build, import check, apply 상태/로그 저장 |
-| `interface_value_converter.py` | 해당 없음 | `build_ros_message`, `fill_ros_message`, `convert_value` | schema 입력을 ROS message로 변환하고 custom message/배열을 재귀 처리 |
-| `service/call_runtime.py` | `ServiceCallRuntime` | callable 목록, `_allowed_service`, schema 생성, `call_service`, history 관련 메서드 | exact name/type 검증 후 명시적 Service 요청 전송 |
-| `action/goal_runtime.py` | `ActionGoalRuntime` | callable 목록, `_allowed_action`, action graph 조립, goal 전송, feedback/result/history 관련 메서드 | exact name/type 검증 후 명시적 Action Goal 전송 |
-| `interface_receive_runtime.py` | `InterfaceReceiveRuntime` | `start_topic`, `stop_topic`, `topics`, `topic_history`, `reset_topic_history` | Interface Lab의 명시적 Topic subscription과 최대 500개 history |
+| `interface_lab/management/registry.py` | 해당 없음 | `register_interface`, `_install_interface`, `delete_uploaded_interface`, `scan_uploaded_interface_files`, `regenerate_uploaded_interfaces_package`, `regenerate_uploaded_interfaces_cmake`, `regenerate_uploaded_interfaces_package_xml` | 단일 파일 등록, 실제 파일 스캔, metadata 전체 재생성, 정확한 파일/registry 삭제 |
+| `interface_lab/management/manual_interfaces.py` | 해당 없음 | `register_manual_type`, `validate_manual_definition`, `write_manual_definition` | 기존 타입 선언 등록과 직접 작성 interface 검증/저장 |
+| `interface_lab/management/packages.py` | 해당 없음 | `upload_interface_package`, 폴더 업로드 함수, `_store_package_root`, `delete_interface_package` | zip/폴더 ROS interface package를 별도 저장·등록·삭제 |
+| `interface_lab/apply/runtime.py` | 해당 없음 | `mark_interface_change_pending`, `run_interface_apply`, `run_import_check_and_update_registry`, `record_import_check_status` | pending 상태, colcon build, import check, apply 상태/로그 저장 |
+| `interface_lab/common/value_converter.py` | 해당 없음 | `build_ros_message`, `fill_ros_message`, `convert_value` | schema 입력을 ROS message로 변환하고 custom message/배열을 재귀 처리 |
+| `interface_lab/execution/service_call_runtime.py` | `ServiceCallRuntime` | callable 목록, `_allowed_service`, schema 생성, `call_service`, history 관련 메서드 | exact name/type 검증 후 명시적 Service 요청 전송 |
+| `interface_lab/execution/action_goal_runtime.py` | `ActionGoalRuntime` | callable 목록, `_allowed_action`, action graph 조립, goal 전송, feedback/result/history 관련 메서드 | exact name/type 검증 후 명시적 Action Goal 전송 |
+| `interface_lab/execution/topic_runtime.py` | `InterfaceReceiveRuntime` | `start_topic`, `stop_topic`, `topics`, `topic_history`, `reset_topic_history` | Interface Lab의 명시적 Topic subscription과 최대 500개 history |
 | `action/runtime.py` | `ActionRuntime` | graph/status/feedback 갱신 관련 메서드 | Action 관찰 runtime; 명시적 Goal 전송 runtime과 별도 |
 | `action/result_runtime.py` | `ActionResultRuntime` | 관찰 Goal result 조회 관련 메서드 | status에서 관찰된 terminal goal의 제한적 get_result |
 | `service/runtime.py` | `ServiceRuntime` | graph/cache/snapshot 관련 메서드 | Service graph monitoring과 active check 조립 |

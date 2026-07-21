@@ -23,6 +23,15 @@ setup(
         ],
     },
     entry_points={
-        'console_scripts': [],
+        'console_scripts': [
+            (
+                'introspection_add_two_ints_server = '
+                'ros2_dashboard_backend.service.introspection_test_nodes:server_main'
+            ),
+            (
+                'introspection_add_two_ints_client = '
+                'ros2_dashboard_backend.service.introspection_test_nodes:client_main'
+            ),
+        ],
     },
 )

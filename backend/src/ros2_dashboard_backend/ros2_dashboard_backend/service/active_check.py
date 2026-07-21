@@ -8,7 +8,7 @@ from ros2_dashboard_backend.service.models import SERVICE_CATEGORY_USER
 
 from rosidl_runtime_py.utilities import get_service
 
-from ros2_dashboard_backend.interface_value_converter import (
+from ros2_dashboard_backend.interface_lab.common.value_converter import (
     build_ros_message,
     ros_message_to_json,
 )
@@ -257,35 +257,6 @@ def _state(
         state['reason'] = reason
 
     return state
-
-
-def _set_field(target: Any, key: str, value: Any) -> None:
-    if not hasattr(target, key):
-        raise ValueError(f'unknown request field: {key}')
-
-    current = getattr(target, key)
-    if isinstance(value, dict):
-        for nested_key, nested_value in value.items():
-            _set_field(current, nested_key, nested_value)
-        return
-
-    setattr(target, key, value)
-
-
-def _json_value(value: Any) -> Any:
-    if isinstance(value, (str, int, float, bool)) or value is None:
-        return value
-
-    if isinstance(value, (list, tuple)):
-        return [_json_value(item) for item in value]
-
-    if hasattr(value, 'get_fields_and_field_types'):
-        return {
-            key: _json_value(getattr(value, key))
-            for key in value.get_fields_and_field_types()
-        }
-
-    return str(value)
 
 
 def _lookup_field(data: dict[str, Any], field_path: str) -> Any:

@@ -67,7 +67,7 @@ except ModuleNotFoundError:
     sys.modules.setdefault('rosidl_runtime_py', runtime_package)
     sys.modules.setdefault('rosidl_runtime_py.utilities', utilities)
 
-from ros2_dashboard_backend.interface_receive_runtime import InterfaceReceiveRuntime
+from ros2_dashboard_backend.interface_lab.execution.topic_runtime import InterfaceReceiveRuntime
 
 
 def test_topic_receive_history_limit_and_stop(monkeypatch):
@@ -75,7 +75,7 @@ def test_topic_receive_history_limit_and_stop(monkeypatch):
     runtime = InterfaceReceiveRuntime(lock=DummyLock(), node_getter=lambda: node)
     _registered_message(monkeypatch)
     monkeypatch.setattr(
-        'ros2_dashboard_backend.interface_receive_runtime.get_message',
+        'ros2_dashboard_backend.interface_lab.execution.topic_runtime.get_message',
         lambda _type: FakeMessage,
     )
 
@@ -105,7 +105,7 @@ def test_topic_receive_history_reset(monkeypatch):
     runtime = InterfaceReceiveRuntime(lock=DummyLock(), node_getter=lambda: node)
     _registered_message(monkeypatch)
     monkeypatch.setattr(
-        'ros2_dashboard_backend.interface_receive_runtime.get_message',
+        'ros2_dashboard_backend.interface_lab.execution.topic_runtime.get_message',
         lambda _type: FakeMessage,
     )
 
@@ -129,7 +129,7 @@ def test_topic_receive_allows_same_name_with_different_full_type(monkeypatch):
     runtime = InterfaceReceiveRuntime(lock=DummyLock(), node_getter=lambda: node)
     _registered_message(monkeypatch, extra_type='other_msgs/msg/String')
     monkeypatch.setattr(
-        'ros2_dashboard_backend.interface_receive_runtime.get_message',
+        'ros2_dashboard_backend.interface_lab.execution.topic_runtime.get_message',
         lambda _type: FakeMessage,
     )
 
@@ -150,7 +150,7 @@ def test_topic_publish_records_success_and_reuses_publisher(monkeypatch):
     runtime = InterfaceReceiveRuntime(lock=DummyLock(), node_getter=lambda: node)
     _registered_message(monkeypatch)
     monkeypatch.setattr(
-        'ros2_dashboard_backend.interface_receive_runtime.get_message',
+        'ros2_dashboard_backend.interface_lab.execution.topic_runtime.get_message',
         lambda _type: FakeMessage,
     )
 
@@ -177,7 +177,7 @@ def test_topic_publish_validation_error_does_not_publish(monkeypatch):
     runtime = InterfaceReceiveRuntime(lock=DummyLock(), node_getter=lambda: node)
     _registered_message(monkeypatch)
     monkeypatch.setattr(
-        'ros2_dashboard_backend.interface_receive_runtime.get_message',
+        'ros2_dashboard_backend.interface_lab.execution.topic_runtime.get_message',
         lambda _type: FakeMessage,
     )
 
@@ -201,7 +201,7 @@ def test_topic_graph_conflict_is_reported(monkeypatch):
     runtime = InterfaceReceiveRuntime(lock=DummyLock(), node_getter=lambda: node)
     _registered_message(monkeypatch)
     monkeypatch.setattr(
-        'ros2_dashboard_backend.interface_receive_runtime.get_message',
+        'ros2_dashboard_backend.interface_lab.execution.topic_runtime.get_message',
         lambda _type: FakeMessage,
     )
 
@@ -241,10 +241,10 @@ def _registered_message(monkeypatch, extra_type=None):
             },
         })
     monkeypatch.setattr(
-        'ros2_dashboard_backend.interface_receive_runtime.registry_snapshot',
+        'ros2_dashboard_backend.interface_lab.execution.topic_runtime.registry_snapshot',
         lambda: {'interface_registry': {'messages': messages}},
     )
     monkeypatch.setattr(
-        'ros2_dashboard_backend.interface_receive_runtime.registered_package_messages',
+        'ros2_dashboard_backend.interface_lab.execution.topic_runtime.registered_package_messages',
         lambda: [],
     )

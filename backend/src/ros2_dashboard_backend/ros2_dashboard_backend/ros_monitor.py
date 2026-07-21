@@ -362,21 +362,77 @@ class RosMonitor:
             history_limit=history_limit,
         )
 
-    def stop_receive_topic(self, *, topic_name: str) -> dict[str, Any]:
+    def stop_receive_topic(self, *, topic_name: str, topic_type: str | None = None) -> dict[str, Any]:
         """Stop explicit topic receive."""
-        return self._receive_runtime.stop_topic(topic_name=topic_name)
+        return self._receive_runtime.stop_topic(topic_name=topic_name, topic_type=topic_type)
 
     def receive_topics(self) -> dict[str, Any]:
         """Return receive topic states."""
         return self._receive_runtime.topics()
 
-    def receive_topic_history(self, *, topic_name: str | None = None, limit: int | None = None) -> dict[str, Any]:
+    def receive_topic_history(
+        self,
+        *,
+        topic_name: str | None = None,
+        topic_type: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
         """Return explicit topic receive history."""
-        return self._receive_runtime.topic_history(topic_name=topic_name, limit=limit)
+        return self._receive_runtime.topic_history(
+            topic_name=topic_name,
+            topic_type=topic_type,
+            limit=limit,
+        )
 
-    def reset_receive_topic_history(self, *, topic_name: str | None = None) -> dict[str, Any]:
+    def reset_receive_topic_history(
+        self,
+        *,
+        topic_name: str | None = None,
+        topic_type: str | None = None,
+    ) -> dict[str, Any]:
         """Clear explicit topic receive history."""
-        return self._receive_runtime.reset_topic_history(topic_name=topic_name)
+        return self._receive_runtime.reset_topic_history(
+            topic_name=topic_name,
+            topic_type=topic_type,
+        )
+
+    def callable_messages(self) -> dict[str, Any]:
+        """Return registered message types for explicit Topic work."""
+        return self._receive_runtime.callable_messages()
+
+    def message_schema(self, *, message_type: str) -> dict[str, Any]:
+        """Return schema for one registered Message full_type."""
+        return self._receive_runtime.message_schema(message_type=message_type)
+
+    def publish_topic(
+        self,
+        *,
+        topic_name: str,
+        topic_type: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Publish one explicit user-triggered Topic message."""
+        return self._receive_runtime.publish_topic(
+            topic_name=topic_name,
+            topic_type=topic_type,
+            payload=payload,
+        )
+
+    def topic_publish_history(self, *, limit: int | None = None) -> dict[str, Any]:
+        """Return explicit Topic publish history."""
+        return self._receive_runtime.publish_history(limit=limit)
+
+    def reset_topic_publish_history(
+        self,
+        *,
+        topic_name: str | None = None,
+        topic_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Clear explicit Topic publish history."""
+        return self._receive_runtime.reset_publish_history(
+            topic_name=topic_name,
+            topic_type=topic_type,
+        )
 
     def node_snapshot(self) -> dict[str, Any]:
         """Return a thread-safe snapshot of the cached node list."""

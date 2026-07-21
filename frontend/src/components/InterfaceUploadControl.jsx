@@ -8,6 +8,7 @@ import {
   deleteInterfacePackage,
   fetchActionGoalHistory,
   fetchCallableActions,
+  fetchCallableMessages,
   fetchCallableServices,
   fetchInterfaceApplyStatus,
   fetchInterfacePackages,
@@ -17,12 +18,15 @@ import {
   fetchReceiveTopicHistory,
   fetchReceiveTopics,
   fetchServiceCallHistory,
+  fetchTopicPublishHistory,
   fetchTopics,
+  publishTopicMessage,
   registerManualType,
   rebuildUploadedInterfacesCmake,
   resetReceiveActionHistory,
   resetReceiveServiceHistory,
   resetReceiveTopicHistory,
+  resetTopicPublishHistory,
   sendActionGoal,
   startReceiveTopic,
   stopReceiveTopic,
@@ -49,6 +53,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   const [recentDeletedRegistry, setRecentDeletedRegistry] = useState([])
   const [applyStatus, setApplyStatus] = useState(null)
   const [showRegistry, setShowRegistry] = useState(false)
+  const [showCallableTopics, setShowCallableTopics] = useState(false)
   const [showCallableServices, setShowCallableServices] = useState(false)
   const [showCallableActions, setShowCallableActions] = useState(false)
   const [showPackages, setShowPackages] = useState(false)
@@ -85,12 +90,22 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   const [receiveTopics, setReceiveTopics] = useState([])
   const [selectedReceiveTopic, setSelectedReceiveTopic] = useState('')
   const [receiveTopicSearch, setReceiveTopicSearch] = useState('')
+  const [callableMessages, setCallableMessages] = useState([])
+  const [topicImportableOnly, setTopicImportableOnly] = useState(false)
+  const [selectedMessageKey, setSelectedMessageKey] = useState('')
+  const [topicPublishName, setTopicPublishName] = useState('')
+  const [topicMessageValues, setTopicMessageValues] = useState({})
+  const [topicPublishBusy, setTopicPublishBusy] = useState(false)
+  const [topicPublishResult, setTopicPublishResult] = useState(null)
+  const [topicPublishHistory, setTopicPublishHistory] = useState([])
   const [selectedReceiveServiceKey, setSelectedReceiveServiceKey] = useState('')
   const [activeReceiveServiceKey, setActiveReceiveServiceKey] = useState('')
   const [receiveServiceSearch, setReceiveServiceSearch] = useState('')
+  const [serviceImportableOnly, setServiceImportableOnly] = useState(false)
   const [selectedReceiveActionKey, setSelectedReceiveActionKey] = useState('')
   const [activeReceiveActionKey, setActiveReceiveActionKey] = useState('')
   const [receiveActionSearch, setReceiveActionSearch] = useState('')
+  const [actionImportableOnly, setActionImportableOnly] = useState(false)
   const [receiveTopicHistory, setReceiveTopicHistory] = useState([])
   const [receiveServiceHistory, setReceiveServiceHistory] = useState([])
   const [receiveActionHistory, setReceiveActionHistory] = useState([])
@@ -102,24 +117,49 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
     setShowBuildLog((value) => !value)
     setShowRegistry(false)
     setShowPackages(false)
+    setShowCallableTopics(false)
     setShowCallableServices(false)
     setShowCallableActions(false)
   }
-  const disabled = busy || applying || serviceCallBusy || actionGoalBusy
+  const disabled = busy || applying || serviceCallBusy || actionGoalBusy || topicPublishBusy
   const selectedService = callableServices.find(
     (service) => serviceKey(service) === selectedServiceKey,
   )
   const selectedAction = callableActions.find(
     (action) => actionKey(action) === selectedActionKey,
   )
+  const selectedMessage = callableMessages.find(
+    (message) => messageKey(message) === selectedMessageKey,
+  )
+  const visibleCallableMessages = topicImportableOnly
+    ? callableMessages.filter((message) => message.import_available)
+    : callableMessages
+  const visibleCallableServices = serviceImportableOnly
+    ? callableServices.filter((service) => service.import_available)
+    : callableServices
+  const visibleCallableActions = actionImportableOnly
+    ? callableActions.filter((action) => action.import_available)
+    : callableActions
   const filteredReceiveTopics = availableTopics.filter((topic) => {
     const keyword = receiveTopicSearch.trim().toLowerCase()
-    if (!keyword) return true
     const topicType = topic.type ?? topic.types?.[0] ?? ''
+    const selectedType = selectedMessage?.message_type
+    if (topicImportableOnly && selectedType && !topicHasType(topic, selectedType)) return false
+    if (!keyword) return true
     return `${topic.name} ${topicType}`.toLowerCase().includes(keyword)
   })
   const selectedTopicReceiving = receiveTopics.some((topic) =>
-    topic.topic_name === selectedReceiveTopic && topic.receiving !== false,
+    topic.topic_name === selectedReceiveTopic
+      && (!selectedMessage?.message_type || topic.topic_type === selectedMessage.message_type)
+      && topic.receiving !== false,
+  )
+  const visibleReceiveTopicHistory = receiveTopicHistory.filter((event) =>
+    (!selectedReceiveTopic || event.topic_name === selectedReceiveTopic)
+      && (!selectedMessage?.message_type || event.topic_type === selectedMessage.message_type),
+  )
+  const visiblePublishHistory = topicPublishHistory.filter((event) =>
+    (!topicPublishName || event.topic_name === topicPublishName)
+      && (!selectedMessage?.message_type || event.topic_type === selectedMessage.message_type),
   )
   const filteredReceiveServices = callableServices.filter((service) => {
     const keyword = receiveServiceSearch.trim().toLowerCase()
@@ -147,6 +187,58 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       event.action_name === selectedReceiveAction.action_name
         && event.action_type === selectedReceiveAction.action_type)
     : []
+
+  useEffect(() => {
+    if (!visibleCallableMessages.length) {
+      if (selectedMessageKey) setSelectedMessageKey('')
+      return
+    }
+    if (visibleCallableMessages.some((message) => messageKey(message) === selectedMessageKey)) {
+      return
+    }
+    const nextMessage = visibleCallableMessages[0]
+    setSelectedMessageKey(messageKey(nextMessage))
+    setTopicMessageValues(defaultRequestValues(nextMessage.message_schema ?? []))
+    setTopicPublishResult(null)
+  }, [selectedMessageKey, visibleCallableMessages])
+
+  useEffect(() => {
+    if (!visibleCallableServices.length) {
+      if (selectedServiceKey) {
+        setSelectedServiceKey('')
+        setSelectedReceiveServiceKey('')
+      }
+      return
+    }
+    if (visibleCallableServices.some((service) => serviceKey(service) === selectedServiceKey)) {
+      return
+    }
+    const nextService = visibleCallableServices[0]
+    const nextKey = serviceKey(nextService)
+    setSelectedServiceKey(nextKey)
+    setSelectedReceiveServiceKey(nextKey)
+    setRequestValues(defaultRequestValues(nextService.request_schema ?? []))
+    setServiceCallResult(null)
+  }, [selectedServiceKey, visibleCallableServices])
+
+  useEffect(() => {
+    if (!visibleCallableActions.length) {
+      if (selectedActionKey) {
+        setSelectedActionKey('')
+        setSelectedReceiveActionKey('')
+      }
+      return
+    }
+    if (visibleCallableActions.some((action) => actionKey(action) === selectedActionKey)) {
+      return
+    }
+    const nextAction = visibleCallableActions[0]
+    const nextKey = actionKey(nextAction)
+    setSelectedActionKey(nextKey)
+    setSelectedReceiveActionKey(nextKey)
+    setGoalValues(defaultRequestValues(nextAction.goal_schema ?? []))
+    setActionGoalResult(null)
+  }, [selectedActionKey, visibleCallableActions])
 
   const uploadFiles = async (files, sourceLabel) => {
     const supportedFiles = files.filter((file) =>
@@ -291,8 +383,8 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       setFeedback({
         tone: entry?.build?.import_available ? 'success' : 'warning',
         text: entry?.build?.import_available
-          ? `${entry.full_type} 타입 직접 등록 완료 · import 가능`
-          : `${entry?.full_type ?? manualType} 타입 직접 등록 완료 · import 불가: ${entry?.build?.import_error ?? '환경/source 확인 필요'}`,
+          ? `${entry.full_type} 타입 직접 등록 완료 · import됨`
+          : `${entry?.full_type ?? manualType} 타입 직접 등록 완료 · import 안됨: ${entry?.build?.import_error ?? '환경/source 확인 필요'}`,
       })
       await loadRegistry(true)
       onStateChanged?.()
@@ -413,29 +505,44 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
         topicHistoryPayload,
         servicePayload,
         actionPayload,
+        messagesPayload,
+        publishHistoryPayload,
         callableServicesPayload,
         callableActionsPayload,
       ] = await Promise.all([
         fetchTopics(),
         fetchReceiveTopics(),
-        fetchReceiveTopicHistory(selectedReceiveTopic, { limit: 500 }),
+        fetchReceiveTopicHistory('', { limit: 500 }),
         fetchReceiveServiceHistory(),
         fetchReceiveActionHistory(),
+        fetchCallableMessages(),
+        fetchTopicPublishHistory({ limit: 100 }),
         fetchCallableServices(),
         fetchCallableActions(),
       ])
       const topics = topicsPayload.data?.topics ?? topicsPayload.data ?? []
       const services = callableServicesPayload.data ?? []
       const actions = callableActionsPayload.data ?? []
+      const messages = messagesPayload.data ?? []
       setAvailableTopics(topics)
       setReceiveTopics(receivingPayload.data ?? [])
       setReceiveTopicHistory(topicHistoryPayload.data ?? [])
       setReceiveServiceHistory(servicePayload.data ?? [])
       setReceiveActionHistory(actionPayload.data ?? [])
+      setCallableMessages(messages)
+      setTopicPublishHistory(publishHistoryPayload.data ?? [])
       setCallableServices(services)
       setCallableActions(actions)
       if (!selectedReceiveTopic && topics[0]) {
         setSelectedReceiveTopic(topics[0].name)
+      }
+      if (!topicPublishName && topics[0]) {
+        setTopicPublishName(topics[0].name)
+      }
+      if (!selectedMessageKey && messages[0]) {
+        const nextKey = messageKey(messages[0])
+        setSelectedMessageKey(nextKey)
+        setTopicMessageValues(defaultRequestValues(messages[0].message_schema ?? []))
       }
       if (!selectedReceiveServiceKey && services[0]) {
         setSelectedReceiveServiceKey(serviceKey(services[0]))
@@ -448,27 +555,26 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
     } finally {
       if (!silent) setBusy(false)
     }
-  }, [selectedReceiveActionKey, selectedReceiveServiceKey, selectedReceiveTopic])
+  }, [selectedMessageKey, selectedReceiveActionKey, selectedReceiveServiceKey, selectedReceiveTopic, topicPublishName])
 
   const startSelectedTopicReceive = async () => {
-    const topic = availableTopics.find((item) => item.name === selectedReceiveTopic)
-    if (!topic) {
-      setFeedback({ tone: 'error', text: '수신할 Topic을 선택하세요.' })
+    if (!selectedReceiveTopic.trim()) {
+      setFeedback({ tone: 'error', text: '수신할 Topic 이름을 입력하세요.' })
       return
     }
-    const topicType = topic.type ?? topic.types?.[0]
+    const topicType = selectedMessage?.message_type
     if (!topicType) {
-      setFeedback({ tone: 'error', text: `${topic.name}의 topic type을 확인할 수 없습니다.` })
+      setFeedback({ tone: 'error', text: '수신할 Message full_type을 선택하세요.' })
       return
     }
     try {
       await startReceiveTopic({
-        topic_name: topic.name,
+        topic_name: selectedReceiveTopic.trim(),
         topic_type: topicType,
         history_limit: 500,
       })
       await loadReceiveState()
-      setFeedback({ tone: 'success', text: `${topic.name} 수신을 시작했습니다.` })
+      setFeedback({ tone: 'success', text: `${selectedReceiveTopic.trim()} · ${topicType} 수신을 시작했습니다.` })
     } catch (error) {
       setFeedback({ tone: 'error', text: error.message })
     }
@@ -476,7 +582,10 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
 
   const stopSelectedTopicReceive = async () => {
     try {
-      await stopReceiveTopic({ topic_name: selectedReceiveTopic })
+      await stopReceiveTopic({
+        topic_name: selectedReceiveTopic,
+        topic_type: selectedMessage?.message_type,
+      })
       await loadReceiveState()
       setFeedback({ tone: 'warning', text: `${selectedReceiveTopic} 수신을 중지했습니다.` })
     } catch (error) {
@@ -490,11 +599,57 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       return
     }
     try {
-      const payload = await resetReceiveTopicHistory(selectedReceiveTopic)
+      const payload = await resetReceiveTopicHistory(selectedReceiveTopic, selectedMessage?.message_type)
       await loadReceiveState()
       setFeedback({
         tone: 'success',
         text: `${selectedReceiveTopic} 수신 이력 ${payload.data?.cleared ?? 0}개를 리셋했습니다.`,
+      })
+    } catch (error) {
+      setFeedback({ tone: 'error', text: error.message })
+    }
+  }
+
+  const publishSelectedTopicMessage = async () => {
+    if (!topicPublishName.trim()) {
+      setTopicPublishResult({ success: false, error: 'Publish할 Topic 이름을 입력하세요.' })
+      return
+    }
+    if (!selectedMessage?.message_type) {
+      setTopicPublishResult({ success: false, error: 'Publish할 Message full_type을 선택하세요.' })
+      return
+    }
+    setTopicPublishBusy(true)
+    setTopicPublishResult(null)
+    try {
+      const payload = await publishTopicMessage({
+        topic_name: topicPublishName.trim(),
+        topic_type: selectedMessage.message_type,
+        full_type: selectedMessage.message_type,
+        message: normalizeNumericValues(topicMessageValues, selectedMessage.message_schema),
+      })
+      setTopicPublishResult(payload)
+      const historyPayload = await fetchTopicPublishHistory({ limit: 100 })
+      setTopicPublishHistory(historyPayload.data ?? [])
+      onStateChanged?.()
+    } catch (error) {
+      setTopicPublishResult({ success: false, error: error.message })
+    } finally {
+      setTopicPublishBusy(false)
+    }
+  }
+
+  const resetSelectedTopicPublishHistory = async () => {
+    try {
+      const payload = await resetTopicPublishHistory({
+        topic_name: topicPublishName,
+        topic_type: selectedMessage?.message_type,
+      })
+      const historyPayload = await fetchTopicPublishHistory({ limit: 100 })
+      setTopicPublishHistory(historyPayload.data ?? [])
+      setFeedback({
+        tone: 'success',
+        text: `Topic Publish 이력 ${payload.data?.cleared ?? 0}개를 리셋했습니다.`,
       })
     } catch (error) {
       setFeedback({ tone: 'error', text: error.message })
@@ -655,6 +810,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       setShowRegistry(true)
       if (!keepOpen) {
         setShowPackages(false)
+        setShowCallableTopics(false)
         setShowCallableServices(false)
         setShowCallableActions(false)
         setShowBuildLog(false)
@@ -674,6 +830,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       setShowPackages(true)
       if (!keepOpen) {
         setShowRegistry(false)
+        setShowCallableTopics(false)
         setShowCallableServices(false)
         setShowCallableActions(false)
         setShowBuildLog(false)
@@ -685,16 +842,59 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
     }
   }
 
+  const loadCallableTopics = async (keepOpen = false) => {
+    setBusy(true)
+    try {
+      const [messagesPayload, publishHistoryPayload] = await Promise.all([
+        fetchCallableMessages(),
+        fetchTopicPublishHistory({ limit: 100 }),
+      ])
+      const messages = messagesPayload.data ?? []
+      setCallableMessages(messages)
+      setTopicPublishHistory(publishHistoryPayload.data ?? [])
+      setShowCallableTopics(true)
+      if (!keepOpen) {
+        setShowRegistry(false)
+        setShowPackages(false)
+        setShowCallableServices(false)
+        setShowCallableActions(false)
+        setShowBuildLog(false)
+      }
+      const selectableMessages = topicImportableOnly
+        ? messages.filter((message) => message.import_available)
+        : messages
+      const selectedStillExists = selectableMessages.some(
+        (message) => messageKey(message) === selectedMessageKey,
+      )
+      const nextSelected = selectedStillExists
+        ? selectedMessageKey
+        : selectableMessages[0] ? messageKey(selectableMessages[0]) : ''
+      setSelectedMessageKey(nextSelected)
+      const nextMessage = selectableMessages.find(
+        (message) => messageKey(message) === nextSelected,
+      )
+      if (nextMessage) {
+        setTopicMessageValues(defaultRequestValues(nextMessage.message_schema ?? []))
+      }
+    } catch (error) {
+      setFeedback({ tone: 'error', text: error.message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const refreshInterfaceListsAfterDelete = async () => {
-    const [registryPayload, packagesPayload, servicesPayload, actionsPayload, statusPayload] = await Promise.all([
+    const [registryPayload, packagesPayload, messagesPayload, servicesPayload, actionsPayload, statusPayload] = await Promise.all([
       fetchInterfaceRegistry(),
       fetchInterfacePackages(),
+      fetchCallableMessages(),
       fetchCallableServices(),
       fetchCallableActions(),
       fetchInterfaceApplyStatus(),
     ])
     setRegistry(registryPayload.data)
     setPackages(packagesPayload.data ?? [])
+    setCallableMessages(messagesPayload.data ?? [])
     setCallableServices(servicesPayload.data ?? [])
     setCallableActions(actionsPayload.data ?? [])
     setApplyStatus(statusPayload.data)
@@ -764,18 +964,22 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       if (!keepOpen) {
         setShowRegistry(false)
         setShowPackages(false)
+        setShowCallableTopics(false)
         setShowCallableActions(false)
         setShowBuildLog(false)
       }
-      const selectedStillExists = services.some(
+      const selectableServices = serviceImportableOnly
+        ? services.filter((service) => service.import_available)
+        : services
+      const selectedStillExists = selectableServices.some(
         (service) => serviceKey(service) === selectedServiceKey,
       )
       const nextSelected = selectedStillExists
         ? selectedServiceKey
-        : services[0] ? serviceKey(services[0]) : ''
+        : selectableServices[0] ? serviceKey(selectableServices[0]) : ''
       setSelectedServiceKey(nextSelected)
       setSelectedReceiveServiceKey(nextSelected)
-      const nextService = services.find(
+      const nextService = selectableServices.find(
         (service) => serviceKey(service) === nextSelected,
       )
       if (nextService) {
@@ -802,18 +1006,22 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       if (!keepOpen) {
         setShowRegistry(false)
         setShowPackages(false)
+        setShowCallableTopics(false)
         setShowCallableServices(false)
         setShowBuildLog(false)
       }
-      const selectedStillExists = actions.some(
+      const selectableActions = actionImportableOnly
+        ? actions.filter((action) => action.import_available)
+        : actions
+      const selectedStillExists = selectableActions.some(
         (action) => actionKey(action) === selectedActionKey,
       )
       const nextSelected = selectedStillExists
         ? selectedActionKey
-        : actions[0] ? actionKey(actions[0]) : ''
+        : selectableActions[0] ? actionKey(selectableActions[0]) : ''
       setSelectedActionKey(nextSelected)
       setSelectedReceiveActionKey(nextSelected)
-      const nextAction = actions.find(
+      const nextAction = selectableActions.find(
         (action) => actionKey(action) === nextSelected,
       )
       if (nextAction) {
@@ -977,6 +1185,32 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
           setPackages(packagesPayload.data ?? [])
           setShowPackages(true)
         }
+        if (showCallableTopics) {
+          const [messagesPayload, publishHistoryPayload] = await Promise.all([
+            fetchCallableMessages(),
+            fetchTopicPublishHistory({ limit: 100 }),
+          ])
+          const messages = messagesPayload.data ?? []
+          setCallableMessages(messages)
+          setTopicPublishHistory(publishHistoryPayload.data ?? [])
+          setShowCallableTopics(true)
+          const selectableMessages = topicImportableOnly
+            ? messages.filter((message) => message.import_available)
+            : messages
+          const selectedStillExists = selectableMessages.some(
+            (message) => messageKey(message) === selectedMessageKey,
+          )
+          const nextSelected = selectedStillExists
+            ? selectedMessageKey
+            : selectableMessages[0] ? messageKey(selectableMessages[0]) : ''
+          setSelectedMessageKey(nextSelected)
+          const nextMessage = selectableMessages.find(
+            (message) => messageKey(message) === nextSelected,
+          )
+          if (nextMessage) {
+            setTopicMessageValues(defaultRequestValues(nextMessage.message_schema ?? []))
+          }
+        }
         if (showCallableServices) {
           const [servicesPayload, historyPayload] = await Promise.all([
             fetchCallableServices(),
@@ -1032,11 +1266,14 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   }, [
     refreshSignal,
     selectedActionKey,
+    selectedMessageKey,
     selectedServiceKey,
     showCallableActions,
+    showCallableTopics,
     showCallableServices,
     showPackages,
     showRegistry,
+    topicImportableOnly,
   ])
 
   useEffect(() => {
@@ -1125,6 +1362,14 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       <button className="interface-package-list-button" disabled={disabled} onClick={() => loadPackages()} type="button">
         Package 목록
       </button>
+      <button className="interface-topic-button" disabled={disabled} onClick={async () => {
+        setShowReceivePanel(true)
+        setReceiveMode('topic')
+        await loadCallableTopics()
+        await loadReceiveState({ silent: true })
+      }} type="button">
+        Topic 실행
+      </button>
       <button className="interface-service-button" disabled={disabled} onClick={async () => {
         setShowReceivePanel(true)
         setReceiveMode('service')
@@ -1143,6 +1388,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       </button>
       <button className="interface-receive-button" disabled={disabled} onClick={() => {
         setShowReceivePanel(true)
+        setShowCallableTopics(false)
         setShowCallableServices(false)
         setShowCallableActions(false)
         setShowManualInput(false)
@@ -1244,10 +1490,27 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
             <strong>수신</strong>
           </div>
           <div className="interface-manual-tabs">
-            <button className={receiveMode === 'topic' ? 'active' : ''} onClick={() => setReceiveMode('topic')} type="button">Topic 수신</button>
-            <button className={receiveMode === 'service' ? 'active' : ''} onClick={() => setReceiveMode('service')} type="button">Service 수신</button>
-            <button className={receiveMode === 'action' ? 'active' : ''} onClick={() => setReceiveMode('action')} type="button">Action 수신</button>
-            <button className={receiveMode === 'mock' ? 'active' : ''} onClick={() => setReceiveMode('mock')} type="button">Mock 준비중</button>
+            <button className={receiveMode === 'topic' ? 'active' : ''} onClick={async () => {
+              setReceiveMode('topic')
+              await loadCallableTopics()
+              await loadReceiveState({ silent: true })
+            }} type="button">Topic 수신</button>
+            <button className={receiveMode === 'service' ? 'active' : ''} onClick={async () => {
+              setReceiveMode('service')
+              await loadCallableServices()
+              await loadReceiveState({ silent: true })
+            }} type="button">Service 수신</button>
+            <button className={receiveMode === 'action' ? 'active' : ''} onClick={async () => {
+              setReceiveMode('action')
+              await loadCallableActions()
+              await loadReceiveState({ silent: true })
+            }} type="button">Action 수신</button>
+            <button className={receiveMode === 'mock' ? 'active' : ''} onClick={() => {
+              setReceiveMode('mock')
+              setShowCallableTopics(false)
+              setShowCallableServices(false)
+              setShowCallableActions(false)
+            }} type="button">Mock 준비중</button>
           </div>
           {receiveMode === 'topic' && (
             <div className="interface-receive-grid">
@@ -1259,9 +1522,46 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
                   onChange={(event) => setReceiveTopicSearch(event.target.value)}
                 />
               </label>
+              <label className="interface-filter-check">
+                <input
+                  checked={topicImportableOnly}
+                  onChange={(event) => setTopicImportableOnly(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Message import됨만 보기</span>
+                <small>{visibleCallableMessages.length}/{callableMessages.length}</small>
+              </label>
               <label className="interface-service-field">
-                <span>Topic · {filteredReceiveTopics.length}/{availableTopics.length}</span>
-                <select value={selectedReceiveTopic} onChange={(event) => setSelectedReceiveTopic(event.target.value)}>
+                <span>Message full_type · {visibleCallableMessages.length}/{callableMessages.length}개</span>
+                <select
+                  value={selectedMessageKey}
+                  onChange={(event) => {
+                    const key = event.target.value
+                    const message = callableMessages.find((item) => messageKey(item) === key)
+                    setSelectedMessageKey(key)
+                    setTopicMessageValues(defaultRequestValues(message?.message_schema ?? []))
+                    setTopicPublishResult(null)
+                  }}
+                >
+                  {visibleCallableMessages.map((message) => (
+                    <option key={messageKey(message)} value={messageKey(message)}>
+                      {message.import_available ? 'import됨' : 'import 안됨'} · {topicStatusLabel(message)} · {topicGraphStatusLabel(message)} · {message.message_type ?? message.full_type}
+                    </option>
+                  ))}
+                </select>
+                {!visibleCallableMessages.length && (
+                  <small>등록된 Message가 없습니다. 타입 기입에서 std_msgs/msg/String 같은 안전한 Message를 먼저 등록하세요.</small>
+                )}
+              </label>
+              <label className="interface-service-field">
+                <span>Graph Topic 후보 · {filteredReceiveTopics.length}/{availableTopics.length}</span>
+                <select
+                  value={selectedReceiveTopic}
+                  onChange={(event) => {
+                    setSelectedReceiveTopic(event.target.value)
+                    if (!topicPublishName) setTopicPublishName(event.target.value)
+                  }}
+                >
                   {filteredReceiveTopics.map((topic) => (
                     <option key={topic.name} value={topic.name}>{topic.name} · {topic.type ?? topic.types?.[0] ?? '-'}</option>
                   ))}
@@ -1270,10 +1570,32 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
                   <small>검색 결과가 없습니다.</small>
                 )}
               </label>
+              <label className="interface-service-field">
+                <span>Subscribe Topic name</span>
+                <input
+                  placeholder="/interface_lab_topic_test"
+                  value={selectedReceiveTopic}
+                  onChange={(event) => setSelectedReceiveTopic(event.target.value)}
+                />
+              </label>
+              <label className="interface-service-field">
+                <span>선택 Message</span>
+                <input readOnly value={selectedMessage?.message_type ?? ''} />
+              </label>
+              {selectedMessage && (
+                <div className={`interface-service-state ${selectedMessage.import_available ? 'success' : 'warning'}`}>
+                  {selectedMessage.import_available ? '수신 가능 · import됨' : '수신 불가 · import 안됨'}
+                  {selectedMessage.import_error ? ` · ${selectedMessage.import_error}` : ''}
+                </div>
+              )}
+              <p className="interface-package-help">
+                Topic 수신은 선택한 Message full_type과 Subscribe Topic name 조합으로 시작합니다.
+                Publish payload 입력과 Publish 버튼은 왼쪽 Topic 실행 창에서 처리합니다.
+              </p>
               <div className="interface-receive-actions">
                 <button
                   className={selectedTopicReceiving ? 'interface-receive-action-button receiving' : 'interface-receive-action-button primary'}
-                  disabled={selectedTopicReceiving}
+                  disabled={selectedTopicReceiving || !selectedMessage?.import_available}
                   onClick={startSelectedTopicReceive}
                   type="button"
                 >
@@ -1285,7 +1607,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
                 <button className="interface-receive-action-button ghost" onClick={loadReceiveState} type="button">새로고침</button>
               </div>
               <ReceiveHistory title="수신 중 Topic" items={receiveTopics} />
-              <ReceiveHistory title="Topic message history" items={receiveTopicHistory} />
+              <ReceiveHistory title="Topic subscribe latest/history" items={visibleReceiveTopicHistory} />
             </div>
           )}
           {receiveMode === 'service' && (
@@ -1437,6 +1759,109 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
           <PackageRegistry packages={packages} onDelete={removePackage} />
         </div>
       )}
+      {showCallableTopics && (
+        <div className="interface-service-panel interface-execution-panel">
+          <div className="interface-registry-heading">
+            <strong>등록 Topic 실행</strong>
+          </div>
+          {callableMessages.length ? (
+            <>
+              <label className="interface-filter-check">
+                <input
+                  checked={topicImportableOnly}
+                  onChange={(event) => setTopicImportableOnly(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Message import됨만 보기</span>
+                <small>{visibleCallableMessages.length}/{callableMessages.length}</small>
+              </label>
+              <label className="interface-service-field">
+                <span>Message full_type · {visibleCallableMessages.length}/{callableMessages.length}개</span>
+                <select
+                  value={selectedMessageKey}
+                  onChange={(event) => {
+                    const key = event.target.value
+                    const message = callableMessages.find((item) => messageKey(item) === key)
+                    setSelectedMessageKey(key)
+                    setTopicMessageValues(defaultRequestValues(message?.message_schema ?? []))
+                    setTopicPublishResult(null)
+                  }}
+                >
+                  {visibleCallableMessages.map((message) => (
+                    <option key={messageKey(message)} value={messageKey(message)}>
+                      {message.import_available ? 'import됨' : 'import 안됨'} · {topicStatusLabel(message)} · {topicGraphStatusLabel(message)} · {message.message_type ?? message.full_type}
+                    </option>
+                  ))}
+                </select>
+                {!visibleCallableMessages.length && (
+                  <small>Message import됨 항목이 없습니다. 적용하기 또는 import-check 이후 다시 확인하세요.</small>
+                )}
+              </label>
+              {selectedMessage && (
+                <div className={`interface-service-state ${selectedMessage.import_available ? 'success' : 'warning'}`}>
+                  {selectedMessage.import_available ? 'import됨' : 'import 안됨'}
+                  {' · '}
+                  {topicStatusLabel(selectedMessage)}
+                  {' · '}
+                  {topicGraphStatusLabel(selectedMessage)}
+                  {selectedMessage.import_error ? ` · ${selectedMessage.import_error}` : ''}
+                </div>
+              )}
+              <label className="interface-service-field">
+                <span>Publish Topic name</span>
+                <input
+                  placeholder="/interface_lab_topic_test"
+                  value={topicPublishName}
+                  onChange={(event) => setTopicPublishName(event.target.value)}
+                />
+              </label>
+              {selectedMessage && (
+                <div className="interface-package-help">
+                  선택 Message {selectedMessage.message_type}의 schema {selectedMessage.message_schema?.length ?? 0}개 필드로 payload 폼을 생성합니다.
+                  사용자가 Publish 버튼을 누를 때만 1회 전송합니다.
+                </div>
+              )}
+              {selectedMessage?.graph_conflicts?.length ? (
+                <div className="interface-service-state warning">
+                  같은 Topic 이름에 다른 type이 Graph에 있습니다. 선택한 full_type과 실제 Graph type을 확인하세요.
+                </div>
+              ) : null}
+              {selectedMessage?.message_schema?.map((field) => (
+                <RequestField
+                  disabled={!selectedMessage?.import_available}
+                  field={field}
+                  key={field.name ?? field.raw_line}
+                  onChange={(value) => setTopicMessageValues((current) => ({
+                    ...current,
+                    [field.name]: value,
+                  }))}
+                  value={topicMessageValues[field.name]}
+                />
+              ))}
+              <button
+                className="interface-service-call-button"
+                disabled={topicPublishBusy || !selectedMessage?.import_available}
+                onClick={publishSelectedTopicMessage}
+                type="button"
+              >
+                {topicPublishBusy ? 'Publish 중…' : 'Publish'}
+              </button>
+              <div className="interface-receive-actions">
+                <button className="interface-receive-action-button warning" onClick={resetSelectedTopicPublishHistory} type="button">Publish 이력 리셋</button>
+              </div>
+              {topicPublishResult && (
+                <CallResultBlock
+                  result={topicPublishResult}
+                  successPayload={topicPublishResult.message_json ?? topicPublishResult.payload}
+                />
+              )}
+              <ReceiveHistory title="Topic publish history" items={visiblePublishHistory} />
+            </>
+          ) : (
+            <small>registry에 등록된 Message가 없습니다.</small>
+          )}
+        </div>
+      )}
       {showCallableServices && (
         <div className="interface-service-panel interface-execution-panel">
           <div className="interface-registry-heading">
@@ -1444,8 +1869,17 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
           </div>
           {callableServices.length ? (
             <>
+              <label className="interface-filter-check">
+                <input
+                  checked={serviceImportableOnly}
+                  onChange={(event) => setServiceImportableOnly(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Service import됨만 보기</span>
+                <small>{visibleCallableServices.length}/{callableServices.length}</small>
+              </label>
               <label className="interface-service-field">
-                <span>Service</span>
+                <span>Service · {visibleCallableServices.length}/{callableServices.length}개</span>
                 <select
                   onChange={(event) => {
                     const key = event.target.value
@@ -1457,12 +1891,15 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
                   }}
                   value={selectedServiceKey}
                 >
-                  {callableServices.map((service) => (
+                  {visibleCallableServices.map((service) => (
                     <option key={serviceKey(service)} value={serviceKey(service)}>
-                      {serviceStatusLabel(service)} · {service.service_name || service.file_name} · {service.service_type}
+                      {service.import_available ? 'import됨' : 'import 안됨'} · {serviceStatusLabel(service)} · {service.service_name || service.file_name} · {service.service_type}
                     </option>
                   ))}
                 </select>
+                {!visibleCallableServices.length && (
+                  <small>Service import됨 항목이 없습니다. 적용하기 또는 import-check 이후 다시 확인하세요.</small>
+                )}
               </label>
               {selectedService && (
                 <div className={`interface-service-state ${selectedService.callable ? 'success' : 'warning'}`}>
@@ -1526,8 +1963,17 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
           </div>
           {callableActions.length ? (
             <>
+              <label className="interface-filter-check">
+                <input
+                  checked={actionImportableOnly}
+                  onChange={(event) => setActionImportableOnly(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Action import됨만 보기</span>
+                <small>{visibleCallableActions.length}/{callableActions.length}</small>
+              </label>
               <label className="interface-service-field">
-                <span>Action</span>
+                <span>Action · {visibleCallableActions.length}/{callableActions.length}개</span>
                 <select
                   onChange={(event) => {
                     const key = event.target.value
@@ -1539,12 +1985,15 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
                   }}
                   value={selectedActionKey}
                 >
-                  {callableActions.map((action) => (
+                  {visibleCallableActions.map((action) => (
                     <option key={actionKey(action)} value={actionKey(action)}>
-                      {actionStatusLabel(action)} · {action.action_name || action.file_name} · {action.action_type}
+                      {action.import_available ? 'import됨' : 'import 안됨'} · {actionStatusLabel(action)} · {action.action_name || action.file_name} · {action.action_type}
                     </option>
                   ))}
                 </select>
+                {!visibleCallableActions.length && (
+                  <small>Action import됨 항목이 없습니다. 적용하기 또는 import-check 이후 다시 확인하세요.</small>
+                )}
               </label>
               {selectedAction && (
                 <div className={`interface-service-state ${selectedAction.callable ? 'success' : 'warning'}`}>
@@ -1653,7 +2102,7 @@ function InterfaceTypeList({ items = [], label }) {
           {items.map((item) => (
             <li key={item.type}>
               <code>{item.type}</code>
-              <small>{item.import_available ? 'import 가능' : item.import_error || 'import 대기'}</small>
+              <small>{item.import_available ? 'import됨' : item.import_error || 'import 안됨'}</small>
               <InterfaceSchema item={item} />
             </li>
           ))}
@@ -1703,10 +2152,10 @@ function interfaceCounts(interfaces = {}) {
 }
 
 function packageStatusLabel(item) {
-  if (item.import_available) return 'import available'
-  if (item.last_build_status === 'failed') return 'build failed'
-  if (item.last_build_status === 'success') return 'import pending'
-  return item.rebuild_required ? 'build required' : 'uploaded'
+  if (item.import_available) return 'import됨'
+  if (item.last_build_status === 'failed') return '빌드 실패'
+  if (item.last_build_status === 'success') return 'import 안됨'
+  return item.rebuild_required ? 'build 필요' : '업로드됨'
 }
 
 function ActionGoalResult({ result }) {
@@ -1738,7 +2187,7 @@ function CallResultBlock({ result, successPayload }) {
     <>
       {validationError && (
         <div className="interface-validation-warning">
-          입력값이 서비스/액션 타입과 맞지 않아 호출하지 않았습니다. 서버에는 요청을 보내지 않았습니다.
+          입력값이 선택한 ROS2 타입과 맞지 않아 전송하지 않았습니다.
         </div>
       )}
       <pre className={`interface-service-result ${result.success ? 'success' : 'error'}`}>
@@ -1867,16 +2316,38 @@ function actionKey(action) {
   return `${action.action_name || action.file_name}|${action.action_type}`
 }
 
+function messageKey(message) {
+  return `${message.message_type ?? message.full_type ?? message.file_name}|${message.source ?? ''}`
+}
+
+function topicHasType(topic, fullType) {
+  const types = Array.isArray(topic?.types)
+    ? topic.types
+    : Array.isArray(topic?.type)
+      ? topic.type
+      : [topic?.type]
+  return types.includes(fullType)
+}
+
+function topicStatusLabel(message) {
+  if (message.import_available) return 'Publish 가능'
+  return 'Publish 불가'
+}
+
+function topicGraphStatusLabel(message) {
+  return message.graph_topics?.length ? 'Graph Topic 있음' : 'Graph Topic 없음'
+}
+
 function serviceStatusLabel(service) {
   if (service.callable) return '호출 가능'
-  if (!service.import_available) return 'import 불가'
+  if (!service.import_available) return 'import 안됨'
   if (!service.server_available) return '서버 없음'
   return '호출 불가'
 }
 
 function actionStatusLabel(action) {
   if (action.callable) return '호출 가능'
-  if (!action.import_available) return 'import 불가'
+  if (!action.import_available) return 'import 안됨'
   if (!action.server_available) return '서버 없음'
   return '호출 불가'
 }
@@ -1960,7 +2431,7 @@ function RegistryGroup({ deletedItems = [], items = [], label, onDelete, onDelet
                 {item.build?.cmake_registered ? 'CMake 등록됨' : 'CMake 미등록'} · {' '}
                 {item.build?.package_xml_checked ? 'package.xml 확인됨' : 'package.xml 미확인'} · {' '}
                 {item.build?.rebuild_required ? '재빌드 필요' : '빌드 반영'} · {' '}
-                {item.build?.import_available ? 'import 가능' : 'import 불가'}
+                {item.build?.import_available ? 'import됨' : 'import 안됨'}
                 {item.build?.saved_path ? ` · ${item.build.saved_path}` : ''}
                 {item.build?.error ? ` · 오류: ${item.build.error}` : ''}
               </small>

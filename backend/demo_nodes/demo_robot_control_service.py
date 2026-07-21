@@ -5,11 +5,15 @@ from rclpy.node import Node
 
 from demo_interface_imports import import_demo_interface
 
-
 RobotControl = import_demo_interface(
     "srv",
     "RobotControl",
-    ["rths_interfaces", "ros2_dashboard_interfaces"],
+    [
+        "rths_interfaces",
+        "ros2_dashboard_interfaces",
+        "uploaded_interfaces",
+        "uploaded_interfaces_package",
+    ],
 )
 
 
@@ -23,9 +27,7 @@ class DemoRobotControlService(Node):
             self.handle_robot_control,
         )
 
-        self.get_logger().info(
-            "Demo /RobotControl service server started"
-        )
+        self.get_logger().info("Demo /RobotControl service server started")
 
     def handle_robot_control(self, request, response):
         self.get_logger().info("Received /RobotControl request")
@@ -34,9 +36,7 @@ class DemoRobotControlService(Node):
 
         for field_name in request_fields:
             value = getattr(request, field_name)
-            self.get_logger().info(
-                f"request.{field_name} = {value}"
-            )
+            self.get_logger().info(f"request.{field_name} = {value}")
 
         response_fields = response.get_fields_and_field_types()
 

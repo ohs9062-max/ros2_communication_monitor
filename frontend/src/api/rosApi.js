@@ -91,6 +91,14 @@ export function fetchCallableActions() {
   return requestJson('/ros/interfaces/callable-actions')
 }
 
+export function fetchCallableMessages() {
+  return requestJson('/ros/interfaces/callable-messages')
+}
+
+export function fetchMessageSchema(fullType) {
+  return requestJson(`/ros/interfaces/message-schema?full_type=${encodeURIComponent(fullType)}`)
+}
+
 export function fetchServiceCallHistory() {
   return requestJson('/ros/interfaces/service-call/history')
 }
@@ -123,6 +131,33 @@ export async function sendActionGoal(payload) {
     headers: {
       'Content-Type': 'application/json',
     },
+    body: JSON.stringify(payload),
+  })
+  return responseJson(response)
+}
+
+export async function publishTopicMessage(payload) {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/topic-publish`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+  return responseJson(response)
+}
+
+export function fetchTopicPublishHistory({ limit = 100 } = {}) {
+  const query = new URLSearchParams()
+  if (limit) query.set('limit', String(limit))
+  const suffix = query.toString() ? `?${query.toString()}` : ''
+  return requestJson(`/ros/interfaces/topic-publish/history${suffix}`)
+}
+
+export async function resetTopicPublishHistory(payload = {}) {
+  const response = await fetch(`${API_BASE_URL}/ros/interfaces/topic-publish/history/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
   return responseJson(response)
@@ -277,19 +312,23 @@ export function fetchReceiveTopics() {
   return requestJson('/ros/interfaces/receive/topics')
 }
 
-export function fetchReceiveTopicHistory(topicName = '', { limit = 500 } = {}) {
+export function fetchReceiveTopicHistory(topicName = '', { limit = 500, topicType = '' } = {}) {
   const query = new URLSearchParams()
   if (topicName) query.set('topic_name', topicName)
+  if (topicType) query.set('topic_type', topicType)
   if (limit) query.set('limit', String(limit))
   const suffix = query.toString() ? `?${query.toString()}` : ''
   return requestJson(`/ros/interfaces/receive/topics/history${suffix}`)
 }
 
-export async function resetReceiveTopicHistory(topicName = '') {
+export async function resetReceiveTopicHistory(topicName = '', topicType = '') {
+  const body = {}
+  if (topicName) body.topic_name = topicName
+  if (topicType) body.topic_type = topicType
   const response = await fetch(`${API_BASE_URL}/ros/interfaces/receive/topics/history/reset`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(topicName ? { topic_name: topicName } : {}),
+    body: JSON.stringify(body),
   })
   return responseJson(response)
 }

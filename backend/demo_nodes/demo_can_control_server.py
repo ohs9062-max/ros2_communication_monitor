@@ -8,11 +8,15 @@ from rclpy.node import Node
 
 from demo_interface_imports import import_demo_interface
 
-
 CanControl = import_demo_interface(
     "action",
     "CanControl",
-    ["rths_interfaces", "can_interfaces", "ros2_dashboard_interfaces"],
+    [
+        "rths_interfaces",
+        "ros2_dashboard_interfaces",
+        "uploaded_interfaces",
+        "uploaded_interfaces_package",
+    ],
 )
 
 
@@ -50,9 +54,7 @@ class DemoCanControlServer(Node):
         for attempt in range(1, retry_count + 1):
             feedback.stage = "sending"
             feedback.attempt = attempt
-            feedback.detail = (
-                f"demo send attempt {attempt}/{retry_count}"
-            )
+            feedback.detail = f"demo send attempt {attempt}/{retry_count}"
 
             goal_handle.publish_feedback(feedback)
 

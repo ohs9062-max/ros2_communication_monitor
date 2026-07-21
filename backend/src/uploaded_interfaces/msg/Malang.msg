@@ -1,0 +1,3 @@
+uint8 cmd
+bool success
+string message

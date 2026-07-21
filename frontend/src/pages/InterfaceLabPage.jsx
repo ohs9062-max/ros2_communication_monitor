@@ -3,16 +3,25 @@ import { InterfaceUploadControl } from '../components/InterfaceUploadControl.jsx
 import {
   callRegisteredService,
   fetchCallableActions,
+  fetchCallableMessages,
   fetchCallableServices,
   fetchActions,
   fetchTopics,
   fetchInterfaceApplyStatus,
   fetchInterfacePackages,
   fetchInterfaceRegistry,
+  fetchReceiveTopicHistory,
+  fetchReceiveTopics,
   fetchServices,
   fetchActionGoalHistory,
   fetchServiceCallHistory,
+  fetchTopicPublishHistory,
+  publishTopicMessage,
+  resetReceiveTopicHistory,
+  resetTopicPublishHistory,
   sendActionGoal,
+  startReceiveTopic,
+  stopReceiveTopic,
 } from '../api/rosApi.js'
 
 const GROUPS = [
@@ -23,7 +32,7 @@ const GROUPS = [
   { id: 'packages', label: 'Package' },
   { id: 'callable_services', label: '실행 가능 Service' },
   { id: 'callable_actions', label: '실행 가능 Action' },
-  { id: 'importable', label: 'import 가능' },
+  { id: 'importable', label: 'import됨' },
   { id: 'rebuild_required', label: 'build 필요' },
   { id: 'errors', label: '오류' },
 ]
@@ -31,6 +40,7 @@ const GROUPS = [
 export function InterfaceLabPage({ websocket }) {
   const [registry, setRegistry] = useState({ messages: [], services: [], actions: [] })
   const [applyStatus, setApplyStatus] = useState(null)
+  const [callableMessages, setCallableMessages] = useState([])
   const [callableServices, setCallableServices] = useState([])
   const [callableActions, setCallableActions] = useState([])
   const [graphServices, setGraphServices] = useState([])
@@ -38,12 +48,18 @@ export function InterfaceLabPage({ websocket }) {
   const [packages, setPackages] = useState([])
   const [serviceHistory, setServiceHistory] = useState([])
   const [actionHistory, setActionHistory] = useState([])
+  const [topicPublishHistory, setTopicPublishHistory] = useState([])
+  const [topicReceiveHistory, setTopicReceiveHistory] = useState([])
+  const [receiveTopics, setReceiveTopics] = useState([])
   const [topics, setTopics] = useState([])
   const [activeGroup, setActiveGroup] = useState('all')
   const [selected, setSelected] = useState(null)
   const [selectedHistoryItem, setSelectedHistoryItem] = useState(null)
   const [requestValues, setRequestValues] = useState({})
   const [goalValues, setGoalValues] = useState({})
+  const [messageValues, setMessageValues] = useState({})
+  const [topicPublishName, setTopicPublishName] = useState('')
+  const [topicSubscribeName, setTopicSubscribeName] = useState('')
   const [timeoutSec, setTimeoutSec] = useState(2)
   const [goalTimeoutSec, setGoalTimeoutSec] = useState(10)
   const [executing, setExecuting] = useState(false)
@@ -59,11 +75,15 @@ export function InterfaceLabPage({ websocket }) {
     const requests = [
       ['registry', fetchInterfaceRegistry()],
       ['status', fetchInterfaceApplyStatus()],
+      ['callableMessages', fetchCallableMessages()],
       ['callableServices', fetchCallableServices()],
       ['callableActions', fetchCallableActions()],
       ['packages', fetchInterfacePackages()],
       ['serviceHistory', fetchServiceCallHistory()],
       ['actionHistory', fetchActionGoalHistory()],
+      ['topicPublishHistory', fetchTopicPublishHistory()],
+      ['topicReceiveHistory', fetchReceiveTopicHistory()],
+      ['receiveTopics', fetchReceiveTopics()],
       ['topics', fetchTopics()],
       ['graphServices', fetchServices({ includeHidden: true })],
       ['graphActions', fetchActions()],
@@ -76,11 +96,15 @@ export function InterfaceLabPage({ websocket }) {
       )
       if (payloads.registry) setRegistry(payloads.registry.data ?? { messages: [], services: [], actions: [] })
       if (payloads.status) setApplyStatus(payloads.status.data ?? null)
+      if (payloads.callableMessages) setCallableMessages(payloads.callableMessages.data ?? [])
       if (payloads.callableServices) setCallableServices(payloads.callableServices.data ?? [])
       if (payloads.callableActions) setCallableActions(payloads.callableActions.data ?? [])
       if (payloads.packages) setPackages(payloads.packages.data ?? [])
       if (payloads.serviceHistory) setServiceHistory(payloads.serviceHistory.data ?? [])
       if (payloads.actionHistory) setActionHistory(payloads.actionHistory.data ?? [])
+      if (payloads.topicPublishHistory) setTopicPublishHistory(payloads.topicPublishHistory.data ?? [])
+      if (payloads.topicReceiveHistory) setTopicReceiveHistory(payloads.topicReceiveHistory.data ?? [])
+      if (payloads.receiveTopics) setReceiveTopics(payloads.receiveTopics.data ?? [])
       if (payloads.topics) setTopics(payloads.topics.data?.topics ?? payloads.topics.data ?? [])
       if (payloads.graphServices) setGraphServices(payloads.graphServices.data?.services ?? payloads.graphServices.data ?? [])
       if (payloads.graphActions) setGraphActions(payloads.graphActions.data?.actions ?? payloads.graphActions.data ?? [])
@@ -108,6 +132,9 @@ export function InterfaceLabPage({ websocket }) {
     setSelectedHistoryItem(null)
     setRequestValues({})
     setGoalValues({})
+    setMessageValues({})
+    setTopicPublishName('')
+    setTopicSubscribeName('')
     setTimeoutSec(2)
     setGoalTimeoutSec(10)
     setInlineResult(null)
@@ -123,23 +150,28 @@ export function InterfaceLabPage({ websocket }) {
   const summary = useMemo(() => buildSummary({
     registry,
     callableActions,
+    callableMessages,
     callableServices,
     graphActions,
     graphServices,
     packages,
-  }), [registry, callableActions, callableServices, graphActions, graphServices, packages])
+  }), [registry, callableActions, callableMessages, callableServices, graphActions, graphServices, packages])
   const workspaceItems = useMemo(() => buildWorkspaceItems({
     actionHistory,
     callableActions,
+    callableMessages,
     callableServices,
     filter: activeGroup,
     graphActions,
     graphServices,
     packages,
     registry,
+    receiveTopics,
     serviceHistory,
+    topicPublishHistory,
+    topicReceiveHistory,
     topics,
-  }), [actionHistory, activeGroup, callableActions, callableServices, graphActions, graphServices, packages, registry, serviceHistory, topics])
+  }), [actionHistory, activeGroup, callableActions, callableMessages, callableServices, graphActions, graphServices, packages, receiveTopics, registry, serviceHistory, topicPublishHistory, topicReceiveHistory, topics])
   const selectedDetail = workspaceItems.find((item) => item.id === selected?.id)
     ?? workspaceItems.find((item) => item.stableKey === selected?.stableKey)
     ?? null
@@ -155,6 +187,13 @@ export function InterfaceLabPage({ websocket }) {
       setRequestValues(defaultValues(selectedDetail.schema ?? []))
     } else if (selectedDetail?.kind === 'action' || selectedDetail?.kind === 'callable_action') {
       setGoalValues(defaultValues(selectedDetail.schema ?? []))
+    } else if (selectedDetail?.kind === 'message') {
+      setMessageValues(defaultValues(selectedDetail.schema ?? []))
+      const firstTopic = selectedDetail.connectedTopics?.[0]?.name
+        ?? selectedDetail.topicStates?.[0]?.topic_name
+        ?? ''
+      setTopicPublishName(firstTopic)
+      setTopicSubscribeName(firstTopic)
     }
   }, [selectedDetail?.kind, selectedDetail?.schema, selectedDetail?.stableKey])
 
@@ -209,6 +248,83 @@ export function InterfaceLabPage({ websocket }) {
     }
   }
 
+  const publishSelectedTopic = async () => {
+    if (!selectedDetail?.fullType) {
+      setInlineResult({ success: false, error: 'Message full_type이 없습니다.' })
+      return
+    }
+    if (!topicPublishName) {
+      setInlineResult({ success: false, error: 'Publish할 Topic 이름을 입력하세요.' })
+      return
+    }
+    setExecuting(true)
+    setInlineResult(null)
+    try {
+      const result = await publishTopicMessage({
+        topic_name: topicPublishName,
+        topic_type: selectedDetail.fullType,
+        full_type: selectedDetail.fullType,
+        message: normalizeNumericValues(messageValues, selectedDetail.schema),
+      })
+      setInlineResult(result)
+      await refresh({ notifyWorkbench: false })
+    } catch (nextError) {
+      setInlineResult({ success: false, error: nextError.message, sent_to_topic: false })
+    } finally {
+      setExecuting(false)
+    }
+  }
+
+  const startSelectedTopicSubscribe = async () => {
+    if (!selectedDetail?.fullType || !topicSubscribeName) {
+      setInlineResult({ success: false, error: 'Topic 이름과 Message full_type이 필요합니다.' })
+      return
+    }
+    try {
+      const result = await startReceiveTopic({
+        topic_name: topicSubscribeName,
+        topic_type: selectedDetail.fullType,
+        full_type: selectedDetail.fullType,
+        history_limit: 500,
+      })
+      setInlineResult(result)
+      await refresh({ notifyWorkbench: false })
+    } catch (nextError) {
+      setInlineResult({ success: false, error: nextError.message })
+    }
+  }
+
+  const stopSelectedTopicSubscribe = async () => {
+    if (!selectedDetail?.fullType || !topicSubscribeName) return
+    try {
+      const result = await stopReceiveTopic({
+        topic_name: topicSubscribeName,
+        topic_type: selectedDetail.fullType,
+        full_type: selectedDetail.fullType,
+      })
+      setInlineResult(result)
+      await refresh({ notifyWorkbench: false })
+    } catch (nextError) {
+      setInlineResult({ success: false, error: nextError.message })
+    }
+  }
+
+  const resetSelectedTopicHistories = async () => {
+    const payload = selectedDetail?.fullType && topicSubscribeName
+      ? { topicName: topicSubscribeName, topicType: selectedDetail.fullType }
+      : {}
+    await Promise.all([
+      resetReceiveTopicHistory(payload.topicName, payload.topicType),
+      resetTopicPublishHistory(
+        payload.topicName
+          ? { topic_name: payload.topicName, topic_type: payload.topicType }
+          : {},
+      ),
+    ])
+    setInlineResult({ success: true, message: 'Topic Publish/Subscribe 이력을 초기화했습니다.' })
+    await refresh({ notifyWorkbench: false })
+  }
+
   return (
     <main className="interface-lab-page">
       <section className="interface-lab-hero">
@@ -217,7 +333,7 @@ export function InterfaceLabPage({ websocket }) {
           <h2>타입 등록, 빌드 적용, Service/Action 테스트</h2>
           <p>
             타입 등록은 “사용자가 이 타입을 쓰겠다”는 선언입니다.
-            이미 설치/import 가능하고 Graph에 서버가 있는 타입만 실행 후보가 됩니다.
+            이미 설치되어 import됐고 Graph에 서버가 있는 타입만 실행 후보가 됩니다.
             Service request와 Action Goal은 사용자가 버튼을 누를 때만 전송됩니다.
           </p>
           <p className="interface-lab-note">
@@ -254,9 +370,10 @@ export function InterfaceLabPage({ websocket }) {
 
       <section className="interface-summary-grid">
         <SummaryCard label="Message" value={summary.messages} />
+        <SummaryCard label="Message import됨" value={summary.callableMessages} />
         <SummaryCard label="Service" value={summary.services} />
         <SummaryCard label="Action" value={summary.actions} />
-        <SummaryCard label="import 가능" value={summary.importable} />
+        <SummaryCard label="import됨" value={summary.importable} />
         <SummaryCard label="build 필요" value={summary.rebuildRequired} tone={summary.rebuildRequired ? 'warning' : 'success'} />
         <SummaryCard label="Package" value={summary.packages} />
         <SummaryCard label="실행 가능 Service" value={summary.callableServices} />
@@ -324,17 +441,27 @@ export function InterfaceLabPage({ websocket }) {
                     onActionExecute={executeSelectedAction}
                     onGoalChange={setGoalValues}
                     onHistorySelect={setSelectedHistoryItem}
+                    onMessageChange={setMessageValues}
                     onRelatedSelect={(nextItem) => {
                       setSelected(nextItem)
                       setSelectedHistoryItem(null)
                     }}
                     onRequestChange={setRequestValues}
+                    onTopicPublish={publishSelectedTopic}
                     onServiceExecute={executeSelectedService}
+                    onTopicReset={resetSelectedTopicHistories}
+                    onTopicSubscribeStart={startSelectedTopicSubscribe}
+                    onTopicSubscribeStop={stopSelectedTopicSubscribe}
                     relatedItems={relatedItems}
+                    messageValues={messageValues}
                     requestValues={requestValues}
                     selectedHistoryItem={selectedHistoryItem}
                     setGoalTimeoutSec={setGoalTimeoutSec}
+                    setTopicPublishName={setTopicPublishName}
+                    setTopicSubscribeName={setTopicSubscribeName}
                     setTimeoutSec={setTimeoutSec}
+                    topicPublishName={topicPublishName}
+                    topicSubscribeName={topicSubscribeName}
                     timeoutSec={timeoutSec}
                   />
                 )}
@@ -397,7 +524,7 @@ function InterfaceCard({ item, onClick, selected }) {
         {item.graphOnly && <Badge label="미등록" tone="yellow" />}
         {item.packageName && <Badge label={item.packageName} tone="neutral" />}
         {item.importAvailable !== null && (
-          <Badge label={item.importAvailable ? 'import 가능' : 'import 대기/실패'} tone={item.importAvailable ? 'green' : 'yellow'} />
+          <Badge label={item.importAvailable ? 'import됨' : 'import 안됨'} tone={item.importAvailable ? 'green' : 'yellow'} />
         )}
         {item.graphOnly && item.importAvailable === null && (
           <Badge label="import 확인 필요" tone="yellow" />
@@ -439,14 +566,24 @@ function InlineWorkspace({
   onActionExecute,
   onGoalChange,
   onHistorySelect,
+  onMessageChange,
   onRelatedSelect,
   onRequestChange,
   onServiceExecute,
+  onTopicPublish,
+  onTopicReset,
+  onTopicSubscribeStart,
+  onTopicSubscribeStop,
   relatedItems,
+  messageValues,
   requestValues,
   selectedHistoryItem,
   setGoalTimeoutSec,
+  setTopicPublishName,
+  setTopicSubscribeName,
   setTimeoutSec,
+  topicPublishName,
+  topicSubscribeName,
   timeoutSec,
 }) {
   const showDetail = item.kind !== 'package'
@@ -487,12 +624,22 @@ function InlineWorkspace({
           onActionExecute={onActionExecute}
           onGoalChange={onGoalChange}
           onHistorySelect={onHistorySelect}
+          onMessageChange={onMessageChange}
           onRequestChange={onRequestChange}
           onServiceExecute={onServiceExecute}
+          onTopicPublish={onTopicPublish}
+          onTopicReset={onTopicReset}
+          onTopicSubscribeStart={onTopicSubscribeStart}
+          onTopicSubscribeStop={onTopicSubscribeStop}
+          messageValues={messageValues}
           requestValues={requestValues}
           selectedHistoryItem={selectedHistoryItem}
           setGoalTimeoutSec={setGoalTimeoutSec}
+          setTopicPublishName={setTopicPublishName}
+          setTopicSubscribeName={setTopicSubscribeName}
           setTimeoutSec={setTimeoutSec}
+          topicPublishName={topicPublishName}
+          topicSubscribeName={topicSubscribeName}
           timeoutSec={timeoutSec}
         />
       )}
@@ -509,12 +656,22 @@ function InterfaceDetailPanel({
   onActionExecute,
   onGoalChange,
   onHistorySelect,
+  onMessageChange,
   onRequestChange,
   onServiceExecute,
+  onTopicPublish,
+  onTopicReset,
+  onTopicSubscribeStart,
+  onTopicSubscribeStop,
+  messageValues,
   requestValues,
   selectedHistoryItem,
   setGoalTimeoutSec,
+  setTopicPublishName,
+  setTopicSubscribeName,
   setTimeoutSec,
+  topicPublishName,
+  topicSubscribeName,
   timeoutSec,
 }) {
   if (!item) {
@@ -536,7 +693,7 @@ function InterfaceDetailPanel({
         <dt>package</dt>
         <dd>{item.packageName ?? '-'}</dd>
         <dt>import</dt>
-        <dd>{item.importAvailable === null ? '-' : item.importAvailable ? 'import 가능' : 'import 실패/대기'}</dd>
+        <dd>{item.importAvailable === null ? '-' : item.importAvailable ? 'import됨' : 'import 안됨'}</dd>
         <dt>build</dt>
         <dd>{item.rebuildRequired ? 'build 필요' : '빌드 반영/대기'}</dd>
         <dt>server</dt>
@@ -553,6 +710,25 @@ function InterfaceDetailPanel({
       <CollapsibleJson title="상태 상세" value={item.status ?? {}} />
       <CollapsibleJson title="parsed / schema" value={item.parsed ?? item.schema ?? {}} />
       <CollapsibleText title="raw_text" value={item.raw_text ?? ''} />
+      {item.kind === 'message' && (
+        <TopicWorkspaceDetail
+          executing={executing}
+          inlineResult={inlineResult}
+          item={item}
+          messageValues={messageValues}
+          onHistorySelect={onHistorySelect}
+          onMessageChange={onMessageChange}
+          onPublish={onTopicPublish}
+          onReset={onTopicReset}
+          onSubscribeStart={onTopicSubscribeStart}
+          onSubscribeStop={onTopicSubscribeStop}
+          selectedHistoryItem={selectedHistoryItem}
+          setTopicPublishName={setTopicPublishName}
+          setTopicSubscribeName={setTopicSubscribeName}
+          topicPublishName={topicPublishName}
+          topicSubscribeName={topicSubscribeName}
+        />
+      )}
       {(item.kind === 'service' || item.kind === 'callable_service') && (
         <ServiceWorkspaceDetail
           executing={executing}
@@ -641,7 +817,7 @@ function ServiceWorkspaceDetail({
           </button>
         </>
       ) : (
-        <p className="muted">import 가능하고 서버가 있는 Service가 있을 때 실행 폼이 활성화됩니다.</p>
+        <p className="muted">import됐고 서버가 있는 Service가 있을 때 실행 폼이 활성화됩니다.</p>
       )}
       <LastResultBlock fallback={item.lastRun} result={inlineResult} title="마지막 호출 결과" />
       <HistoryList
@@ -650,6 +826,122 @@ function ServiceWorkspaceDetail({
         onSelect={onHistorySelect}
         selected={selectedHistoryItem}
         type="service"
+      />
+    </>
+  )
+}
+
+function TopicWorkspaceDetail({
+  executing,
+  inlineResult,
+  item,
+  messageValues,
+  onHistorySelect,
+  onMessageChange,
+  onPublish,
+  onReset,
+  onSubscribeStart,
+  onSubscribeStop,
+  selectedHistoryItem,
+  setTopicPublishName,
+  setTopicSubscribeName,
+  topicPublishName,
+  topicSubscribeName,
+}) {
+  const activeSubscription = (item.topicStates ?? []).find(
+    (state) => state.topic_name === topicSubscribeName && state.topic_type === item.fullType,
+  )
+  return (
+    <>
+      <SectionTitle title="연결된 Graph Topic" />
+      <ConnectionList
+        empty="Graph에서 이 Message full_type으로 열린 Topic이 없습니다."
+        items={item.connectedTopics}
+        render={(topic) => [
+          topic.name,
+          firstType(topic.type ?? topic.types) ?? '-',
+          `publishers ${topic.publisher_count ?? 0}`,
+          `subscribers ${topic.subscriber_count ?? 0}`,
+        ].join(' · ')}
+      />
+      {(item.graphConflicts ?? []).length > 0 && (
+        <CollapsibleJson
+          title="같은 Topic 이름의 다른 type 경고"
+          value={item.graphConflicts}
+        />
+      )}
+
+      <SectionTitle title="Topic Publish" />
+      <label className="interface-service-field">
+        <span>topic_name</span>
+        <input
+          onChange={(event) => setTopicPublishName(event.target.value)}
+          placeholder="/demo_topic"
+          type="text"
+          value={topicPublishName}
+        />
+      </label>
+      <p className="muted">
+        full_type {item.fullType} · QoS {item.qos?.profile ?? 'default'} depth {item.qos?.depth ?? 10}
+      </p>
+      {schemaFields(item.schema).map((field) => (
+        <RequestField
+          field={field}
+          key={field.name ?? field.raw_line}
+          onChange={(value) => onMessageChange((current) => ({
+            ...current,
+            [field.name]: value,
+          }))}
+          value={messageValues[field.name]}
+        />
+      ))}
+      <button
+        className="interface-service-call-button"
+        disabled={executing || !item.importAvailable}
+        onClick={onPublish}
+        type="button"
+      >
+        {executing ? 'Publish 중…' : '1회 Publish'}
+      </button>
+
+      <SectionTitle title="Topic Subscribe" />
+      <label className="interface-service-field">
+        <span>topic_name</span>
+        <input
+          onChange={(event) => setTopicSubscribeName(event.target.value)}
+          placeholder="/demo_topic"
+          type="text"
+          value={topicSubscribeName}
+        />
+      </label>
+      <p className="muted">
+        Subscription key는 topic_name + full_type입니다. 같은 이름이라도 package/type이 다르면 별도 구독입니다.
+      </p>
+      <div className="interface-inline-actions">
+        <button disabled={!item.importAvailable} onClick={onSubscribeStart} type="button">
+          {activeSubscription ? '수신중 · 설정 갱신' : '수신 시작'}
+        </button>
+        <button disabled={!activeSubscription} onClick={onSubscribeStop} type="button">
+          수신 중지
+        </button>
+        <button onClick={onReset} type="button">
+          Publish/Subscribe 이력 초기화
+        </button>
+      </div>
+      {activeSubscription && (
+        <CollapsibleJson
+          title={`수신 상태 · ${activeSubscription.message_count ?? 0}개`}
+          value={activeSubscription}
+        />
+      )}
+
+      <LastResultBlock fallback={item.lastRun} result={inlineResult} title="마지막 Topic 작업 결과" />
+      <HistoryList
+        empty="최근 Topic Publish/Subscribe 이력이 없습니다."
+        items={item.history}
+        onSelect={onHistorySelect}
+        selected={selectedHistoryItem}
+        type="topic"
       />
     </>
   )
@@ -719,7 +1011,7 @@ function ActionWorkspaceDetail({
           </button>
         </>
       ) : (
-        <p className="muted">import 가능하고 서버가 있는 Action이 있을 때 Goal 폼이 활성화됩니다.</p>
+        <p className="muted">import됐고 서버가 있는 Action이 있을 때 Goal 폼이 활성화됩니다.</p>
       )}
       <LastResultBlock fallback={item.lastRun} result={inlineResult} title="마지막 실행 결과" />
       <SectionTitle title="Action 관련 Topic" />
@@ -802,7 +1094,7 @@ function CollapsibleText({ title, value }) {
   )
 }
 
-function buildSummary({ callableActions, callableServices, packages, registry }) {
+function buildSummary({ callableActions, callableMessages = [], callableServices, packages, registry }) {
   const items = [
     ...(registry.messages ?? []),
     ...(registry.services ?? []),
@@ -811,6 +1103,7 @@ function buildSummary({ callableActions, callableServices, packages, registry })
   return {
     actions: registry.actions?.length ?? 0,
     callableActions: callableActions.filter((item) => item.callable).length,
+    callableMessages: callableMessages.filter((item) => item.import_available).length,
     callableServices: callableServices.filter((item) => item.callable).length,
     importable: items.filter((item) => item.build?.import_available).length,
     messages: registry.messages?.length ?? 0,
@@ -823,25 +1116,39 @@ function buildSummary({ callableActions, callableServices, packages, registry })
 function buildWorkspaceItems({
   actionHistory,
   callableActions,
+  callableMessages = [],
   callableServices,
   filter,
   graphActions = [],
   graphServices = [],
   packages,
+  receiveTopics = [],
   registry,
   serviceHistory,
+  topicPublishHistory = [],
+  topicReceiveHistory = [],
   topics,
 }) {
   const graphServiceEntries = mergeGraphServiceEntries(graphServices, callableServices)
   const graphActionEntries = mergeGraphActionEntries(graphActions, callableActions)
+  const messagesByType = Object.fromEntries(
+    callableMessages.map((item) => [item.message_type ?? item.full_type ?? item.topic_type, item]),
+  )
   const servicesByType = groupByType(graphServiceEntries, 'service_type')
   const actionsByType = groupByType(graphActionEntries, 'action_type')
+  const topicContext = {
+    messagesByType,
+    receiveTopics,
+    topicPublishHistory,
+    topicReceiveHistory,
+  }
   const items = [
     ...(registry.messages ?? []).map((item) => registryItem(item, 'message', {
       actionsByType,
       actionHistory,
       servicesByType,
       serviceHistory,
+      ...topicContext,
       topics,
     })),
     ...(registry.services ?? []).map((item) => registryItem(item, 'service', {
@@ -863,6 +1170,7 @@ function buildWorkspaceItems({
       actionHistory,
       servicesByType,
       serviceHistory,
+      ...topicContext,
       topics,
     })),
     ...graphServiceEntries.map((item) => callableServiceItem(item, serviceHistory)),
@@ -972,6 +1280,15 @@ function mergeWorkspaceItem(left, right) {
     'action_name',
     'action_type',
   )
+  const topicStates = mergeByNameAndType(
+    [...(left.topicStates ?? []), ...(normalizedRight.topicStates ?? [])],
+    'topic_name',
+    'topic_type',
+  )
+  const graphConflicts = [
+    ...(left.graphConflicts ?? []),
+    ...(normalizedRight.graphConflicts ?? []),
+  ]
   const sources = uniqueStrings([...(left.sources ?? []), ...(normalizedRight.sources ?? [])])
   const history = mergeHistory([...(left.history ?? []), ...(normalizedRight.history ?? [])])
   return {
@@ -999,6 +1316,8 @@ function mergeWorkspaceItem(left, right) {
       graph: normalizedRight.status,
       sources,
     },
+    graphConflicts,
+    topicStates,
   }
 }
 
@@ -1009,7 +1328,7 @@ function finalizeMergedWorkspaceItem(item, topics = []) {
     ? uniqueStrings((item.connectedActions ?? []).map((entry) => entry.action_name).filter(Boolean))
     : []
   const connectedTopics = item.kind === 'message'
-    ? topics.filter((topic) => firstType(topic.type ?? topic.types) === item.fullType)
+    ? topics.filter((topic) => topicHasType(topic, item.fullType))
     : item.connectedTopics ?? []
   const title = graphNames.length === 1
     ? graphNames[0]
@@ -1035,24 +1354,36 @@ function registryItem(item, kind, {
   actionsByType = {},
   callable = null,
   history = [],
+  messagesByType = {},
+  receiveTopics = [],
   servicesByType = {},
   topics = [],
+  topicPublishHistory = [],
+  topicReceiveHistory = [],
 } = {}) {
   const build = item.build ?? {}
   const fullType = callable?.service_type ?? callable?.action_type ?? registryFullType(item, kind)
+  const messageState = kind === 'message' ? messagesByType[fullType] : null
   const connectedServices = servicesByType[fullType] ?? []
   const connectedActions = actionsByType[fullType] ?? []
-  const filteredHistory = filterHistoryByType(history, fullType, kind)
+  const topicHistory = kind === 'message'
+    ? topicHistoryForType(topicPublishHistory, topicReceiveHistory, fullType)
+    : []
+  const filteredHistory = kind === 'message'
+    ? topicHistory
+    : filterHistoryByType(history, fullType, kind)
   return {
     callable: callable?.callable ?? null,
     error: build.error ?? item.parsed_error ?? callable?.reason ?? null,
     connectedActions,
     connectedServices,
-    connectedTopics: actionTopics(fullType, connectedActions, topics),
+    connectedTopics: kind === 'message'
+      ? topics.filter((topic) => topicHasType(topic, fullType))
+      : actionTopics(fullType, connectedActions, topics),
     fullType,
     history: filteredHistory,
     id: `single:${kind}:${item.file_name}`,
-    importAvailable: build.import_available ?? null,
+    importAvailable: messageState?.import_available ?? build.import_available ?? null,
     kind,
     lastRun: filteredHistory?.[0] ?? null,
     packageName: build.package_name ?? packageFromType(fullType),
@@ -1060,13 +1391,20 @@ function registryItem(item, kind, {
     raw_text: item.raw_text,
     reason: callable?.reason,
     rebuildRequired: Boolean(build.rebuild_required),
-    schema: callable?.request_schema ?? callable?.goal_schema,
+    schema: kind === 'message'
+      ? messageState?.message_schema ?? item.parsed ?? []
+      : callable?.request_schema ?? callable?.goal_schema,
     serverAvailable: callable?.server_available ?? null,
     source: item.source ?? 'single_upload',
     stableKey: `${kind}:${fullType}`,
     status: build,
     subtitle: fullType,
     title: item.file_name,
+    graphConflicts: messageState?.graph_conflicts ?? [],
+    qos: { depth: 10, profile: 'default' },
+    topicStates: kind === 'message'
+      ? receiveTopics.filter((state) => state.topic_type === fullType)
+      : [],
   }
 }
 
@@ -1112,6 +1450,10 @@ function packageTypeItem(packageItem, item, kind, {
   actionHistory = [],
   servicesByType = {},
   serviceHistory = [],
+  messagesByType = {},
+  receiveTopics = [],
+  topicPublishHistory = [],
+  topicReceiveHistory = [],
   topics = [],
 } = {}) {
   const connectedServices = servicesByType[item.type] ?? []
@@ -1121,22 +1463,25 @@ function packageTypeItem(packageItem, item, kind, {
     ? parsed.request ?? []
     : kind === 'action'
     ? parsed.goal ?? []
-    : parsed.fields ?? []
+    : Array.isArray(parsed) ? parsed : parsed.fields ?? []
   const history = kind === 'service'
     ? filterHistoryByType(serviceHistory, item.type, kind)
     : kind === 'action'
     ? filterHistoryByType(actionHistory, item.type, kind)
-    : []
+    : topicHistoryForType(topicPublishHistory, topicReceiveHistory, item.type)
+  const messageState = kind === 'message' ? messagesByType[item.type] : null
   return {
     callable: [...connectedServices, ...connectedActions].some((entry) => entry.callable) || null,
     connectedActions,
     connectedServices,
-    connectedTopics: actionTopics(item.type, connectedActions, topics),
+    connectedTopics: kind === 'message'
+      ? topics.filter((topic) => topicHasType(topic, item.type))
+      : actionTopics(item.type, connectedActions, topics),
     error: item.import_error ?? item.parsed_error ?? null,
     fullType: item.type,
     history,
     id: `package:${packageItem.name}:${kind}:${item.type}`,
-    importAvailable: item.import_available ?? null,
+    importAvailable: messageState?.import_available ?? item.import_available ?? null,
     kind,
     lastRun: history[0] ?? null,
     packageName: packageItem.name,
@@ -1144,13 +1489,18 @@ function packageTypeItem(packageItem, item, kind, {
     raw_text: item.raw_text ?? '',
     reason: null,
     rebuildRequired: Boolean(packageItem.rebuild_required),
-    schema,
+    schema: kind === 'message' ? messageState?.message_schema ?? schema : schema,
     serverAvailable: [...connectedServices, ...connectedActions].some((entry) => entry.server_available) || null,
     source: 'uploaded_package',
     stableKey: `${kind}:${item.type}`,
     status: item,
     subtitle: item.type,
     title: item.name ?? item.type,
+    graphConflicts: messageState?.graph_conflicts ?? [],
+    qos: { depth: 10, profile: 'default' },
+    topicStates: kind === 'message'
+      ? receiveTopics.filter((state) => state.topic_type === item.type)
+      : [],
   }
 }
 
@@ -1336,6 +1686,15 @@ function firstType(value) {
   return value
 }
 
+function topicHasType(topic, fullType) {
+  const values = Array.isArray(topic?.types)
+    ? topic.types
+    : Array.isArray(topic?.type)
+    ? topic.type
+    : [topic?.type]
+  return values.includes(fullType)
+}
+
 function mergeByNameAndType(items = [], nameKey, typeKey) {
   const byKey = new Map()
   items.forEach((item) => {
@@ -1349,11 +1708,17 @@ function mergeByNameAndType(items = [], nameKey, typeKey) {
 function mergeHistory(items = []) {
   const byKey = new Map()
   items.forEach((item, index) => {
-    const key = `${item.called_at ?? item.sent_at ?? item.id ?? index}:${item.service_name ?? item.action_name ?? ''}`
+    const key = [
+      item.called_at ?? item.sent_at ?? item.published_at ?? item.received_at ?? item.id ?? index,
+      item.service_name ?? item.action_name ?? item.topic_name ?? '',
+      item.service_type ?? item.action_type ?? item.topic_type ?? '',
+      item.direction ?? '',
+    ].join(':')
     byKey.set(key, item)
   })
   return Array.from(byKey.values()).sort((a, b) =>
-    (b.called_at ?? b.sent_at ?? 0) - (a.called_at ?? a.sent_at ?? 0),
+    (b.called_at ?? b.sent_at ?? b.published_at ?? b.received_at ?? 0)
+      - (a.called_at ?? a.sent_at ?? a.published_at ?? a.received_at ?? 0),
   )
 }
 
@@ -1385,6 +1750,16 @@ function filterHistoryByType(history, fullType, kind) {
   return []
 }
 
+function topicHistoryForType(publishHistory = [], receiveHistory = [], fullType) {
+  const publishItems = publishHistory
+    .filter((item) => item.topic_type === fullType)
+    .map((item) => ({ ...item, direction: item.direction ?? 'topic_publish' }))
+  const receiveItems = receiveHistory
+    .filter((item) => item.topic_type === fullType)
+    .map((item) => ({ ...item, direction: item.direction ?? 'topic_subscribe' }))
+  return mergeHistory([...publishItems, ...receiveItems])
+}
+
 function actionTopics(fullType, connectedActions = [], topics = []) {
   if (!fullType?.includes('/action/')) return []
   const actionNames = connectedActions
@@ -1398,15 +1773,27 @@ function actionTopics(fullType, connectedActions = [], topics = []) {
 }
 
 function historyKey(item, type) {
+  if (type === 'topic') {
+    return `${item.direction}-${item.published_at ?? item.received_at}-${item.topic_name}-${item.topic_type}-${item.error_type ?? ''}`
+  }
   return type === 'service'
     ? `${item.called_at}-${item.service_name}-${item.service_type}-${item.error_type ?? ''}`
     : `${item.sent_at}-${item.action_name}-${item.action_type}-${item.error_type ?? ''}`
 }
 
 function historyLabel(item, type) {
-  const timestamp = type === 'service' ? item.called_at : item.sent_at
+  const timestamp = type === 'service'
+    ? item.called_at
+    : type === 'topic'
+    ? item.published_at ?? item.received_at
+    : item.sent_at
   const status = historyStatus(item)
   const elapsed = Math.round(item.elapsed_ms ?? 0)
+  if (type === 'topic') {
+    const direction = item.direction === 'topic_subscribe' ? 'subscribe' : 'publish'
+    const sent = item.sent_to_topic === false ? 'sent_to_topic=false' : item.published ? 'sent_to_topic=true' : ''
+    return `${formatTime(timestamp)} · ${direction} · ${status}${sent ? ` · ${sent}` : ''}`
+  }
   const sent = item.sent_to_server === false ? 'sent_to_server=false' : 'sent_to_server=true'
   return `${formatTime(timestamp)} · ${status} · ${elapsed}ms · ${sent}`
 }
@@ -1415,7 +1802,10 @@ function historyStatus(item) {
   if (item.success) return 'success'
   if (item.error_type) return item.error_type
   if (item.accepted === false) return 'rejected'
-  return item.error ? 'failed' : 'unknown'
+  if (item.error) return 'failed'
+  if (item.direction === 'topic_subscribe') return 'received'
+  if (item.published) return 'published'
+  return 'unknown'
 }
 
 function formatTime(timestamp) {

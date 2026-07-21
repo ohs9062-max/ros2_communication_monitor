@@ -385,6 +385,25 @@ def registered_package_services() -> list[dict[str, Any]]:
     return _registered_package_interfaces('srv', 'service_type', 'request', 'response')
 
 
+def registered_package_messages() -> list[dict[str, Any]]:
+    """Return package-uploaded message entries for topic publish/subscribe."""
+    entries = []
+    for package in packages_snapshot()['packages']:
+        for item in package.get('interfaces', {}).get('msg', []):
+            entries.append({
+                'source': 'uploaded_package',
+                'package_name': package.get('name'),
+                'file_name': item.get('file_name'),
+                'type_name': item.get('type_name'),
+                'message_type': item.get('type'),
+                'message_schema': item.get('parsed', []) if isinstance(item.get('parsed'), list) else [],
+                'saved_path': item.get('saved_path'),
+                'import_available': item.get('import_available') is True,
+                'import_error': item.get('import_error') or package.get('import_error'),
+            })
+    return entries
+
+
 def registered_package_actions() -> list[dict[str, Any]]:
     """Return package-uploaded action entries for callable matching."""
     entries = []

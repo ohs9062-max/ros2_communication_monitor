@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
-from time import time
+from time import sleep, time
 from typing import Any, Callable
 
 from rosidl_runtime_py.utilities import get_message
 
-from ros2_dashboard_backend.interface_value_converter import ros_message_to_json
+from ros2_dashboard_backend.interface_apply import refresh_install_python_paths
+from ros2_dashboard_backend.interface_packages import registered_package_messages
+from ros2_dashboard_backend.interface_registry import registry_snapshot
+from ros2_dashboard_backend.interface_value_converter import (
+    InterfaceValidationError,
+    build_ros_message,
+    ros_message_to_json,
+)
 
 
 DEFAULT_TOPIC_HISTORY_LIMIT = 500
 MAX_TOPIC_HISTORY_LIMIT = 500
+MAX_PUBLISH_HISTORY_ITEMS = 100
 
 
 class InterfaceReceiveError(ValueError):
@@ -24,13 +32,18 @@ class InterfaceReceiveRuntime:
     def __init__(self, *, lock: Any, node_getter: Callable[[], Any]) -> None:
         self._lock = lock
         self._node_getter = node_getter
-        self._topics: dict[str, dict[str, Any]] = {}
+        self._topics: dict[tuple[str, str], dict[str, Any]] = {}
+        self._publishers: dict[tuple[str, str], Any] = {}
+        self._publish_history: list[dict[str, Any]] = []
         self._sequence = 0
 
     def clear(self) -> None:
         with self._lock:
             topics = list(self._topics.values())
             self._topics = {}
+            publishers = list(self._publishers.values())
+            self._publishers = {}
+            self._publish_history = []
         node = self._node_getter()
         if node is None:
             return
@@ -41,6 +54,60 @@ class InterfaceReceiveRuntime:
                     node.destroy_subscription(subscription)
                 except Exception:
                     pass
+        for publisher in publishers:
+            try:
+                node.destroy_publisher(publisher)
+            except Exception:
+                pass
+
+    def message_schema(self, *, message_type: str) -> dict[str, Any]:
+        """Return schema and graph state for one registered message type."""
+        refresh_install_python_paths()
+        message_type = message_type.strip()
+        entry = self._registered_message(message_type)
+        if entry is None:
+            raise InterfaceReceiveError('registry에 등록된 Message full_type이 아닙니다.')
+        schema = entry.get('message_schema') or []
+        if entry.get('import_available') is True and not schema:
+            schema = _schema_from_message_type(message_type)
+        return {
+            **entry,
+            'message_schema': schema,
+            'graph_topics': self._graph_topics_for_type(message_type),
+        }
+
+    def callable_messages(self) -> dict[str, Any]:
+        """Return registered messages with graph hints for Topic work."""
+        refresh_install_python_paths()
+        messages = []
+        graph = self._topic_graph()
+        for entry in self._registered_messages():
+            message_type = entry['message_type']
+            matching = [item for item in graph if item['type'] == message_type]
+            conflicts = [
+                item for item in graph
+                if item['name'] in {match['name'] for match in matching}
+                and item['type'] != message_type
+            ]
+            messages.append({
+                **entry,
+                'full_type': message_type,
+                'topic_type': message_type,
+                'message_schema': entry.get('message_schema') or (
+                    _schema_from_message_type(message_type)
+                    if entry.get('import_available') is True else []
+                ),
+                'graph_topics': matching,
+                'graph_conflicts': conflicts,
+            })
+        messages.sort(key=lambda item: (item.get('message_type') or '', item.get('source') or ''))
+        return {
+            'messages': messages,
+            'meta': {
+                'count': len(messages),
+                'import_available_count': sum(1 for item in messages if item.get('import_available') is True),
+            },
+        }
 
     def start_topic(
         self,
@@ -56,63 +123,102 @@ class InterfaceReceiveRuntime:
         topic_type = topic_type.strip()
         if not topic_name.startswith('/'):
             raise InterfaceReceiveError('topic_name은 /로 시작해야 합니다.')
+        self._ensure_registered_message(topic_type)
         try:
             message_class = get_message(topic_type)
         except Exception as exc:
             raise InterfaceReceiveError(f'topic type import 실패: {exc}') from exc
         limit = _normalize_limit(history_limit)
+        graph_state = self._topic_graph_state(topic_name=topic_name, topic_type=topic_type)
+        key = (topic_name, topic_type)
         with self._lock:
-            if topic_name in self._topics:
-                self._topics[topic_name]['history_limit'] = limit
-                return self._topic_state(topic_name, self._topics[topic_name])
+            existing = self._topics.get(key)
+            if existing is not None and existing.get('subscription') is not None:
+                existing['history_limit'] = limit
+                existing['graph_state'] = graph_state
+                existing['receiving'] = True
+                return self._topic_state(key, existing)
         subscription = node.create_subscription(
             message_class,
             topic_name,
             lambda message: self._record_topic_message(topic_name, topic_type, message),
-            10,
+            _default_qos(topic_type),
         )
         with self._lock:
-            self._topics[topic_name] = {
+            previous = self._topics.get(key) or {}
+            self._topics[key] = {
                 'topic_name': topic_name,
                 'topic_type': topic_type,
                 'history_limit': limit,
                 'subscription': subscription,
-                'history': [],
-                'message_count': 0,
-                'last_message': None,
-                'last_received_at': None,
-                'error': None,
+                'receiving': True,
+                'qos': _qos_info(topic_type),
+                'graph_state': graph_state,
+                'history': previous.get('history', []),
+                'message_count': previous.get('message_count', 0),
+                'last_message': previous.get('last_message'),
+                'last_received_at': previous.get('last_received_at'),
+                'error': previous.get('error'),
                 'started_at': time(),
             }
-            return self._topic_state(topic_name, self._topics[topic_name])
+            return self._topic_state(key, self._topics[key])
 
-    def stop_topic(self, *, topic_name: str) -> dict[str, Any]:
+    def stop_topic(self, *, topic_name: str, topic_type: str | None = None) -> dict[str, Any]:
+        topic_name = topic_name.strip()
+        topic_type = topic_type.strip() if topic_type else None
         with self._lock:
-            item = self._topics.pop(topic_name, None)
+            if topic_type:
+                key = (topic_name, topic_type)
+                item = self._topics.get(key)
+            else:
+                key, item = next(
+                    (
+                        (candidate_key, candidate)
+                        for candidate_key, candidate in self._topics.items()
+                        if candidate_key[0] == topic_name
+                    ),
+                    ((topic_name, ''), None),
+                )
         if item is None:
-            return {'topic_name': topic_name, 'receiving': False}
+            return {'topic_name': topic_name, 'topic_type': topic_type, 'receiving': False}
         node = self._node_getter()
         subscription = item.get('subscription')
         if node is not None and subscription is not None:
             try:
                 node.destroy_subscription(subscription)
             except Exception as exc:
-                return {'topic_name': topic_name, 'receiving': False, 'error': str(exc)}
-        return {'topic_name': topic_name, 'receiving': False}
+                return {'topic_name': topic_name, 'topic_type': key[1], 'receiving': False, 'error': str(exc)}
+        with self._lock:
+            item['subscription'] = None
+            item['receiving'] = False
+        return {'topic_name': topic_name, 'topic_type': key[1], 'receiving': False}
 
     def topics(self) -> dict[str, Any]:
         with self._lock:
             items = [
-                self._topic_state(topic_name, item)
-                for topic_name, item in sorted(self._topics.items())
+                self._topic_state(key, item)
+                for key, item in sorted(self._topics.items())
             ]
         return {'topics': items, 'meta': {'count': len(items)}}
 
-    def topic_history(self, *, topic_name: str | None = None, limit: int | None = None) -> dict[str, Any]:
+    def topic_history(
+        self,
+        *,
+        topic_name: str | None = None,
+        topic_type: str | None = None,
+        limit: int | None = None,
+    ) -> dict[str, Any]:
         normalized_limit = _normalize_limit(limit or DEFAULT_TOPIC_HISTORY_LIMIT)
         with self._lock:
-            if topic_name:
-                items = list(self._topics.get(topic_name, {}).get('history', []))
+            if topic_name and topic_type:
+                items = list(self._topics.get((topic_name, topic_type), {}).get('history', []))
+            elif topic_name:
+                items = [
+                    event
+                    for key, item in self._topics.items()
+                    if key[0] == topic_name
+                    for event in item.get('history', [])
+                ]
             else:
                 items = [
                     event
@@ -122,20 +228,37 @@ class InterfaceReceiveRuntime:
         items.sort(key=lambda event: event.get('received_at') or 0, reverse=True)
         return {'history': items[:normalized_limit], 'meta': {'count': len(items[:normalized_limit])}}
 
-    def reset_topic_history(self, *, topic_name: str | None = None) -> dict[str, Any]:
+    def reset_topic_history(
+        self,
+        *,
+        topic_name: str | None = None,
+        topic_type: str | None = None,
+    ) -> dict[str, Any]:
         """Clear accumulated explicit topic receive history."""
         cleared = 0
         with self._lock:
-            if topic_name:
-                item = self._topics.get(topic_name)
+            if topic_name and topic_type:
+                item = self._topics.get((topic_name, topic_type))
                 if item is None:
-                    return {'cleared': 0, 'topic_name': topic_name}
+                    return {'cleared': 0, 'topic_name': topic_name, 'topic_type': topic_type}
                 cleared = len(item.get('history', []))
                 item['history'] = []
                 item['last_message'] = None
                 item['last_received_at'] = None
                 item['error'] = None
-                return {'cleared': cleared, 'topic_name': topic_name}
+                item['message_count'] = 0
+                return {'cleared': cleared, 'topic_name': topic_name, 'topic_type': topic_type}
+            if topic_name:
+                for key, item in self._topics.items():
+                    if key[0] != topic_name:
+                        continue
+                    cleared += len(item.get('history', []))
+                    item['history'] = []
+                    item['last_message'] = None
+                    item['last_received_at'] = None
+                    item['error'] = None
+                    item['message_count'] = 0
+                return {'cleared': cleared, 'topic_name': topic_name, 'topic_type': None}
 
             for item in self._topics.values():
                 cleared += len(item.get('history', []))
@@ -143,7 +266,111 @@ class InterfaceReceiveRuntime:
                 item['last_message'] = None
                 item['last_received_at'] = None
                 item['error'] = None
-        return {'cleared': cleared, 'topic_name': None}
+                item['message_count'] = 0
+        return {'cleared': cleared, 'topic_name': None, 'topic_type': None}
+
+    def publish_topic(
+        self,
+        *,
+        topic_name: str,
+        topic_type: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Publish one user-triggered message to a registered topic type."""
+        node = self._node_getter()
+        if node is None:
+            raise InterfaceReceiveError('ROS2 monitor node가 실행 중이 아닙니다.')
+        topic_name = topic_name.strip()
+        topic_type = topic_type.strip()
+        if not topic_name.startswith('/'):
+            raise InterfaceReceiveError('topic_name은 /로 시작해야 합니다.')
+        self._ensure_registered_message(topic_type)
+        started_at = time()
+        graph_state = self._topic_graph_state(topic_name=topic_name, topic_type=topic_type)
+        try:
+            message_class = get_message(topic_type)
+            try:
+                message = build_ros_message(message_class, payload, label='message')
+            except InterfaceValidationError as exc:
+                result = {
+                    'success': False,
+                    'published': False,
+                    'sent_to_topic': False,
+                    'topic_name': topic_name,
+                    'topic_type': topic_type,
+                    'payload': payload,
+                    'published_at': started_at,
+                    'error_type': 'validation_error',
+                    'error': str(exc),
+                    'details': exc.details,
+                    'graph_state': graph_state,
+                    'qos': _qos_info(topic_type),
+                }
+                self._record_publish_history(result)
+                return result
+            publisher, created = self._publisher(topic_name, topic_type, message_class)
+            if created:
+                sleep(0.5)
+                graph_state = self._topic_graph_state(topic_name=topic_name, topic_type=topic_type)
+            publisher.publish(message)
+            result = {
+                'success': True,
+                'published': True,
+                'sent_to_topic': True,
+                'topic_name': topic_name,
+                'topic_type': topic_type,
+                'payload': payload,
+                'message_json': ros_message_to_json(message),
+                'published_at': started_at,
+                'subscriber_count': graph_state.get('subscriber_count', 0),
+                'graph_state': graph_state,
+                'qos': _qos_info(topic_type),
+            }
+        except Exception as exc:
+            result = {
+                'success': False,
+                'published': False,
+                'sent_to_topic': False,
+                'topic_name': topic_name,
+                'topic_type': topic_type,
+                'payload': payload,
+                'published_at': started_at,
+                'error': str(exc),
+                'graph_state': graph_state,
+                'qos': _qos_info(topic_type),
+            }
+            self._record_publish_history(result)
+            if isinstance(exc, InterfaceReceiveError):
+                raise
+            raise InterfaceReceiveError(str(exc)) from exc
+        self._record_publish_history(result)
+        return result
+
+    def publish_history(self, *, limit: int | None = None) -> dict[str, Any]:
+        """Return recent explicit topic publish history."""
+        normalized_limit = _normalize_limit(limit or MAX_PUBLISH_HISTORY_ITEMS)
+        with self._lock:
+            items = [item.copy() for item in self._publish_history]
+        return {'history': items[:normalized_limit], 'meta': {'count': len(items[:normalized_limit])}}
+
+    def reset_publish_history(self, *, topic_name: str | None = None, topic_type: str | None = None) -> dict[str, Any]:
+        """Clear explicit topic publish history."""
+        with self._lock:
+            before = len(self._publish_history)
+            if topic_name and topic_type:
+                self._publish_history = [
+                    item for item in self._publish_history
+                    if not (item.get('topic_name') == topic_name and item.get('topic_type') == topic_type)
+                ]
+            elif topic_name:
+                self._publish_history = [
+                    item for item in self._publish_history
+                    if item.get('topic_name') != topic_name
+                ]
+            else:
+                self._publish_history = []
+            cleared = before - len(self._publish_history)
+        return {'cleared': cleared, 'topic_name': topic_name, 'topic_type': topic_type}
 
     def _record_topic_message(self, topic_name: str, topic_type: str, message: Any) -> None:
         received_at = time()
@@ -154,8 +381,9 @@ class InterfaceReceiveRuntime:
             message_json = None
             error = str(exc)
         preview = message_json if message_json is not None else {'error': error}
+        key = (topic_name, topic_type)
         with self._lock:
-            item = self._topics.get(topic_name)
+            item = self._topics.get(key)
             if item is None:
                 return
             self._sequence += 1
@@ -177,18 +405,120 @@ class InterfaceReceiveRuntime:
             item['last_received_at'] = received_at
             item['error'] = error
 
-    @staticmethod
-    def _topic_state(topic_name: str, item: dict[str, Any]) -> dict[str, Any]:
+    def _registered_messages(self) -> list[dict[str, Any]]:
+        registry = registry_snapshot()['interface_registry']
+        messages = []
+        for item in registry.get('messages', []):
+            build = item.get('build') or {}
+            package_name = build.get('interface_package')
+            type_name = item.get('type_name')
+            if not package_name or not type_name:
+                continue
+            message_type = f'{package_name}/msg/{type_name}'
+            messages.append({
+                'file_name': item.get('file_name'),
+                'type_name': type_name,
+                'message_type': message_type,
+                'message_schema': item.get('parsed', []) if isinstance(item.get('parsed'), list) else [],
+                'saved_path': build.get('saved_path'),
+                'import_available': build.get('import_available') is True,
+                'import_error': build.get('import_error'),
+                'source': item.get('source', 'single_upload'),
+                'package_name': package_name,
+            })
+        messages.extend(registered_package_messages())
+        return messages
+
+    def _registered_message(self, message_type: str) -> dict[str, Any] | None:
+        for item in self._registered_messages():
+            if item.get('message_type') == message_type:
+                return item
+        return None
+
+    def _ensure_registered_message(self, message_type: str) -> None:
+        entry = self._registered_message(message_type)
+        if entry is None:
+            raise InterfaceReceiveError('registry에 등록된 Message full_type만 사용할 수 있습니다.')
+        if entry.get('import_available') is not True:
+            raise InterfaceReceiveError(entry.get('import_error') or 'Message type import가 필요합니다.')
+
+    def _publisher(self, topic_name: str, topic_type: str, message_class: type):
+        key = (topic_name, topic_type)
+        with self._lock:
+            publisher = self._publishers.get(key)
+            if publisher is not None:
+                return publisher, False
+            node = self._node_getter()
+            if node is None:
+                raise InterfaceReceiveError('ROS2 monitor node가 실행 중이 아닙니다.')
+            publisher = node.create_publisher(message_class, topic_name, _default_qos(topic_type))
+            self._publishers[key] = publisher
+            return publisher, True
+
+    def _record_publish_history(self, item: dict[str, Any]) -> None:
+        with self._lock:
+            self._publish_history.insert(0, item)
+            del self._publish_history[MAX_PUBLISH_HISTORY_ITEMS:]
+
+    def _topic_graph(self) -> list[dict[str, Any]]:
+        node = self._node_getter()
+        if node is None:
+            return []
+        graph = []
+        try:
+            names_and_types = node.get_topic_names_and_types()
+        except Exception:
+            return graph
+        for name, types in names_and_types:
+            for topic_type in sorted(set(types)):
+                graph.append({
+                    'name': name,
+                    'type': topic_type,
+                    'publisher_count': _safe_count(lambda: node.count_publishers(name)),
+                    'subscriber_count': _safe_count(lambda: node.count_subscribers(name)),
+                })
+        return graph
+
+    def _graph_topics_for_type(self, topic_type: str) -> list[dict[str, Any]]:
+        return [item for item in self._topic_graph() if item.get('type') == topic_type]
+
+    def _topic_graph_state(self, *, topic_name: str, topic_type: str) -> dict[str, Any]:
+        same_name = [item for item in self._topic_graph() if item.get('name') == topic_name]
+        exact = [item for item in same_name if item.get('type') == topic_type]
+        conflicts = [item for item in same_name if item.get('type') != topic_type]
         return {
             'topic_name': topic_name,
+            'topic_type': topic_type,
+            'exists': bool(same_name),
+            'type_matches': bool(exact) or not same_name,
+            'exact_matches': exact,
+            'conflicts': conflicts,
+            'warning': (
+                '같은 Topic 이름에 다른 type이 graph에 있습니다.'
+                if conflicts else (
+                    'Graph에 아직 같은 이름의 Topic이 없습니다.'
+                    if not same_name else None
+                )
+            ),
+            'publisher_count': max([int(item.get('publisher_count') or 0) for item in exact] or [0]),
+            'subscriber_count': max([int(item.get('subscriber_count') or 0) for item in exact] or [0]),
+        }
+
+    @staticmethod
+    def _topic_state(key: tuple[str, str], item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            'topic_name': key[0],
             'topic_type': item.get('topic_type'),
-            'receiving': True,
+            'full_type': item.get('topic_type'),
+            'receiving': bool(item.get('receiving', item.get('subscription') is not None)),
             'history_limit': item.get('history_limit'),
             'message_count': item.get('message_count', 0),
             'last_message': item.get('last_message'),
             'last_received_at': item.get('last_received_at'),
             'error': item.get('error'),
             'started_at': item.get('started_at'),
+            'qos': item.get('qos'),
+            'graph_state': item.get('graph_state'),
         }
 
 
@@ -198,3 +528,39 @@ def _normalize_limit(value: int) -> int:
     except (TypeError, ValueError):
         limit = DEFAULT_TOPIC_HISTORY_LIMIT
     return max(1, min(limit, MAX_TOPIC_HISTORY_LIMIT))
+
+
+def _schema_from_message_type(message_type: str) -> list[dict[str, str]]:
+    try:
+        message_class = get_message(message_type)
+        message = message_class()
+        fields = message.get_fields_and_field_types()
+    except Exception:
+        return []
+    return [
+        {'name': name, 'type': field_type, 'raw_line': f'{field_type} {name}'}
+        for name, field_type in fields.items()
+    ]
+
+
+def _default_qos(topic_type: str) -> int:
+    # Keep the current project level simple: depth 10 works for generated
+    # custom messages and mirrors the previous InterfaceReceiveRuntime default.
+    return 10
+
+
+def _qos_info(topic_type: str) -> dict[str, Any]:
+    sensor_like = topic_type.startswith('sensor_msgs/msg/')
+    return {
+        'depth': 10,
+        'profile': 'sensor_data_hint' if sensor_like else 'default',
+        'reliability': 'default',
+        'durability': 'default',
+    }
+
+
+def _safe_count(callback: Callable[[], int]) -> int:
+    try:
+        return int(callback())
+    except Exception:
+        return 0

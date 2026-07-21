@@ -2,8 +2,8 @@ running: false
 status: success
 build_status: success
 real_apply_success: true
-started_at: '2026-07-20T02:56:09.246580+00:00'
-finished_at: '2026-07-20T02:56:15.337220+00:00'
+started_at: '2026-07-21T01:09:19.895701+00:00'
+finished_at: '2026-07-21T01:09:25.880243+00:00'
 returncode: 0
 workspace_path: /home/hs/rang/ros2_dashboard/backend
 log_path: /home/hs/rang/ros2_dashboard/backend/config/interface_apply_last.log
@@ -16,15 +16,15 @@ summary: &id002
   ready_for_build: true
   registry_exists: true
   single_registry:
-    status: empty
-    real_apply_success: false
-    ready_for_build: false
+    status: success
+    real_apply_success: true
+    ready_for_build: true
     registry_exists: true
     registry_path: backend/config/interface_registry.yaml
     interface_package: ros2_dashboard_interfaces
     interface_package_path: backend/src/ros2_dashboard_interfaces
-    total: 0
-    applied_count: 0
+    total: 1
+    applied_count: 1
     not_applied: []
     import_pending: []
     requires_import_available: true
@@ -41,31 +41,26 @@ summary: &id002
     not_applied: []
     import_pending: []
     requires_import_available: true
-  total: 4
-  applied_count: 4
+  total: 5
+  applied_count: 5
   not_applied: &id001 []
   import_pending: []
   requires_import_available: true
 not_applied: *id001
-install_python_paths:
+install_python_paths: &id003
 - /home/hs/rang/ros2_dashboard/backend/install/can_interfaces/lib/python3.12/site-packages
 - /home/hs/rang/ros2_dashboard/backend/install/ros2_dashboard_backend/lib/python3.12/site-packages
 - /home/hs/rang/ros2_dashboard/backend/install/ros2_dashboard_interfaces/lib/python3.12/site-packages
 - /home/hs/rang/ros2_dashboard/backend/install/rths_interfaces/lib/python3.12/site-packages
 - /home/hs/rang/ros2_dashboard/backend/install/uploaded_interfaces/lib/python3.12/site-packages
-install_python_paths_added: []
+install_python_paths_added: &id004 []
 import_check:
   real_apply_success: true
   status: success
   summary: *id002
   not_applied: *id001
-  install_python_paths:
-  - /home/hs/rang/ros2_dashboard/backend/install/can_interfaces/lib/python3.12/site-packages
-  - /home/hs/rang/ros2_dashboard/backend/install/ros2_dashboard_backend/lib/python3.12/site-packages
-  - /home/hs/rang/ros2_dashboard/backend/install/ros2_dashboard_interfaces/lib/python3.12/site-packages
-  - /home/hs/rang/ros2_dashboard/backend/install/rths_interfaces/lib/python3.12/site-packages
-  - /home/hs/rang/ros2_dashboard/backend/install/uploaded_interfaces/lib/python3.12/site-packages
-  install_python_paths_added: []
+  install_python_paths: *id003
+  install_python_paths_added: *id004
 cleanup:
   package_names:
   - rths_interfaces

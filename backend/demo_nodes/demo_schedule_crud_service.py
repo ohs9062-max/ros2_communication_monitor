@@ -5,11 +5,15 @@ from rclpy.node import Node
 
 from demo_interface_imports import import_demo_interface
 
-
 ScheduleCrud = import_demo_interface(
     "srv",
     "ScheduleCrud",
-    ["rths_interfaces", "ros2_dashboard_interfaces"],
+    [
+        "rths_interfaces",
+        "ros2_dashboard_interfaces",
+        "uploaded_interfaces",
+        "uploaded_interfaces_package",
+    ],
 )
 
 
@@ -23,9 +27,7 @@ class DemoScheduleCrudService(Node):
             self.handle_schedule_crud,
         )
 
-        self.get_logger().info(
-            "Demo /ScheduleCrud service server started"
-        )
+        self.get_logger().info("Demo /ScheduleCrud service server started")
 
     def handle_schedule_crud(self, request, response):
         self.get_logger().info("Received /ScheduleCrud request")
@@ -33,9 +35,7 @@ class DemoScheduleCrudService(Node):
         request_fields = request.get_fields_and_field_types()
         for field_name in request_fields:
             value = getattr(request, field_name)
-            self.get_logger().info(
-                f"request.{field_name} = {value}"
-            )
+            self.get_logger().info(f"request.{field_name} = {value}")
 
         response_fields = response.get_fields_and_field_types()
 

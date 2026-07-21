@@ -256,15 +256,13 @@ class ServiceCallRuntime:
 
         graph = []
         for name, types in node.get_service_names_and_types():
-            service_type = types[0] if types else None
-            if not service_type:
-                continue
-            graph.append({
-                'name': name,
-                'type': service_type,
-                'server_count': node.count_services(name),
-                'client_count': self._client_count(name),
-            })
+            for service_type in sorted(set(types)):
+                graph.append({
+                    'name': name,
+                    'type': service_type,
+                    'server_count': node.count_services(name),
+                    'client_count': self._client_count(name),
+                })
         return graph
 
     def _client(self, name: str, service_type: str, service_class: type):

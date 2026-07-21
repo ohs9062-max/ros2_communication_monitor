@@ -77,16 +77,43 @@
 | Action receive-shaped history | `ros_monitor.py` | `receive_action_history` |
 | Action history reset | `ros_monitor.py` | `reset_receive_action_history` |
 
-### 2-7. Topic Receive (Interface Lab 명시적 구독)
+### 2-7. Topic Publish/Receive (Interface Lab 명시적 Topic 작업)
 
 | 기능 | 핵심 파일 | 주요 함수 |
 |---|---|---|
+| callable Message 목록 | `interface_receive_runtime.py` | `callable_messages` |
+| Message schema 조회 | `interface_receive_runtime.py` | `message_schema` |
+| Topic 1회 Publish | `interface_receive_runtime.py` | `publish_topic` |
+| Topic Publisher cache | `interface_receive_runtime.py` | `_publisher` |
+| Publish history | `interface_receive_runtime.py` | `publish_history`, `reset_publish_history` |
 | Topic 구독 시작 | `ros_monitor.py` | `start_receive_topic` |
 | Topic 구독 중지 | `ros_monitor.py` | `stop_receive_topic` |
 | 구독 중인 Topic 목록 | `ros_monitor.py` | `receive_topics` |
 | Topic 수신 history | `ros_monitor.py` | `receive_topic_history` |
 | Topic history reset | `ros_monitor.py` | `reset_receive_topic_history` |
 | 실제 구독 Runtime | `interface_receive_runtime.py` | `start_topic`, `stop_topic`, `topic_history` |
+| package upload msg 목록 | `interface_packages.py` | `registered_package_messages` |
+| message payload 변환 | `interface_value_converter.py` | `build_ros_message`, `fill_ros_message`, `convert_value` |
+
+`stop_topic`은 Subscription을 destroy하고 `receiving=false`로 표시하지만, 기존 receive history는 `reset_topic_history` 전까지 보존합니다.
+`publish_topic`은 새 Publisher를 만든 첫 호출에서 짧은 discovery 대기 후 publish하여 외부 subscriber가 첫 메시지를 놓칠 가능성을 줄입니다.
+
+관련 API:
+
+```text
+GET    /ros/interfaces/callable-messages
+GET    /ros/interfaces/message-schema?full_type=...
+POST   /ros/interfaces/topic-publish
+GET    /ros/interfaces/topic-publish/history
+POST   /ros/interfaces/topic-publish/history/reset
+POST   /ros/interfaces/receive/topics/start
+POST   /ros/interfaces/receive/topics/stop
+GET    /ros/interfaces/receive/topics
+GET    /ros/interfaces/receive/topics/history
+POST   /ros/interfaces/receive/topics/history/reset
+```
+
+Topic Publish/Receive는 `(topic_name, full_type)` 기준입니다. 같은 Topic 이름이라도 Message type이 다르면 별도 Publisher/Subscription/cache로 취급합니다.
 
 ## 3. Backend 시작과 모니터링 공통 흐름
 
@@ -104,6 +131,9 @@
 | 모니터링 Polling | `usePolling.js`, `rosApi.js` | `TopicsPage`, `ServicesPage`, `ActionsPage` |
 | Interface Lab | `rosApi.js` (직접 호출) | `InterfaceLabPage.jsx` |
 | 업로드 UI / Service Call / Action Goal / Receive | `InterfaceUploadControl.jsx` | `InterfaceLabPage` |
+| 상단 Topic Publish/Subscribe UI | `InterfaceUploadControl.jsx` | `수신` → `Topic 수신`, `RequestField`, Message full_type select |
+| 하단 Topic Publish/Subscribe UI | `InterfaceLabPage.jsx` | `TopicWorkspaceDetail`, `RequestField` |
+| Topic API 함수 | `rosApi.js` | `fetchCallableMessages`, `publishTopicMessage`, `startReceiveTopic`, `stopReceiveTopic`, `fetchTopicPublishHistory`, `fetchReceiveTopicHistory` |
 
 ## 5. 핵심 개념 매핑
 
@@ -112,9 +142,10 @@
 - **callable**: 등록 후 import 가능 (`import_available=True`) + 현재 graph에 server 1개 이상 → callable. `_allowed_service()` (`service/call_runtime.py`), `_allowed_action()` (`action/goal_runtime.py`).
 - **ActionClient 캐시 key**: `(action_name, action_type)` 쌍. 같은 이름이라도 full_type이 다르면 별도 클라이언트.
 - **manual_type 예외**: `register_manual_type()`은 파일을 생성하지 않으므로 CMake 재생성과 build 대상이 아니다.
+- **Topic key**: Interface Lab Topic Publish/Subscribe는 `(topic_name, message_type)` 쌍으로 Publisher/Subscription을 재사용하거나 중복 방지한다.
 
 ## 6. 내가 반드시 알아야 할 것 3줄 요약
 
 1. Backend는 '모니터링'과 'Interface Lab'이라는 두 영역으로 코드가 분리되어 있습니다.
 2. 인터페이스 등록 로직은 `interface_registry.py`(single/manual)와 `manual_interfaces.py`(파일 생성/삭제/CMake)가, package는 `interface_packages.py`가, 빌드 실행은 `interface_apply.py`가 담당합니다.
-3. Service/Action history는 `ros_monitor.py`의 `service_call_history`, `action_goal_history` 등으로 접근하고, Topic Receive는 `receive_topic_history`로 접근합니다.
+3. Service/Action history는 `ros_monitor.py`의 `service_call_history`, `action_goal_history` 등으로 접근하고, Topic Publish/Receive는 `topic_publish_history`, `receive_topic_history`로 접근합니다.

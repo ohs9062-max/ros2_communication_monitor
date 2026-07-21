@@ -244,6 +244,7 @@ h3 {
 .interface-apply-button,
 .interface-action-button,
 .interface-receive-button,
+.interface-topic-button,
 .interface-type-entry-badge,
 .interface-package-button,
 .interface-package-folder-button,
@@ -251,10 +252,13 @@ h3 {
 .interface-service-button,
 .interface-registry-button {
   border: 1px solid rgba(96, 165, 250, 0.45);
-  border-radius: 7px;
+  border-radius: 14px;
   color: var(--text);
   cursor: pointer;
   font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  min-height: 38px;
   padding: 10px 14px;
 }
 
@@ -270,6 +274,7 @@ h3 {
 .interface-apply-button:disabled,
 .interface-action-button:disabled,
 .interface-receive-button:disabled,
+.interface-topic-button:disabled,
 .interface-type-entry-badge:disabled,
 .interface-package-folder-button:disabled,
 .interface-service-button:disabled,
@@ -338,6 +343,10 @@ h3 {
 }
 
 .interface-receive-button {
+  background: rgba(14, 165, 233, 0.18);
+}
+
+.interface-topic-button {
   background: rgba(14, 165, 233, 0.18);
 }
 
@@ -718,6 +727,34 @@ h3 {
   display: flex;
 }
 
+.interface-filter-check {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.54);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 9px;
+  padding: 10px 12px;
+}
+
+.interface-filter-check input {
+  accent-color: #22c55e;
+}
+
+.interface-filter-check span {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.interface-filter-check small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .interface-service-field span {
   color: var(--muted);
   font-size: 14px;
@@ -774,6 +811,28 @@ h3 {
 
 .interface-service-call-button:hover:not(:disabled) {
   filter: brightness(1.12);
+}
+
+.interface-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0 14px;
+}
+
+.interface-inline-actions button {
+  background: rgba(59, 130, 246, 0.16);
+  border: 1px solid rgba(96, 165, 250, 0.42);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  padding: 8px 11px;
+}
+
+.interface-inline-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .interface-service-result {

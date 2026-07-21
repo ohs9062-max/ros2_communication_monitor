@@ -100,6 +100,7 @@ WebSocket은 raw Topic 메시지를 지속 전송하지 않으며 REST table 데
 
 - `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/main.py`: FastAPI app 조립, lifespan, router 등록
 - `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/`: REST/WebSocket endpoint
+-  Endpoint란 무엇인가? 프론트가 요청을 보내는 백엔드의 특정 주소와 처리 함수
 - `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/`: Interface Lab management/apply/execution/common
 - `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic|service|action|node/`: ROS2 자동 모니터링 runtime
 - `backend/config/`: 모니터링 주기, filter, allowlist 및 Interface registry 설정

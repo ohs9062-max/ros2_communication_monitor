@@ -40,7 +40,12 @@ import {
 
 const ACCEPTED_EXTENSIONS = ['.msg', '.srv', '.action']
 
-export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, websocket }) {
+export function InterfaceUploadControl({
+  onStateChanged,
+  onTopicWorkspaceExpandedChange,
+  refreshSignal = 0,
+  websocket,
+}) {
   const inputRef = useRef(null)
   const packageFolderInputRef = useRef(null)
   const packageInputRef = useRef(null)
@@ -109,6 +114,7 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
   const [receiveTopicHistory, setReceiveTopicHistory] = useState([])
   const [receiveServiceHistory, setReceiveServiceHistory] = useState([])
   const [receiveActionHistory, setReceiveActionHistory] = useState([])
+  const [topicWorkspaceExpanded, setTopicWorkspaceExpanded] = useState(false)
 
   const chooseFile = () => inputRef.current?.click()
   const choosePackageFolder = () => packageFolderInputRef.current?.click()
@@ -122,6 +128,19 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
     setShowCallableActions(false)
   }
   const disabled = busy || applying || serviceCallBusy || actionGoalBusy || topicPublishBusy
+  const topicExpandedActive = topicWorkspaceExpanded
+    && (
+      showPackages
+      || (
+        showReceivePanel
+        && (
+          (showCallableTopics && receiveMode === 'topic')
+          || (showCallableServices && receiveMode === 'service')
+          || (showCallableActions && receiveMode === 'action')
+          || (!showCallableTopics && !showCallableServices && !showCallableActions && receiveMode !== 'mock')
+        )
+      )
+    )
   const selectedService = callableServices.find(
     (service) => serviceKey(service) === selectedServiceKey,
   )
@@ -1307,8 +1326,13 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
     showReceivePanel,
   ])
 
+  useEffect(() => {
+    onTopicWorkspaceExpandedChange?.(topicExpandedActive)
+    return () => onTopicWorkspaceExpandedChange?.(false)
+  }, [onTopicWorkspaceExpandedChange, topicExpandedActive])
+
   return (
-    <div className="interface-upload-control">
+    <div className={topicExpandedActive ? 'interface-upload-control topic-workbench-expanded' : 'interface-upload-control'}>
       <input
         accept=".msg,.srv,.action"
         className="interface-file-input"
@@ -1486,8 +1510,18 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       )}
       {showReceivePanel && (
         <div className="interface-receive-panel">
-          <div className="interface-registry-heading">
+          <div className="interface-registry-heading interface-panel-heading">
             <strong>수신</strong>
+            {receiveMode !== 'mock' && (
+              <button
+                aria-pressed={topicExpandedActive}
+                className="interface-panel-expand-button"
+                onClick={() => setTopicWorkspaceExpanded((value) => !value)}
+                type="button"
+              >
+                {topicExpandedActive ? '목록보기' : '크게보기'}
+              </button>
+            )}
           </div>
           <div className="interface-manual-tabs">
             <button className={receiveMode === 'topic' ? 'active' : ''} onClick={async () => {
@@ -1750,19 +1784,40 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       )}
       {showPackages && (
         <div className="interface-package-panel">
-          <div className="interface-registry-heading">
+          <div className="interface-registry-heading interface-panel-heading">
             <strong>Uploaded Interface Packages</strong>
+            <button
+              aria-pressed={topicExpandedActive}
+              className="interface-panel-expand-button"
+              onClick={() => setTopicWorkspaceExpanded((value) => !value)}
+              type="button"
+            >
+              {topicExpandedActive ? '목록보기' : '크게보기'}
+            </button>
           </div>
           <p className="interface-package-help">
             장비가 실제 사용하는 원본 interface package를 패키지명 그대로 등록합니다.
           </p>
-          <PackageRegistry packages={packages} onDelete={removePackage} />
+          <PackageRegistry
+            packages={packages}
+            onDelete={removePackage}
+          />
         </div>
       )}
       {showCallableTopics && (
         <div className="interface-service-panel interface-execution-panel">
-          <div className="interface-registry-heading">
+          <div className="interface-registry-heading interface-panel-heading">
             <strong>등록 Topic 실행</strong>
+            {showReceivePanel && receiveMode === 'topic' && (
+              <button
+                aria-pressed={topicExpandedActive}
+                className="interface-panel-expand-button"
+                onClick={() => setTopicWorkspaceExpanded((value) => !value)}
+                type="button"
+              >
+                {topicExpandedActive ? '목록보기' : '크게보기'}
+              </button>
+            )}
           </div>
           {callableMessages.length ? (
             <>
@@ -1864,8 +1919,18 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       )}
       {showCallableServices && (
         <div className="interface-service-panel interface-execution-panel">
-          <div className="interface-registry-heading">
+          <div className="interface-registry-heading interface-panel-heading">
             <strong>등록 Service 실행</strong>
+            {showReceivePanel && receiveMode === 'service' && (
+              <button
+                aria-pressed={topicExpandedActive}
+                className="interface-panel-expand-button"
+                onClick={() => setTopicWorkspaceExpanded((value) => !value)}
+                type="button"
+              >
+                {topicExpandedActive ? '목록보기' : '크게보기'}
+              </button>
+            )}
           </div>
           {callableServices.length ? (
             <>
@@ -1958,8 +2023,18 @@ export function InterfaceUploadControl({ onStateChanged, refreshSignal = 0, webs
       )}
       {showCallableActions && (
         <div className="interface-service-panel interface-execution-panel">
-          <div className="interface-registry-heading">
+          <div className="interface-registry-heading interface-panel-heading">
             <strong>등록 Action 실행</strong>
+            {showReceivePanel && receiveMode === 'action' && (
+              <button
+                aria-pressed={topicExpandedActive}
+                className="interface-panel-expand-button"
+                onClick={() => setTopicWorkspaceExpanded((value) => !value)}
+                type="button"
+              >
+                {topicExpandedActive ? '목록보기' : '크게보기'}
+              </button>
+            )}
           </div>
           {callableActions.length ? (
             <>

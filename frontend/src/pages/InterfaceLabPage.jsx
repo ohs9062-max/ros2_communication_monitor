@@ -69,6 +69,7 @@ export function InterfaceLabPage({ websocket }) {
   const [lastRefreshedAt, setLastRefreshedAt] = useState(null)
   const [refreshSignal, setRefreshSignal] = useState(0)
   const [workbenchResetKey, setWorkbenchResetKey] = useState(0)
+  const [topicWorkbenchExpanded, setTopicWorkbenchExpanded] = useState(false)
 
   const refresh = async ({ notifyWorkbench = true } = {}) => {
     setRefreshing(true)
@@ -139,6 +140,7 @@ export function InterfaceLabPage({ websocket }) {
     setGoalTimeoutSec(10)
     setInlineResult(null)
     setError(null)
+    setTopicWorkbenchExpanded(false)
     setWorkbenchResetKey((value) => value + 1)
     await refresh({ notifyWorkbench: false })
   }
@@ -393,12 +395,14 @@ export function InterfaceLabPage({ websocket }) {
         <InterfaceUploadControl
           key={workbenchResetKey}
           onStateChanged={handleWorkbenchStateChanged}
+          onTopicWorkspaceExpandedChange={setTopicWorkbenchExpanded}
           refreshSignal={refreshSignal}
           websocket={websocket}
         />
         {error && <p className="interface-lab-error">{error.message}</p>}
       </section>
 
+      {!topicWorkbenchExpanded && (
       <section className="interface-lab-layout">
         <div className="interface-registry-browser">
           <div className="interface-tabs">
@@ -473,6 +477,7 @@ export function InterfaceLabPage({ websocket }) {
           </div>
         </div>
       </section>
+      )}
     </main>
   )
 }

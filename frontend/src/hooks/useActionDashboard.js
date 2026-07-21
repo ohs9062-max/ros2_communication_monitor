@@ -6,17 +6,20 @@ import { usePolling } from './usePolling.js'
 const ACTION_POLL_INTERVAL_MS = 3000
 const ALERT_POLL_INTERVAL_MS = 3000
 
-export function useActionDashboard() {
+export function useActionDashboard({ enabled = true } = {}) {
   const [includeIdleActions, setIncludeIdleActions] = useState(false)
   const [selectedActionName, setSelectedActionName] = useState('')
 
   const actionsState = usePolling(fetchActions, ACTION_POLL_INTERVAL_MS, {
+    enabled,
     initialData: { data: { actions: [], meta: {} } },
   })
   const alertsState = usePolling(fetchAlerts, ALERT_POLL_INTERVAL_MS, {
+    enabled,
     initialData: { data: [], meta: {} },
   })
   const nodeState = usePolling(fetchNodes, ACTION_POLL_INTERVAL_MS, {
+    enabled,
     initialData: { data: { nodes: [], meta: {} } },
   })
 

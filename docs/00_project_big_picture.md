@@ -23,10 +23,10 @@ ROS2 Node/Topic/Service/Action 발생
   — backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py
 
 → 네 Runtime이 최근 상태를 메모리에 저장
-  — ros_monitor.py 내 Runtime Cache
+  — ros_monitor.py와 topic/service/action/node runtime cache
 
 → FastAPI가 REST와 WebSocket으로 공개
-  — backend/src/ros2_dashboard_backend/ros2_dashboard_backend/main.py
+  — backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/
 
 → React hook이 데이터를 가져와 화면에 전달
   — frontend/src/hooks/
@@ -66,16 +66,16 @@ React/Electron → FastAPI → Python rclpy → ROS2
 
 ```text
 FastAPI 시작 시 RosMonitor 시작
-  — main.py
+  — main.py lifespan
 
 → timer가 Runtime cache 반복 갱신
   — ros_monitor.py
 
 → REST가 상세 snapshot 반환
-  — main.py
+  — routers/monitoring.py 및 routers/interface_*.py
 
 → WebSocket이 경량 요약 snapshot 전송
-  — main.py
+  — routers/monitoring.py
 ```
 
 REST 요청이 ROS2 Graph 갱신을 시작하는 것은 아닙니다. Runtime은 background에서
@@ -89,8 +89,8 @@ Frontend가 정해진 간격마다 REST API를 다시 호출하는 방식을 **p
 
 | 구분 | 역할 | 코드 위치 |
 |---|---|---|
-| REST | 목록, latest, Hz, 상세 상태, Interface Lab 관리 및 실행 | `main.py` |
-| WebSocket | 연결 상태와 경량 요약 | `main.py` |
+| REST | 목록, latest, Hz, 상세 상태, Interface Lab 관리 및 실행 | `routers/` |
+| WebSocket | 연결 상태와 경량 요약 | `routers/monitoring.py` |
 
 WebSocket은 raw Topic 메시지를 지속 전송하지 않으며 REST table 데이터를 대체하지
 않습니다. Frontend 1·3·5초 polling, Backend Graph 갱신 주기, WebSocket 1초 전송
@@ -98,7 +98,10 @@ WebSocket은 raw Topic 메시지를 지속 전송하지 않으며 REST table 데
 
 ## 5. 폴더의 역할
 
-- `backend/src/ros2_dashboard_backend/`: ROS2 수집, Interface 관리, FastAPI 제공
+- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/main.py`: FastAPI app 조립, lifespan, router 등록
+- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/`: REST/WebSocket endpoint
+- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/`: Interface Lab management/apply/execution/common
+- `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic|service|action|node/`: ROS2 자동 모니터링 runtime
 - `backend/config/`: 모니터링 주기, filter, allowlist 및 Interface registry 설정
 - `frontend/src/hooks/`: API polling과 선택 상태
 - `frontend/src/pages/`: 화면별 filter와 배치 (InterfaceLabPage 포함)

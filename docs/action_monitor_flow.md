@@ -11,4 +11,4 @@
 - Frontend Actions 화면: `09_frontend_flow.md`
 - 기능별 빠른 위치: `11_code_trace_index.md`
 
-> 위 문서의 라인 번호는 2026-07-13 현재 코드 기준이다.
+> 위 문서의 라인 번호는 2026-07-21 현재 코드 기준이다.

@@ -5,16 +5,18 @@ import { usePolling } from './usePolling.js'
 const NODE_POLL_INTERVAL_MS = 3000
 const ALERT_POLL_INTERVAL_MS = 3000
 
-export function useNodeDashboard() {
+export function useNodeDashboard({ enabled = true } = {}) {
   const [selectedNodeName, setSelectedNodeName] = useState('')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('primary')
   const [includeInternalNodes, setIncludeInternalNodes] = useState(false)
 
   const nodesState = usePolling(fetchNodes, NODE_POLL_INTERVAL_MS, {
+    enabled,
     initialData: { data: { nodes: [], meta: {} } },
   })
   const alertsState = usePolling(fetchAlerts, ALERT_POLL_INTERVAL_MS, {
+    enabled,
     initialData: { data: [], meta: {} },
   })
 

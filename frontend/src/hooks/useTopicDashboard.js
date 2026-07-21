@@ -8,25 +8,30 @@ import {
   fetchTopics,
 } from '../api/rosApi.js'
 import { buildParticipantMaps } from '../utils/participants.js'
-import { sortTopicsByHealth } from '../utils/status.js'
 import { usePolling } from './usePolling.js'
 
 const POLL_INTERVAL_MS = 1000
 const NODE_POLL_INTERVAL_MS = 3000
 
-export function useTopicDashboard() {
+export function useTopicDashboard({
+  enabled = true,
+  pollSelectedTopicDetails = true,
+} = {}) {
   const [includeAllTopics, setIncludeAllTopics] = useState(false)
   const [selectedTopicName, setSelectedTopicName] = useState('')
   const [topicHzByName, setTopicHzByName] = useState({})
 
-  const health = usePolling(fetchHealth, POLL_INTERVAL_MS)
+  const health = usePolling(fetchHealth, POLL_INTERVAL_MS, { enabled })
   const topics = usePolling(fetchTopics, POLL_INTERVAL_MS, {
+    enabled,
     initialData: { data: [], meta: {} },
   })
   const alerts = usePolling(fetchAlerts, POLL_INTERVAL_MS, {
+    enabled,
     initialData: { data: [], meta: {} },
   })
   const nodeState = usePolling(fetchNodes, NODE_POLL_INTERVAL_MS, {
+    enabled,
     initialData: { data: { nodes: [], meta: {} } },
   })
 
@@ -40,10 +45,12 @@ export function useTopicDashboard() {
   )
 
   const latest = usePolling(latestFetcher, POLL_INTERVAL_MS, {
-    enabled: Boolean(selectedTopicName),
+    enabled: enabled && pollSelectedTopicDetails && Boolean(selectedTopicName),
+    resetKey: selectedTopicName,
   })
   const hz = usePolling(hzFetcher, POLL_INTERVAL_MS, {
-    enabled: Boolean(selectedTopicName),
+    enabled: enabled && pollSelectedTopicDetails && Boolean(selectedTopicName),
+    resetKey: selectedTopicName,
   })
 
   const topicItems = useMemo(() => topics.data?.data ?? [], [topics.data])
@@ -59,34 +66,16 @@ export function useTopicDashboard() {
     () => topicItems.find((topic) => topic.name === selectedTopicName) ?? null,
     [selectedTopicName, topicItems],
   )
-  const defaultTopicName = useMemo(
-    () => {
-      const sortedTopics = sortTopicsByHealth(topicItems)
-      return (
-        sortedTopics.find((topic) => topic.deep_monitoring)?.name ??
-        sortedTopics[0]?.name ??
-        ''
-      )
-    },
-    [topicItems],
-  )
   const hzTopicNames = useMemo(
     () =>
       Array.from(new Set(topicItems
+        .filter(isTopicDetailCandidate)
         .filter((topic) => topic.deep_monitoring)
         .map((topic) => topic.name)
         .filter((name) => name && name !== selectedTopicName))).sort(),
     [selectedTopicName, topicItems],
   )
   const hzTopicNamesKey = useMemo(() => hzTopicNames.join('\n'), [hzTopicNames])
-
-  useEffect(() => {
-    if (selectedTopicName && selectedTopic) {
-      return
-    }
-
-    setSelectedTopicName(defaultTopicName)
-  }, [defaultTopicName, selectedTopic, selectedTopicName])
 
   useEffect(() => {
     const names = hzTopicNamesKey ? hzTopicNamesKey.split('\n') : []
@@ -158,4 +147,18 @@ export function useTopicDashboard() {
     topicParticipants,
     topics,
   }
+}
+
+function isTopicDetailCandidate(topic) {
+  const name = topic?.name ?? ''
+  return !(
+    name === '/clock' ||
+    name === '/parameter_events' ||
+    name === '/rosout' ||
+    name === '/tf' ||
+    name === '/tf_static' ||
+    name.endsWith('/_action/status') ||
+    name.endsWith('/_action/feedback') ||
+    name.endsWith('/_service_event')
+  )
 }

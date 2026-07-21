@@ -19,10 +19,17 @@ import {
 
 function App() {
   const { activePage, navigate } = useBrowserRoute()
-  const dashboard = useTopicDashboard()
-  const serviceDashboard = useServiceDashboard()
-  const actionDashboard = useActionDashboard()
-  const nodeDashboard = useNodeDashboard()
+  const topicDashboardEnabled = ['overview', 'topics', 'alerts'].includes(activePage)
+  const serviceDashboardEnabled = ['overview', 'services', 'alerts'].includes(activePage)
+  const actionDashboardEnabled = ['overview', 'actions', 'alerts'].includes(activePage)
+  const nodeDashboardEnabled = ['overview', 'nodes', 'alerts'].includes(activePage)
+  const dashboard = useTopicDashboard({
+    enabled: topicDashboardEnabled,
+    pollSelectedTopicDetails: activePage === 'topics',
+  })
+  const serviceDashboard = useServiceDashboard({ enabled: serviceDashboardEnabled })
+  const actionDashboard = useActionDashboard({ enabled: actionDashboardEnabled })
+  const nodeDashboard = useNodeDashboard({ enabled: nodeDashboardEnabled })
   const monitorWebSocket = useMonitorWebSocket()
 
   return (

@@ -1,134 +1,192 @@
 # Interface Lab 흐름 및 가이드
 
+> 라인 번호는 2026-07-21 실제 코드 기준이다.
+
 ## 1. 문서 목적
-본 문서는 ROS2 대시보드의 Interface Lab 기능을 사용하여 인터페이스를 등록, 빌드, 적용하고 이를 활용해 Topic Publish/Subscribe, Service Call, Action Goal 전송을 수행하는 전체 흐름을 설명합니다.
 
-## 2. Interface Lab이 맡는 역할
-ROS2 시스템에서 동적으로 추가된 커스텀 인터페이스(msg, srv, action)를 등록, 빌드, 적용하여 로봇과 상호작용할 수 있게 합니다.
-Message는 Topic Publish/Subscribe에, Service는 명시적 Service Call에, Action은 명시적 Action Goal에 사용됩니다.
+Interface Lab은 커스텀 `.msg`, `.srv`, `.action`을 등록, 빌드, import 확인한 뒤 사용자가 명시적으로 Topic Publish/Receive, Service Call, Action Goal을 실행하는 도구다.
 
-## 3. 전체 흐름
-[사용자 입력] → [파일/패키지 저장] → [CMake/package.xml 재생성] → [빌드/적용] → [인터페이스 가용성 검증] → [동적 UI 호출]
+## 2. 현재 책임 구조
 
-## 4. 등록 방식 4종 비교
+| 영역 | 책임 | 코드 위치 |
+|---|---|---|
+| Router | FastAPI endpoint 접수, request 파싱, runtime/helper 호출 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/` |
+| Management | registry, manual_type, manual_definition, single upload, package upload/delete, CMake/package.xml 재생성 | `interface_lab/management/` |
+| Apply | apply status, colcon build, import-check, reload trigger | `interface_lab/apply/runtime.py` |
+| Execution | Topic Publish/Receive, Service Call, Action Goal, history/cache/cleanup | `interface_lab/execution/` |
+| Common | schema, validation, payload→ROS object, ROS object→JSON-safe 변환 | `interface_lab/common/value_converter.py` |
 
-| 방식 | 입력 형태 | 파일 생성 여부 | 저장 위치 | build 필요 여부 |
+## 3. 등록 방식 4종
+
+| 방식 | 입력 | 파일 생성 | 저장 위치 | build |
 |---|---|---|---|---|
-| manual_type | 이미 설치/import 가능한 full_type 직접 입력 | 없음 (registry만 기록) | `config/interface_registry.yaml` | **불필요** (이미 import 가능) |
-| manual_definition | 사용자가 정의 직접 입력 | 있음 (.msg/.srv/.action 파일 생성) | `src/uploaded_interfaces/` | 필요 |
-| single_upload | 단일 .msg/.srv/.action 파일 업로드 | 있음 | `src/uploaded_interfaces/` | 필요 |
-| package_upload | zip 또는 폴더 형태 완전한 ROS2 패키지 | 있음 (패키지 통째로 저장) | `src/uploaded_interface_packages/` | 필요 |
+| manual_type | 이미 import 가능한 full_type | 없음 | `backend/config/interface_registry.yaml` | 불필요 |
+| manual_definition | 사용자가 직접 쓴 정의 | 있음 | `backend/src/uploaded_interfaces/` | 필요 |
+| single_upload | 단일 `.msg/.srv/.action` | 있음 | `backend/src/uploaded_interfaces/` | 필요 |
+| package_upload | zip 또는 폴더 ROS interface package | 있음 | `backend/src/uploaded_interface_packages/` | 필요 |
 
-## 5. registry와 저장 위치
-- **registry**: `backend/config/interface_registry.yaml` (등록된 메타데이터)
-- **인터페이스 보관**: `backend/src/uploaded_interfaces/` (직접 작성/단일 파일)
-- **패키지 보관**: `backend/src/uploaded_interface_packages/` (완전한 패키지)
+`uploaded_interfaces`와 `uploaded_interface_packages`는 서로 다른 저장소다. 단일 interface 삭제가 package registry나 package 폴더를 건드리면 안 된다.
 
-## 6. manual_type 및 manual_definition 흐름
+## 4. 경로 계산 코드 추적
 
-**manual_type**: 사용자가 이미 ROS2 환경에 설치/import 가능한 full_type을 직접 입력합니다. `register_manual_type()`이 `config/interface_registry.yaml`에만 기록하고 파일 생성, CMake 수정, build는 하지 않습니다. import 가능 여부는 등록 시점에 `_check_import()`로 즉시 확인합니다.
+Interface Lab 데이터 경로는 모듈 위치가 아니라 backend workspace 기준으로 계산한다.
 
-**manual_definition**: 사용자가 .msg/.srv/.action 정의를 직접 입력합니다. `write_manual_definition()`이 `src/uploaded_interfaces/` 하위에 파일을 쓰고, `interface_lab/management/manual_interfaces.py`의 `regenerate_uploaded_interfaces_package()`로 CMakeLists.txt와 package.xml을 전체 재생성한 뒤 registry를 갱신합니다. 이후 apply/build가 필요합니다.
+| 경로 | 코드 위치 |
+|---|---|
+| backend workspace root | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/paths.py` L8 |
+| backend python package root | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/paths.py` L13 |
+| reload trigger | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/paths.py` L23 |
+| interface registry path | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/registry.py` L42 |
+| default built-in interface package | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/registry.py` L51 |
+| package registry path | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/packages.py` L42 |
+| uploaded package root | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/packages.py` L51 |
+| apply status path | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/apply/runtime.py` L57 |
+| apply log path | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/apply/runtime.py` L66 |
 
-## 7. single_upload 및 package_upload 흐름
-파일이나 폴더를 업로드하면 서버는 이를 검증하고 지정된 저장 위치로 이동시킨 후, 전체 인터페이스 스캔을 통해 빌드 시스템 파일들을 업데이트합니다.
-
-## 8. CMakeLists.txt와 package.xml 재생성
-
-CMakeLists.txt와 package.xml 재생성은 `interface_lab/management/manual_interfaces.py`의 `regenerate_uploaded_interfaces_package()`가 담당합니다. `interface_lab/apply/runtime.py`는 빌드를 실행할 뿐이고 CMake/package.xml을 직접 재생성하지 않습니다.
-
-재생성 시점: manual_definition 작성/수정/삭제, single_upload 파일 저장/삭제 시.
-
-- `scan_uploaded_interface_files()`로 실제 남은 파일 목록을 다시 스캔합니다.
-- `regenerate_uploaded_interfaces_cmake()`: CMakeLists.txt를 전체 새로 씁니다 (append 방식 아님).
-- `regenerate_uploaded_interfaces_package_xml()`: package.xml도 전체 새로 씁니다.
-- 인터페이스 파일이 0개이면 `rosidl_generate_interfaces()` 호출을 남기지 않고 빈 ament_cmake 패키지로 유지합니다.
-
-## 9. apply/build/import 흐름
-1. `POST /ros/interfaces/apply` 호출.
-2. `colcon build` 수행.
-3. `import check`로 파이썬 사용 가능 여부 검증.
-
-## 10. callable Service/Action 판단
-
-`interface_lab/execution/service_call_runtime.py`의 `_allowed_service()` 및 `interface_lab/execution/action_goal_runtime.py`의 `_allowed_action()`이 판단합니다.
-
-조건:
-1. `config/interface_registry.yaml` 또는 `config/interface_packages.yaml`에 등록되어 있을 것.
-2. 빌드 후 Python import가 가능한 상태(`import_available=True`)일 것.
-3. 현재 ROS2 graph에서 동일 `(service_name, full_type)` 또는 `(action_name, full_type)` exact match로 server가 1개 이상 존재할 것.
-
-세 조건을 모두 만족해야 `callable: true`가 됩니다. 이름만 일치하고 full_type이 다르면 callable이 되지 않습니다.
-
-## 11. Topic Publish/Subscribe 전체 흐름
-
-Message 타입은 `InterfaceReceiveRuntime`이 담당합니다.
-
-사용 흐름:
-
-1. 사용자가 Message 항목을 선택합니다.
-2. Frontend가 `GET /ros/interfaces/callable-messages` 또는 `GET /ros/interfaces/message-schema?full_type=...`로 schema와 graph hint를 조회합니다.
-3. Publish는 topic 이름과 schema 기반 form 값을 `POST /ros/interfaces/topic-publish`로 보냅니다.
-4. Backend는 `build_ros_message()` / `fill_ros_message()` / `convert_value()`로 primitive, nested custom msg, msg array를 검증·변환합니다.
-5. validation 실패 시 `sent_to_topic=false`이며 ROS2로 publish하지 않습니다.
-6. validation 성공 시 `(topic_name, full_type)` 기준 Publisher를 재사용해 1회 publish합니다. 새 Publisher를 만든 첫 호출은 ROS2 discovery를 위해 짧게 대기한 뒤 전송합니다.
-7. Subscribe는 `POST /ros/interfaces/receive/topics/start`로 `(topic_name, full_type)` 기준 Subscription을 만들고 중복 생성을 막습니다.
-8. Stop은 `POST /ros/interfaces/receive/topics/stop`으로 같은 조합의 Subscription을 정리하되, 기존 Subscribe history는 reset 전까지 유지합니다.
-
-Topic 작업 관련 API:
+## 5. Management 코드 추적
 
 ```text
-GET    /ros/interfaces/callable-messages
-GET    /ros/interfaces/message-schema?full_type=...
-POST   /ros/interfaces/topic-publish
-GET    /ros/interfaces/topic-publish/history
-POST   /ros/interfaces/topic-publish/history/reset
-POST   /ros/interfaces/receive/topics/start
-POST   /ros/interfaces/receive/topics/stop
-GET    /ros/interfaces/receive/topics
-GET    /ros/interfaces/receive/topics/history
-POST   /ros/interfaces/receive/topics/history/reset
+management router
+→ registry/manual/packages helper
+→ 파일 저장 또는 YAML registry 갱신
+→ 필요 시 uploaded_interfaces CMake/package.xml 재생성
+→ mark_interface_change_pending()
 ```
 
-Graph에 같은 Topic 이름으로 다른 type이 있으면 `graph_state.conflicts`와 warning을 반환합니다.
-Publish는 subscriber가 없어도 가능하지만 `subscriber_count=0` 상태가 응답과 UI에 표시됩니다.
+| 기능 | 코드 위치 |
+|---|---|
+| single upload endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L40 |
+| registry endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L88 |
+| registry delete endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L102 |
+| manual_type endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L146 |
+| manual_definition create endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L171 |
+| manual_definition validate endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L197 |
+| manual_definition update endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L222 |
+| manual_definition delete endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L247 |
+| package upload endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L276 |
+| folder package upload endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L314 |
+| package list endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L350 |
+| package delete endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L367 |
+| single upload 구현 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/registry.py` L82 |
+| registry snapshot | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/registry.py` L374 |
+| registry delete 구현 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/registry.py` L381 |
+| registry import 상태 갱신 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/registry.py` L439 |
+| manual_type 등록 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/manual_interfaces.py` L55 |
+| manual_definition 작성 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/manual_interfaces.py` L92 |
+| manual_definition 수정 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/manual_interfaces.py` L153 |
+| manual_definition 삭제 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/manual_interfaces.py` L170 |
+| uploaded interface 삭제 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/manual_interfaces.py` L205 |
+| definition validate | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/manual_interfaces.py` L290 |
+| uploaded_interfaces 파일 스캔 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/manual_interfaces.py` L404 |
+| uploaded_interfaces package 재생성 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/manual_interfaces.py` L416 |
+| CMakeLists.txt 재작성 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/manual_interfaces.py` L428 |
+| package.xml 재작성 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/manual_interfaces.py` L463 |
+| zip package upload | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/packages.py` L63 |
+| folder package upload | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/packages.py` L127 |
+| package snapshot | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/packages.py` L223 |
+| package delete | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/packages.py` L228 |
+| package import 상태 갱신 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/packages.py` L276 |
 
-## 12. Service Call 및 Action Goal 전체 흐름
-`full_type` 기반으로 요청 스키마를 동적으로 생성하고, 사용자가 입력한 데이터를 변환(primitive, nested, array)하여 Backend가 ROS2 Service/Action으로 전달합니다.
+## 6. Apply/build/import 코드 추적
 
-Service와 Action은 Topic처럼 지속 구독되는 구조가 아닙니다.
-Service response history는 `ServiceCallRuntime`의 호출 이력에서 만들고, Action feedback/result history는 `ActionGoalRuntime`의 Goal 실행 이력에서 만듭니다.
+```text
+POST /ros/interfaces/apply
+→ run_interface_apply()
+→ colcon build --symlink-install
+→ build log/status 저장
+→ import-check
+→ registry/package import_available 갱신
+→ reload trigger 갱신
+```
 
-## 13. Topic Receive 흐름
-사용자가 특정 Topic 구독을 시작하면, 모니터링 구독과는 별개의 Runtime에서 메시지를 수신하여 preview 및 history를 관리합니다.
-현재 구현은 `topic_name` 단독이 아니라 `(topic_name, full_type)` 기준으로 Subscription을 관리합니다.
-수신된 nested msg와 msg array는 JSON-safe 형태로 history에 저장됩니다.
+| 기능 | 코드 위치 |
+|---|---|
+| apply endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_apply.py` L25 |
+| apply status endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_apply.py` L71 |
+| import-check endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_apply.py` L85 |
+| apply status 조회 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/apply/runtime.py` L75 |
+| pending 상태 기록 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/apply/runtime.py` L83 |
+| apply/build 실행 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/apply/runtime.py` L100 |
+| import-check 및 registry 갱신 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/apply/runtime.py` L500 |
 
-## 14. Frontend 동적 form
+## 7. Topic Publish/Receive 코드 추적
 
-`InterfaceLabPage.jsx`는 Message/Service/Action 항목을 같은 workspace 목록에서 보여줍니다.
-상단 작업 도구인 `InterfaceUploadControl.jsx`도 `수신` → `Topic 수신`에서 Message `full_type` 선택, Topic name 입력, schema 기반 payload form, Publish/Subscribe 버튼과 history를 직접 표시합니다.
+| 기능 | 코드 위치 |
+|---|---|
+| callable messages endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/topic_execution.py` L14 |
+| message schema endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/topic_execution.py` L26 |
+| topic publish endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/topic_execution.py` L40 |
+| receive start/stop/list/history/reset endpoints | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/topic_execution.py` L99-L154 |
+| runtime | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L30 |
+| schema | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L64 |
+| callable messages | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L80 |
+| receive start | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L113 |
+| receive stop | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L167 |
+| receive history/reset | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L205-L232 |
+| publish | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L273 |
+| publish history/reset | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L350-L357 |
 
-- Message 선택: Topic Publish, Topic Subscribe, Publish/Subscribe history 표시.
-- Service 선택: request schema 기반 form과 Service call history 표시.
-- Action 선택: goal schema 기반 form과 feedback/result history 표시.
+## 8. Service Call 코드 추적
 
-`RequestField`는 primitive 입력, nested custom msg JSON 입력, 배열 JSON 입력을 공통으로 처리합니다.
-최종 타입 검증은 backend의 `interface_lab/common/value_converter.py`가 담당합니다.
+| 기능 | 코드 위치 |
+|---|---|
+| callable services endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/service_execution.py` L14 |
+| service-call endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/service_execution.py` L26 |
+| history endpoints | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/service_execution.py` L67-L86 |
+| runtime | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/service_call_runtime.py` L32 |
+| callable services | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/service_call_runtime.py` L56 |
+| service call | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/service_call_runtime.py` L85 |
+| allowed service | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/service_call_runtime.py` L262 |
 
-## 15. 전체 흐름 한 문장
-사용자가 인터페이스를 등록/업로드하면 Backend가 빌드 시스템을 재생성하여 ROS2 환경에 적용하고, 검증된 스키마를 통해 Topic/Service/Action의 사용자 명시 상호작용을 제공합니다.
+## 9. Action Goal 코드 추적
 
-## 16. 초보자가 자주 틀리는 부분
-- **manual_type은 build 없이도 즉시 사용 가능**: 이미 설치된 type을 registry에 등록만 하므로 apply/build가 필요 없습니다.
-- **manual_definition/single_upload/package_upload는 Apply/Build가 필요**: 파일을 생성했더라도 `colcon build` 없이는 Python에서 import할 수 없어 callable이 되지 않습니다.
-- **full_type** 매칭이 아닌 이름만으로 매칭 시도하면 타입 오류가 발생합니다.
-- **CMake 재생성은 interface_lab/apply/runtime.py가 아닌 interface_lab/management/manual_interfaces.py**가 담당합니다.
-- **Topic Publish는 자동 실행되지 않습니다**: 사용자가 Publish 버튼을 눌렀을 때만 1회 전송합니다.
-- **Topic Subscribe도 자동 시작되지 않습니다**: 사용자가 수신 시작을 누른 `(topic_name, full_type)` 조합만 구독합니다.
-- **같은 이름의 Message라도 package가 다르면 다른 type입니다**: `full_type` exact match를 기준으로 선택해야 합니다.
+| 기능 | 코드 위치 |
+|---|---|
+| callable actions endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/action_execution.py` L14 |
+| action-goal endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/action_execution.py` L26 |
+| history endpoints | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/action_execution.py` L75-L94 |
+| runtime | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/action_goal_runtime.py` L37 |
+| callable actions | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/action_goal_runtime.py` L61 |
+| send goal | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/action_goal_runtime.py` L90 |
+| allowed action | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/action_goal_runtime.py` L330 |
 
-## 17. 내가 반드시 알아야 할 것 3줄 요약
-1. `manual_type`은 파일을 생성하지 않고 registry만 기록하므로 build가 필요 없습니다. 나머지 3종은 파일을 생성하므로 apply/build가 필요합니다.
-2. Topic Publish/Subscribe는 Message `full_type`과 topic 이름의 조합으로 동작하며 자동 전송/자동 구독은 하지 않습니다.
-3. Service/Action callable 판단은 registry 등록 + import 가능 + graph server 존재 세 조건을 모두 만족해야 합니다.
+## 10. 공통 schema/validation/conversion 코드 추적
+
+| 기능 | 코드 위치 |
+|---|---|
+| ROS message/request/goal 객체 생성 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/common/value_converter.py` L37 |
+| field 재귀 할당 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/common/value_converter.py` L46 |
+| primitive/array/nested 값 변환 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/common/value_converter.py` L64 |
+| ROS message JSON-safe 변환 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/common/value_converter.py` L122 |
+| schema 생성 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/common/value_converter.py` L130 |
+
+## 11. Frontend 코드 추적
+
+| 기능 | 코드 위치 |
+|---|---|
+| Interface Lab page | `frontend/src/pages/InterfaceLabPage.jsx` L6 |
+| 초기 데이터 fetch | `frontend/src/pages/InterfaceLabPage.jsx` L78-L85 |
+| page 내부 topic publish/start/stop | `frontend/src/pages/InterfaceLabPage.jsx` L263-L300 |
+| 작업 도구 component | `frontend/src/components/InterfaceUploadControl.jsx` L43 |
+| 작업 도구 데이터 refresh | `frontend/src/components/InterfaceUploadControl.jsx` L515-L519 |
+| 작업 도구 topic receive start/stop | `frontend/src/components/InterfaceUploadControl.jsx` L571-L585 |
+| 작업 도구 topic publish | `frontend/src/components/InterfaceUploadControl.jsx` L625 |
+| callable message API | `frontend/src/api/rosApi.js` L94 |
+| topic publish API | `frontend/src/api/rosApi.js` L139 |
+| receive topic start/stop API | `frontend/src/api/rosApi.js` L293-L302 |
+| receive topic history API | `frontend/src/api/rosApi.js` L315 |
+
+## 12. 정책
+
+- `manual_type`은 파일 생성과 build가 필요 없는 registry 등록 방식이다.
+- 파일 생성/삭제와 CMake/package.xml 재생성은 management 책임이다.
+- apply runtime은 build/apply/import/status만 담당한다.
+- execution runtime은 registry/schema를 조회할 수 있지만 interface 파일 생성, 삭제, build를 직접 수행하지 않는다.
+- Service/Action callable은 registry/package 등록, import 가능, Graph exact match, server 존재가 모두 맞아야 한다.
+- validation 실패 시 Topic Publish, Service Call, Action Goal 모두 ROS2 전송을 차단한다.
+
+## 내가 반드시 알아야 할 것 3줄 요약
+
+1. Interface Lab 구현은 `management`, `apply`, `execution`, `common`으로 나뉘며 router는 얇은 API 계층이다.
+2. 사용자 데이터 경로는 backend workspace 기준으로 유지하고, 모듈 이동 위치에 의존하지 않는다.
+3. Topic/Service/Action 실행은 사용자가 명시적으로 누른 경우에만 수행되며 `full_type` exact match를 보존한다.

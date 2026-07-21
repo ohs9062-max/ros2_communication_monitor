@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 export function usePolling(fetcher, intervalMs, options = {}) {
-  const { enabled = true, initialData = null } = options
+  const { enabled = true, initialData = null, resetKey = fetcher } = options
   const [data, setData] = useState(initialData)
   const [error, setError] = useState(null)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [loading, setLoading] = useState(Boolean(enabled))
+  const fetcherRef = useRef(fetcher)
   const refreshInFlightRef = useRef(false)
+
+  useEffect(() => {
+    fetcherRef.current = fetcher
+  }, [fetcher])
 
   const refresh = useCallback(async () => {
     if (!enabled) {
@@ -19,7 +24,7 @@ export function usePolling(fetcher, intervalMs, options = {}) {
     refreshInFlightRef.current = true
     setLoading(true)
     try {
-      const result = await fetcher()
+      const result = await fetcherRef.current()
       setData(result)
       setError(null)
       setLastUpdated(new Date())
@@ -29,7 +34,7 @@ export function usePolling(fetcher, intervalMs, options = {}) {
       refreshInFlightRef.current = false
       setLoading(false)
     }
-  }, [enabled, fetcher])
+  }, [enabled])
 
   useEffect(() => {
     if (!enabled) {
@@ -47,7 +52,7 @@ export function usePolling(fetcher, intervalMs, options = {}) {
 
       pollInFlight = true
       try {
-        const result = await fetcher()
+        const result = await fetcherRef.current()
         if (cancelled) {
           return
         }
@@ -74,7 +79,7 @@ export function usePolling(fetcher, intervalMs, options = {}) {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [enabled, fetcher, intervalMs])
+  }, [enabled, intervalMs, resetKey])
 
   return { data, error, lastUpdated, loading, refresh }
 }

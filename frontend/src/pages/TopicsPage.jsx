@@ -86,7 +86,10 @@ export function TopicsPage({ dashboard }) {
       return
     }
 
-    setSelectedTopicName(filteredTopics[0]?.name ?? '')
+    const nextTopicName = filteredTopics[0]?.name ?? ''
+    if (nextTopicName !== selectedTopicName) {
+      setSelectedTopicName(nextTopicName)
+    }
   }, [filteredTopics, selectedTopicName, setSelectedTopicName])
 
   const detailTopic = filteredTopics.some(

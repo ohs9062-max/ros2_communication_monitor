@@ -6,7 +6,7 @@ import { usePolling } from './usePolling.js'
 const SERVICE_POLL_INTERVAL_MS = 3000
 const ALERT_POLL_INTERVAL_MS = 3000
 
-export function useServiceDashboard() {
+export function useServiceDashboard({ enabled = true } = {}) {
   const [includeHidden, setIncludeHidden] = useState(false)
   const [selectedServiceName, setSelectedServiceName] = useState('')
 
@@ -15,12 +15,16 @@ export function useServiceDashboard() {
     [includeHidden],
   )
   const servicesState = usePolling(servicesFetcher, SERVICE_POLL_INTERVAL_MS, {
+    enabled,
     initialData: { data: { services: [], meta: {} } },
+    resetKey: includeHidden,
   })
   const alertsState = usePolling(fetchAlerts, ALERT_POLL_INTERVAL_MS, {
+    enabled,
     initialData: { data: [], meta: {} },
   })
   const nodeState = usePolling(fetchNodes, SERVICE_POLL_INTERVAL_MS, {
+    enabled,
     initialData: { data: { nodes: [], meta: {} } },
   })
 

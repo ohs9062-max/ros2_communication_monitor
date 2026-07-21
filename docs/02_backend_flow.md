@@ -1,52 +1,83 @@
 # Backend 전체 흐름
 
-> 라인 번호는 2026-07-14 실제 코드 재검증 기준이다.
+> 라인 번호는 2026-07-21 실제 코드 기준이다.
 
 ## 1. 이 문서에서 설명하는 것
 
-이 문서는 Backend 서버의 전체적인 실행 흐름을 설명합니다. 크게 두 가지 독립적인 흐름이 공존합니다.
+Backend에는 두 흐름이 함께 있다.
 
-1. **모니터링 흐름**: ROS2 상태를 주기적으로 감시하여 캐시에 저장하고 API로 제공.
-2. **Interface Lab 실행 흐름**: 사용자의 인터페이스 등록/작성 요청을 받아 빌드하고, 이를 활용해 서비스/액션/토픽 상호작용 실행.
+1. **모니터링 흐름**: ROS2 Graph API와 runtime cache로 Node/Topic/Service/Action 상태를 수집한다.
+2. **Interface Lab 흐름**: 사용자가 등록한 interface로 Topic Publish/Receive, Service Call, Action Goal을 명시 실행한다.
 
-## 2. 서버 실행 및 구조
+`main.py`는 이제 endpoint 구현 파일이 아니다. FastAPI app 생성, lifespan, middleware, 공통 exception 처리, router 등록, health endpoint만 담당한다.
 
-FastAPI 서버가 시작되면 `RosMonitor`가 감시 작업을 조정하고, Interface Lab 관련 모듈들이 인터페이스 관리 기능을 제공합니다.
+## 2. 서버 조립 흐름
 
-- `main.py`: 모든 엔드포인트 정의 및 FastAPI 앱 설정.
-- `RosMonitor`: 모니터링 흐름 조정 (timer, spin thread, Runtime).
-- `interface_lab/management/registry.py`, `interface_lab/apply/runtime.py`: Interface Lab의 핵심 관리 로직.
-- `interface_lab/execution/service_call_runtime.py`, `interface_lab/execution/action_goal_runtime.py`: Interface Lab의 실행 로직.
+```text
+FastAPI app 생성
+→ lifespan에서 RosMonitor start/stop 연결
+→ middleware 등록
+→ monitoring/interface routers 등록
+→ health endpoint 제공
+```
 
-## 3. 두 가지 핵심 흐름
+| 단계 | 코드 위치 |
+|---|---|
+| lifespan 정의 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/main.py` L21 |
+| FastAPI app 생성 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/main.py` L30 |
+| router 등록 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/main.py` L40-L45 |
+| health endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/main.py` L49 |
+| RosMonitor 시작 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L74 |
+| RosMonitor 종료 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L90 |
 
-### 3-1. 모니터링 흐름
-- `RosMonitor`가 시작될 때 생성된 rclpy Node와 spin thread가 주기적으로 `_update_graph()`를 호출합니다.
-- 네 Runtime(`Topic`, `Service`, `Action`, `Node`)이 Graph API를 사용해 데이터를 수집하고 Runtime Cache를 갱신합니다.
-- REST 및 WebSocket 요청은 이 캐시에서 안전하게 데이터를 읽어(snapshot) 반환합니다.
+## 3. 모니터링 흐름
 
-### 3-2. Interface Lab 실행 흐름
-- **등록**: 사용자가 인터페이스 업로드/작성 요청을 하면 `interface_lab/management/registry.py`를 통해 저장되고 registry가 갱신됩니다.
-- **빌드/적용**: `interface_lab/management/manual_interfaces.py`의 `regenerate_uploaded_interfaces_package()`가 CMakeLists.txt와 package.xml을 재생성하고(파일 저장/삭제 시점), `interface_lab/apply/runtime.py`의 `run_interface_apply()`가 `colcon build --symlink-install`을 실행하여 ROS2 환경에 인터페이스를 적용합니다.
-- **실행**: Interface Lab을 통해 요청되는 서비스/액션 호출은 별도의 `CallRuntime`에서 처리되어 `history`에 저장됩니다.
+`RosMonitor`가 rclpy Node와 spin thread를 만들고, timer에서 `_update_graph()`를 호출한다. Topic/Service/Action/Node runtime은 Graph API로 상태를 갱신하고 REST/WebSocket은 cache snapshot만 읽는다.
 
-## 4. API 엔드포인트 분류
+| 단계 | 코드 위치 |
+|---|---|
+| graph update 진입 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L531 |
+| Topic snapshot | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L113 |
+| Service snapshot | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L117 |
+| Action snapshot | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L187 |
+| Node snapshot | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L332 |
+| WebSocket snapshot | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L336 |
+| latest message 조회 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L368 |
+| alert 통합 조회 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L376 |
 
-| 분류 | 관련 엔드포인트 예시 | 담당 모듈 |
+## 4. Router 구조
+
+Router는 request/query/path/body를 받고 `RosMonitor` 또는 Interface Lab runtime/helper를 호출한다. router가 runtime 내부 dict, lock, cache를 직접 조작하지 않는다.
+
+| Router | 대표 endpoint | 코드 위치 |
 |---|---|---|
-| 모니터링 | `GET /ros/topics`, `GET /ros/services` | `RosMonitor` / `Runtime` |
-| Interface 등록 | `POST /ros/interfaces/upload` | `interface_lab/management/registry.py` |
-| Interface 빌드 | `POST /ros/interfaces/apply` | `interface_lab/apply/runtime.py` |
-| 상호작용(실행) | `POST /ros/interfaces/service-call` | `interface_lab/execution/service_call_runtime.py` |
+| monitoring | `/ros/topics`, `/ros/services`, `/ros/actions`, `/ros/nodes`, `/ros/alerts`, `/ws/monitor` | `routers/monitoring.py` L16-L93 |
+| interface management | upload, registry, manual, package | `routers/interface_management.py` L40-L367 |
+| interface apply | apply/status/import-check | `routers/interface_apply.py` L25-L85 |
+| topic execution | callable message, schema, publish, receive | `routers/topic_execution.py` L14-L154 |
+| service execution | callable service, service-call, history | `routers/service_execution.py` L14-L86 |
+| action execution | callable action, action-goal, history | `routers/action_execution.py` L14-L94 |
 
-## 5. 자주 틀리는 이해
+## 5. Interface Lab 흐름
 
-- **REST 요청은 Graph를 갱신하지 않습니다**: REST는 모니터링 흐름에서 이미 갱신된 캐시를 읽습니다.
-- **모니터링과 실행은 별개입니다**: 모니터링 캐시가 갱신되는 주기와 사용자의 서비스/액션 호출 주기는 서로 독립입니다.
-- **빌드/적용 과정의 중요성**: Interface Lab에서 파일을 등록한 후 `apply/build` 과정을 거치지 않으면 ROS2에서 해당 인터페이스를 사용할 수 없습니다.
+Interface Lab 구현은 `interface_lab/` 아래에 있다.
+
+| 영역 | 책임 | 코드 위치 |
+|---|---|---|
+| management | registry, manual_type, manual_definition, single upload, package upload/delete | `interface_lab/management/` |
+| apply | apply status, colcon build, import-check, reload trigger | `interface_lab/apply/runtime.py` |
+| execution | Topic Publish/Receive, Service Call, Action Goal, history/cache/cleanup | `interface_lab/execution/` |
+| common | schema, payload 변환, ROS message JSON-safe 변환 | `interface_lab/common/value_converter.py` |
+
+## 6. 자주 틀리는 이해
+
+- REST 요청은 매번 ROS2 Graph를 직접 스캔하지 않고 runtime cache를 읽는다.
+- WebSocket은 raw ROS2 message 스트림이 아니라 경량 monitor snapshot 채널이다.
+- Interface Lab의 실행은 사용자가 버튼을 누른 경우에만 수행된다.
+- `manual_type`은 파일을 만들지 않으므로 build가 필요 없고, `manual_definition`/`single_upload`/`package_upload`는 apply/build가 필요하다.
 
 ## 내가 반드시 알아야 할 것 3줄 요약
 
-1. Backend는 '감시(모니터링)'와 '상호작용(Interface Lab)'이라는 두 가지 독립된 역할을 수행합니다.
-2. 모니터링은 주기적인 Runtime Cache 갱신 흐름을 따르고, 실행은 API 요청 기반의 즉각적인 처리 흐름을 따릅니다.
-3. `manual_definition`, `single_upload`, `package_upload` 방식으로 등록한 인터페이스 파일 변경은 `registry` 갱신과 `apply/build` 과정을 거쳐야 실제 ROS2 환경에 반영됩니다. `manual_type`은 파일 생성이 없으므로 build가 필요 없습니다.
+1. `main.py`는 app 조립 중심이고 endpoint 구현은 `routers/`에 있다.
+2. 모니터링은 `RosMonitor`와 topic/service/action/node runtime cache 흐름이다.
+3. Interface Lab은 `interface_lab/management`, `apply`, `execution`, `common`으로 분리되어 명시 실행만 담당한다.

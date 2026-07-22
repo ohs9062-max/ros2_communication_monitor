@@ -104,6 +104,210 @@ Router는 request/query/path/body를 받고 `RosMonitor` 또는 Interface Lab ru
 | service execution | callable service, service-call, history | `routers/service_execution.py` L14-L86 |
 | action execution | callable action, action-goal, history | `routers/action_execution.py` L14-L94 |
 
+### 4.1 monitoring
+
+`monitoring`은 ROS2 상태 조회 기능이다. 여기서 endpoint(HTTP 요청 주소)는 Frontend가 Backend에 "현재 ROS2 통신 상태를 보여 달라"고 요청하는 입구다. Monitoring Router는 ROS2 Graph를 직접 갱신하지 않는다. Graph 갱신은 `RosMonitor` timer와 Topic/Service/Action/Node runtime이 수행하고, Router는 이미 만들어진 runtime cache의 snapshot을 읽어서 반환한다.
+
+REST endpoint는 사용자가 특정 화면을 열었을 때 필요한 상세 조회에 가깝고, WebSocket은 전체 상태를 빠르게 감지할 수 있는 경량 요약을 주기적으로 전달한다.
+
+공통 흐름:
+
+```text
+Frontend
+→ HTTP 요청 또는 WebSocket 연결
+→ Monitoring Router endpoint
+→ RosMonitor snapshot 함수 호출
+→ runtime cache에서 현재 상태 읽기
+→ 결과 반환
+→ FastAPI가 JSON 응답 또는 WebSocket 메시지로 변환
+→ Frontend 표시
+```
+
+#### `/ros/topics`
+
+- 영문 기능명: topics
+- 한국어 직역: 토픽 목록
+- 실제 의미: 현재 ROS2 Graph에서 발견되어 cache에 저장된 Topic 목록, 타입, publisher/subscriber 수, 최신 수신 상태, Hz 같은 Topic monitoring 정보를 조회한다.
+- 사용 시점: 사용자가 Dashboard의 Topic 화면에서 전체 Topic 상태를 볼 때 사용한다.
+- 코드 위치: endpoint는 `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/monitoring.py` L16, 처리 함수 `get_ros_topics()`는 L17에서 시작한다.
+- 호출 흐름: `get_ros_topics()` L17 → `ros_monitor.snapshot()` 호출 L19 → `RosMonitor.snapshot()`는 `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L113에서 시작 → TopicRuntime snapshot 반환 → snapshot의 `topics`, `count`, `last_updated`를 L20-L28에서 JSON으로 포장
+- Frontend 반환 형태: `success`, `data`, `meta`, `message`를 포함한 JSON으로 반환되고, Frontend는 Topic 목록과 상태 값을 화면에 표시한다.
+
+Topic 상세 화면에서 함께 쓰는 보조 endpoint도 같은 파일에 있다.
+
+- `/ros/topics/latest`: endpoint는 `routers/monitoring.py` L31, 처리 함수 `get_latest_ros_topic()`은 L32에서 시작한다. `ros_monitor.latest_message(name)` 호출은 L34이고, `RosMonitor.latest_message()`는 `ros_monitor.py` L368에서 시작한다. 선택한 Topic의 최신 메시지 preview를 cache에서 읽는다.
+- `/ros/topics/hz`: endpoint는 `routers/monitoring.py` L37, 처리 함수 `get_ros_topic_hz()`는 L38에서 시작한다. `ros_monitor.topic_hz(name)` 호출은 L40이고, `RosMonitor.topic_hz()`는 `ros_monitor.py` L372에서 시작한다. 선택한 Topic의 최근 수신 주파수를 cache에서 읽는다.
+
+#### `/ros/services`
+
+- 영문 기능명: services
+- 한국어 직역: 서비스 목록
+- 실제 의미: 현재 ROS2 Graph에서 발견된 Service의 server/client 수, 타입, active/waiting_server/inactive 같은 상태를 조회한다.
+- 사용 시점: 사용자가 Service 화면에서 어떤 Service가 존재하고 서버가 준비되어 있는지 확인할 때 사용한다.
+- 코드 위치: endpoint는 `routers/monitoring.py` L43, 처리 함수 `get_ros_services()`는 L44에서 시작한다.
+- 호출 흐름: `get_ros_services()` L44 → `ros_monitor.service_snapshot(include_hidden=...)` 호출 L48-L50 → `RosMonitor.service_snapshot()`는 `ros_monitor.py` L117에서 시작 → ServiceRuntime cache snapshot에 ServiceCallRuntime의 callable/summary 정보를 보강한 뒤 반환
+- Frontend 반환 형태: `data.services`와 `data.meta` JSON으로 반환되고, Frontend는 Service 목록과 상세 패널에 표시한다.
+
+#### `/ros/actions`
+
+- 영문 기능명: actions
+- 한국어 직역: 액션 목록
+- 실제 의미: Action 내부 service/topic을 개별 항목으로 흩어 보여주지 않고, `/CanControl` 같은 Action 단위로 묶은 상태를 조회한다.
+- 사용 시점: 사용자가 Action 화면에서 Action Server/Client 존재 여부와 최근 feedback/result 관찰 상태를 볼 때 사용한다.
+- 코드 위치: endpoint는 `routers/monitoring.py` L60, 처리 함수 `get_ros_actions()`는 L61에서 시작한다.
+- 호출 흐름: `get_ros_actions()` L61 → `ros_monitor.action_snapshot()` 호출 L63 → `RosMonitor.action_snapshot()`는 `ros_monitor.py` L187에서 시작 → ActionRuntime cache snapshot에 ActionGoalRuntime의 callable/summary 정보를 보강한 뒤 반환
+- Frontend 반환 형태: `data.actions`와 `data.meta` JSON으로 반환되고, Frontend는 Action 목록과 상태 정보를 표시한다.
+
+#### `/ros/nodes`
+
+- 영문 기능명: nodes
+- 한국어 직역: 노드 목록
+- 실제 의미: 현재 ROS2 Node와 각 Node가 연결된 Topic/Service/Action 관계를 조회한다.
+- 사용 시점: 사용자가 Node 화면이나 통신 시각화 화면에서 Node 중심 연결 관계를 확인할 때 사용한다.
+- 코드 위치: endpoint는 `routers/monitoring.py` L73, 처리 함수 `get_ros_nodes()`는 L74에서 시작한다.
+- 호출 흐름: `get_ros_nodes()` L74 → `ros_monitor.node_snapshot()` 호출 L76 → `RosMonitor.node_snapshot()`는 `ros_monitor.py` L332에서 시작 → NodeRuntime cache snapshot 반환
+- Frontend 반환 형태: `data.nodes`와 `data.meta` JSON으로 반환되고, Frontend는 Node 목록 및 Topic/Service/Action participant map 계산에 사용한다.
+
+#### `/ros/alerts`
+
+- 영문 기능명: alerts
+- 한국어 직역: 경고 목록
+- 실제 의미: Topic stale, MonitorStatus warning/error/critical, Service active_check 실패, Action terminal 상태 같은 monitoring alert를 한 목록으로 통합 조회한다.
+- 사용 시점: 사용자가 Dashboard에서 현재 주의가 필요한 통신 상태를 빠르게 확인할 때 사용한다.
+- 코드 위치: endpoint는 `routers/monitoring.py` L86, 처리 함수 `get_ros_alerts()`는 L87에서 시작한다.
+- 호출 흐름: `get_ros_alerts()` L87 → `ros_monitor.alerts()` 호출 L89 → `RosMonitor.alerts()`는 `ros_monitor.py` L376에서 시작 → Topic/Service/Action/Node alert snapshot 통합
+- Frontend 반환 형태: alert item 배열이 JSON으로 반환되고, Frontend는 level/source/name/message 기준으로 표시한다.
+
+#### `/ws/monitor`
+
+- 영문 기능명: monitor WebSocket
+- 한국어 직역: 모니터 웹소켓
+- 실제 의미: raw ROS2 message 스트림이 아니라, Dashboard가 전체 상태 변화를 가볍게 감지할 수 있도록 요약 snapshot을 주기적으로 보내는 채널이다.
+- 사용 시점: 사용자가 Dashboard를 열어 둔 동안 전체 count, alert, last_updated 같은 경량 상태를 실시간에 가깝게 갱신할 때 사용한다.
+- 코드 위치: endpoint는 `routers/monitoring.py` L92, 처리 함수 `monitor_websocket()`은 L93에서 시작한다.
+- 호출 흐름: `monitor_websocket()` L93 → `websocket_manager.connect()` L95 → 반복문 L97 → `ros_monitor.websocket_snapshot()` 호출 L100 → `RosMonitor.websocket_snapshot()`는 `ros_monitor.py` L336에서 시작 → 1초 대기 L105 → 연결 종료 시 disconnect L106-L109
+- Frontend 반환 형태: FastAPI WebSocket 메시지로 JSON snapshot이 반복 전송되고, Frontend는 REST polling을 보조하는 상태 요약으로 사용한다.
+
+### 4.2 interface management
+
+`interface management`는 Interface Lab에서 사용할 ROS2 interface를 등록하고 관리하는 Router다. registry(등록 정보 저장소)는 등록된 interface의 이름, 종류, source, build/import 상태를 저장하는 목록이다. 여기서 등록은 아직 apply(등록된 인터페이스의 빌드 및 실제 반영)가 아니다. 파일을 올리거나 정보를 저장해도, 실제 ROS2 Python 타입으로 쓰려면 apply/import-check 흐름이 필요할 수 있다.
+
+공통 흐름:
+
+```text
+Frontend
+→ HTTP 요청
+→ Interface Management Router endpoint
+→ management helper 호출
+→ registry 또는 package 저장소 갱신/조회
+→ 결과 반환
+→ FastAPI가 JSON 응답으로 변환
+→ Frontend 표시
+```
+
+#### upload
+
+- 영문 기능명: upload
+- 한국어 직역: 업로드
+- 실제 의미: 사용자가 `.msg`, `.srv`, `.action` 단일 파일을 올리면 `uploaded_interfaces` package 아래에 저장하고 registry에 등록한다.
+- 사용 시점: 사용자가 이미 작성된 interface 파일 하나를 Interface Lab에 추가할 때 사용한다.
+- 코드 위치: endpoint는 `routers/interface_management.py` L40, 처리 함수 `upload_ros_interface()`는 L41에서 시작한다.
+- 호출 흐름: `upload_ros_interface()` L41 → 요청 크기 검사 L43-L56 → `extract_multipart_file()` 호출 L58-L60 → `register_interface()` 호출 L61 → registry 파일 존재 확인 L62-L65 → 반환 JSON 생성 L74-L85
+- Frontend 반환 형태: 저장된 entry, `registry_path`, `saved_path`, status가 JSON으로 반환되고, Frontend는 등록 목록과 apply 필요 상태를 갱신한다.
+
+#### registry
+
+- 영문 기능명: registry
+- 한국어 직역: 등록 정보 저장소
+- 실제 의미: 등록된 Message/Service/Action interface 목록과 각 항목의 source, full_type, build/import 가능 여부를 관리한다.
+- 사용 시점: 사용자가 Interface Lab에서 등록된 interface 목록을 보거나 특정 항목을 삭제할 때 사용한다.
+- 코드 위치: 목록 endpoint는 `routers/interface_management.py` L88, 처리 함수 `get_interface_registry()`는 L89에서 시작한다. 삭제 endpoint는 L102, 처리 함수 `delete_interface_registry_entry()`는 L103에서 시작한다.
+- 호출 흐름: 목록은 `get_interface_registry()` L89 → `registry_snapshot()` L92 → `interface_registry` 반환 L95-L99. 삭제는 `delete_interface_registry_entry()` L103 → 현재 registry 조회 L111-L118 → `uploaded_interfaces` 항목이면 `delete_uploaded_interface()` L124-L126 및 pending 표시 L127-L129 → 그 외 항목은 `delete_registry_entry()` L131-L136
+- Frontend 반환 형태: `interface_registry.yaml` 기준의 목록이 JSON으로 반환되고, Frontend는 registry row를 표시하거나 삭제 후 목록을 다시 fetch한다.
+
+#### manual
+
+- 영문 기능명: manual
+- 한국어 직역: 수동 등록
+- 실제 의미: 사용자가 타입 이름만 직접 등록하거나, interface 정의 내용을 직접 입력해 `.msg`, `.srv`, `.action` 파일을 만든다.
+- 사용 시점: 파일 업로드 없이 `std_srvs/srv/SetBool` 같은 기존 타입을 등록하거나, 브라우저에서 새 정의를 작성해 실험할 때 사용한다.
+- 코드 위치: `manual-type` endpoint는 `routers/interface_management.py` L146, 처리 함수는 L147에서 시작한다. `manual-definition` 생성 endpoint는 L171, 검증 endpoint는 L197, 수정 endpoint는 L222, 삭제 endpoint는 L247에서 시작한다.
+- 호출 흐름: 타입 이름만 등록할 때는 `register_manual_interface_type()` L147 → `register_manual_type()` L156-L160. 정의를 직접 쓸 때는 `write_manual_interface_definition()` L172 → `write_manual_definition()` L181-L186. 검증만 할 때는 `validate_manual_interface_definition()` L198 → `validate_manual_definition()` L207-L212. 수정/삭제는 각각 `update_manual_definition()` L232-L236, `delete_manual_definition()` L251을 호출한다.
+- Frontend 반환 형태: 등록 또는 검증 결과가 JSON으로 반환되고, Frontend는 성공 메시지와 apply 필요 여부를 표시한다.
+
+#### package
+
+- 영문 기능명: package
+- 한국어 직역: 패키지
+- 실제 의미: 완성된 ROS2 interface package를 zip 또는 폴더 단위로 `uploaded_interface_packages` 아래에 보존하고 package registry에 등록한다.
+- 사용 시점: 여러 interface와 package.xml/CMakeLists.txt가 함께 있는 기존 ROS2 interface package를 통째로 추가할 때 사용한다.
+- 코드 위치: zip 업로드 endpoint는 `routers/interface_management.py` L276, 폴더 업로드 endpoint는 L314, 목록 endpoint는 L350, 삭제 endpoint는 L367에서 시작한다.
+- 호출 흐름: zip은 `upload_ros_interface_package()` L277 → `extract_multipart_file()` L297-L299 → `upload_interface_package()` L300. 폴더는 `upload_ros_interface_package_folder()` L315 → `extract_multipart_package_files()` L335-L337 → `upload_interface_package_folder()` L338. 목록은 `packages_snapshot()` L354, 삭제는 `delete_interface_package()` L371을 호출한다.
+- Frontend 반환 형태: package entry와 package 목록이 JSON으로 반환되고, Frontend는 package row와 apply 필요 상태를 표시한다.
+
+### 4.3 interface apply
+
+`interface apply`는 등록된 interface를 실제 ROS2와 Backend에서 사용할 수 있도록 반영하는 단계다. apply(등록된 인터페이스의 빌드 및 실제 반영)는 단순 등록이 아니라 파일 생성 상태 확인, CMake 등록, package 의존성 반영, `colcon build`, import-check(Python 또는 ROS2 환경에서 타입을 불러올 수 있는지 확인)를 포함한다. 성공 후에는 Backend reload가 예약될 수 있다.
+
+공통 흐름:
+
+```text
+Frontend
+→ HTTP 요청
+→ Interface Apply Router endpoint
+→ apply runtime 호출
+→ build/import 상태 계산
+→ 결과 반환
+→ FastAPI가 JSON 응답으로 변환
+→ Frontend 표시
+```
+
+#### apply
+
+- 영문 기능명: apply
+- 한국어 직역: 적용
+- 실제 의미: registry와 package 저장소에 등록된 interface를 실제 ROS2 workspace build 결과로 반영한다.
+- 사용 시점: 사용자가 새 interface를 등록, 수정, 삭제한 뒤 실제 Topic Publish/Receive, Service Call, Action Goal에 사용 가능하게 만들 때 사용한다.
+- 코드 위치: endpoint는 `routers/interface_apply.py` L25, 처리 함수 `apply_ros_interfaces()`는 L26에서 시작한다.
+- 호출 흐름: `apply_ros_interfaces()` L26 → `run_interface_apply()` 호출 L29 → build/import 결과 확인 L35 → 성공이면 `touch_reload_trigger_after_delay()` background task 예약 L36 → 성공 JSON L37-L47 또는 실패 JSON L58-L68 반환
+- Frontend 반환 형태: `success`, `status`, `build_status`, `real_apply_success`, `reload_scheduled`, `summary`, `not_applied`가 JSON으로 반환되고, Frontend는 적용 성공/실패와 재시도 필요 항목을 표시한다.
+
+#### status
+
+- 영문 기능명: status
+- 한국어 직역: 상태
+- 실제 의미: 마지막 apply의 진행 상태, build 결과, pending 여부, 실패 사유를 조회한다.
+- 사용 시점: 사용자가 Interface Lab에서 현재 등록 변경이 빌드에 반영되었는지 확인할 때 사용한다.
+- 코드 위치: endpoint는 `routers/interface_apply.py` L71, 처리 함수 `get_interface_apply_status()`는 L72에서 시작한다.
+- 호출 흐름: `get_interface_apply_status()` L72 → `apply_status()` 호출 L75 → `interface_apply_status.yaml` 기반 상태 반환 L78-L82
+- Frontend 반환 형태: apply status JSON이 반환되고, Frontend는 적용 버튼 상태와 안내 메시지에 사용한다.
+
+#### import-check
+
+- 영문 기능명: import-check
+- 한국어 직역: 가져오기 확인
+- 실제 의미: 빌드된 Message/Service/Action 타입을 현재 Backend Python 환경에서 실제 import할 수 있는지 다시 검사한다.
+- 사용 시점: build 후에도 새 타입이 실행 후보에 안 보이거나, registry의 import 가능 상태를 재확인해야 할 때 사용한다.
+- 코드 위치: endpoint는 `routers/interface_apply.py` L85, 처리 함수 `check_ros_interface_imports()`는 L86에서 시작한다.
+- 호출 흐름: `check_ros_interface_imports()` L86 → `run_import_check_and_update_registry()` L89 → `record_import_check_status()` L90 → `refresh_registry_imports()` L91 → summary와 갱신 registry 반환 L95-L105
+- Frontend 반환 형태: 갱신된 registry, summary, `install_python_paths`, `not_applied`가 JSON으로 반환되고, Frontend는 import 가능/불가능 상태를 registry 목록에 반영한다.
+
+### 4.4 topic execution
+
+`topic execution`은 사용자가 Interface Lab에서 Topic 작업을 명시적으로 실행하는 Router다. Monitoring Topic은 자동으로 ROS2 Topic 상태를 관찰하지만, Topic Execution은 사용자가 직접 publish(Topic 메시지 발행) 또는 receive(Topic 메시지 수신)를 실행한다.
+
+공통 흐름:
+
+```text
+Frontend
+→ HTTP 요청
+→ Topic Execution Router endpoint
+→ RosMonitor의 Topic execution 위임 함수 호출
+→ InterfaceReceiveRuntime 또는 TopicPublishRuntime 처리
+→ 결과 반환
+→ FastAPI가 JSON 응답으로 변환
+→ Frontend 표시
+```
 
 #### callable message
 

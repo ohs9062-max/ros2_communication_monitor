@@ -1,5 +1,7 @@
 # 핵심 개념
 
+> 라인 번호는 2026-07-21 실제 코드 기준이다. 이 문서는 용어를 먼저 이해하고, 실제 구현 위치를 바로 찾아가기 위한 입구다.
+
 ## 1. ROS2 통신 요소
 
 **Node**는 센서 읽기나 로봇 제어처럼 하나의 역할을 수행하는 ROS2 프로그램
@@ -11,6 +13,13 @@ Action 관계도 수집합니다.
 **Service**는 client가 한 번 요청하고 server가 응답하는 통신입니다.
 
 **Action**은 오래 걸리는 작업을 Goal, Feedback, Result로 나눈 통신입니다.
+
+| 개념 | 이 프로젝트에서 저장/조회되는 내용 | 대표 코드 위치 |
+|---|---|---|
+| Node | Node 이름, namespace, 연결된 Topic/Service/Action 관계 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/node/runtime.py` L25, L69 |
+| Topic | Topic 이름, type, publisher/subscriber 수, latest preview, Hz | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic/runtime.py` L41, L70, L120 |
+| Service | Service 이름, type, server/client 수, 상태, active_check 결과 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/service/runtime.py` L24, L54, L86 |
+| Action | Action 이름, type, server/client 수, status/feedback/result 관찰 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/action/runtime.py` L35, L70, L84 |
 
 ## 2. Interface Lab 관련 개념
 
@@ -26,6 +35,13 @@ Interface Lab은 ROS2 인터페이스를 동적으로 관리하고 로봇과 상
 - **build/apply**: `manual_definition`, `single_upload`, `package_upload` 방식으로 등록한 인터페이스 파일을 실제 ROS2 패키지 구조로 만들고 `colcon build`를 실행하는 과정입니다. CMakeLists.txt와 package.xml 재생성은 `interface_lab/management/manual_interfaces.py`가 담당하고, `interface_lab/apply/runtime.py`가 colcon build를 실행합니다. `manual_type`은 파일을 생성하지 않으므로 build가 필요 없습니다.
 - **callable**: 서비스나 액션이 현재 로봇에서 호출 가능한지 여부 (스키마와 타입 일치 여부 확인).
 - **exact match**: 이름뿐만 아니라 `full_type`까지 일치해야 정확한 호출이 가능함.
+
+용어를 코드 흐름으로 보면 다음과 같다.
+
+- `registry`: `backend/config/interface_registry.yaml`에 저장되는 등록 정보이며, 읽기 구현은 `interface_lab/management/registry.py` L374에서 시작한다.
+- `full_type`: `패키지명/msg/타입명`, `패키지명/srv/타입명`, `패키지명/action/타입명` 형태의 전체 타입 이름이다. callable 판단에서 이름만 맞는지 보지 않고 full_type까지 맞는지 확인한다.
+- `callable`: 등록되어 있고 import 가능하며 현재 ROS2 Graph에도 실행 대상이 존재한다는 뜻이다. Service는 `interface_lab/execution/service_call_runtime.py` L56, Action은 `interface_lab/execution/action_goal_runtime.py` L61, Topic Message는 `interface_lab/execution/topic_runtime.py` L80에서 판단한다.
+- `schema`: 사용자가 form에 어떤 값을 넣어야 하는지 알려주는 필드 구조다. Topic Message schema는 `interface_lab/execution/topic_runtime.py` L64, 공통 schema helper는 `interface_lab/common/value_converter.py` L130에서 시작한다.
 
 ## 3. 모니터링 vs 실행 (Monitor vs Execute)
 
@@ -77,6 +93,11 @@ FastAPI는 웹 요청을 처리하고 ROS2 spin thread는 timer와 subscription 
 ROS2 상태 모니터링을 위한 Runtime cache 갱신과, Interface Lab을 통한 동적 인터페이스 관리 및 서비스/액션 상호작용이 동시에 수행됩니다.
 
 ## 초보자가 자주 틀리는 부분
+
+- `monitoring`은 관찰이다. 사용자의 Service Request나 Action Goal을 자동으로 보내지 않는다.
+- `execution`은 사용자가 명시적으로 버튼을 눌렀을 때만 실행된다. Service Call endpoint는 `routers/service_execution.py` L26, Action Goal endpoint는 `routers/action_execution.py` L26이다.
+- `manual_definition` 저장 성공은 build 성공이 아니다. 저장은 `routers/interface_management.py` L171에서 시작하고, 실제 적용은 `routers/interface_apply.py` L25에서 시작한다.
+- `snapshot`은 현재 cache를 복사한 응답이다. Topic snapshot은 `ros_monitor.py` L113 → `topic/runtime.py` L70 흐름이다.
 
 - 모니터링(관찰)과 실행(요청)은 다른 Runtime 흐름을 가집니다.
 - `full_type` 매칭 없이 이름만으로 호출하면 타입 오류가 발생합니다.

@@ -1,5 +1,7 @@
 # 프로젝트 개요: ROS2 Communication Monitor Dashboard
 
+> 라인 번호는 2026-07-21 실제 코드 기준이다. `L16`처럼 적힌 값은 해당 파일에서 기능이 시작되는 줄이다.
+
 ## 1. 이 프로젝트가 필요한 이유
 
 ROS2 시스템에는 여러 Node가 Topic, Service, Action으로 연결됩니다. 규모가 커지면
@@ -57,6 +59,21 @@ Electron은 ROS2에 직접 접근하지 않습니다.
 React/Electron → FastAPI → Python rclpy → ROS2
 ```
 
+### 코드 위치로 보는 큰 그림
+
+| 단계 | 사용자가 보는 의미 | 코드 위치 |
+|---|---|---|
+| FastAPI app 시작 | Backend 서버가 켜지고 router를 등록한다 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/main.py` L21, L30, L40-L45 |
+| RosMonitor 시작 | rclpy Node와 spin thread를 만들고 runtime을 살린다 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L74 |
+| Graph 주기 갱신 | Topic/Service/Action/Node runtime cache를 최신화한다 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L531 |
+| Monitoring REST | 화면이 현재 snapshot을 요청한다 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/monitoring.py` L16-L93 |
+| Interface 등록 | 사용자가 `.msg/.srv/.action` 또는 package를 등록한다 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_management.py` L40-L367 |
+| Interface 적용 | 등록된 interface를 build/import 가능한 상태로 만든다 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/interface_apply.py` L25-L85 |
+| 명시 실행 | 사용자가 Topic/Service/Action 실행 버튼을 누른다 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/topic_execution.py` L14-L154, `service_execution.py` L14-L86, `action_execution.py` L14-L94 |
+| Frontend 표시 | React hook/page/component가 JSON을 화면 상태로 바꾼다 | `frontend/src/App.jsx` L20, `frontend/src/api/rosApi.js` L1, `frontend/src/hooks/` |
+
+처음 코드를 읽을 때는 `main.py`에서 모든 기능을 찾으려고 하면 길을 잃기 쉽다. `main.py`는 app을 조립하고 router를 붙이는 곳이며, 실제 endpoint 구현은 `routers/` 아래에 있다. Router는 다시 `RosMonitor`나 `interface_lab/` helper/runtime으로 일을 넘긴다.
+
 ## 3. Backend가 먼저 모으고 API가 읽는 이유
 
 웹 요청이 올 때마다 ROS2 전체를 다시 조사하면 응답 시간과 수집 시점이 불안정해질
@@ -77,6 +94,21 @@ FastAPI 시작 시 RosMonitor 시작
 → WebSocket이 경량 요약 snapshot 전송
   — routers/monitoring.py
 ```
+
+라인 기준으로 풀면 다음과 같다.
+
+```text
+main.py L21 lifespan
+→ ros_monitor.py L74 RosMonitor.start()
+→ ros_monitor.py L531 _update_graph()
+→ topic/runtime.py L120 TopicRuntime.update()
+→ service/runtime.py L86 ServiceRuntime.update()
+→ action/runtime.py L84 ActionRuntime.update()
+→ node/runtime.py L69 NodeRuntime.update()
+→ routers/monitoring.py L16-L93 REST/WebSocket이 snapshot 읽기
+```
+
+여기서 중요한 점은 REST 요청이 Graph 갱신의 방아쇠가 아니라는 것이다. Graph 갱신은 Backend 내부 timer가 하고, REST는 이미 만들어진 snapshot을 읽는다.
 
 REST 요청이 ROS2 Graph 갱신을 시작하는 것은 아닙니다. Runtime은 background에서
 독립적으로 갱신되고 REST는 가장 최근에 완료된 값을 읽습니다.

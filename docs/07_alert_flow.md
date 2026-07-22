@@ -6,6 +6,8 @@
 
 목록의 badge는 현재 관찰 상태를 넓게 보여준다. Alert는 그중 사용자가 조치해야 할 가능성이 높은 조건만 선별한다. 따라서 badge 개수와 Alert count가 달라도 정상이다.
 
+예를 들어 Service가 `waiting_server`인 것은 상태 badge로는 의미가 있지만, 항상 장애 Alert는 아니다. 반대로 MonitorStatus message가 `critical`이면 Topic 목록의 한 항목에서 나온 정보라도 `/ros/alerts` 통합 목록에 올라온다.
+
 ## 2. Alert 생성 코드 추적
 
 ```text
@@ -39,7 +41,39 @@ REST 또는 WebSocket이 alert 요청
 | Alerts page | `frontend/src/pages/AlertsPage.jsx` L3 |
 | Alert list component | `frontend/src/components/AlertsList.jsx` L19 |
 
-## 4. 정책
+## 4. `/ros/alerts`를 라인으로 따라가기
+
+```text
+Frontend Overview 또는 Alerts 화면
+→ GET /ros/alerts
+→ routers/monitoring.py L86 @router.get('/ros/alerts')
+→ routers/monitoring.py L87 get_ros_alerts()
+→ L89 ros_monitor.alerts()
+→ ros_monitor.py L376 RosMonitor.alerts()
+→ L379 service alert input 읽기
+→ L380 action snapshot 읽기
+→ L381 topic alert input 읽기
+→ L382-L383 node snapshot 읽기
+→ topic/service/action/node alert builder 호출
+→ level별 meta와 alert 배열 반환
+```
+
+Alert는 DB에 저장된 이력이 아니라 "지금 snapshot 기준으로 조립한 결과"다. 따라서 runtime cache가 바뀌면 다음 조회에서 alert 목록도 바뀐다.
+
+## 5. WebSocket 안의 Alert 흐름
+
+```text
+Frontend WebSocket 연결
+→ routers/monitoring.py L92 /ws/monitor
+→ ros_monitor.py L336 websocket_snapshot()
+→ ros_monitor.py L343 alerts = self.alerts()
+→ ros_monitor.py L364 alerts를 monitor_snapshot에 포함
+→ Frontend가 header/overview 요약에 반영
+```
+
+WebSocket의 alerts도 `/ros/alerts`와 같은 정책을 사용하지만, 상세 조회가 아니라 경량 요약 snapshot 안에 포함되는 값이다.
+
+## 6. 정책
 
 - Topic: required stream publisher 없음, 장기 미수신, stale, MonitorStatus warning/error/critical.
 - Service: allowlist active check의 timeout/error/failed.

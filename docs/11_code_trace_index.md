@@ -2,6 +2,23 @@
 
 > 라인 번호는 2026-07-21 실제 코드 기준이다. 함수명은 실제 코드 기준이며 추측 이름을 사용하지 않는다.
 
+## 0. 이 색인을 읽는 법
+
+이 문서는 자세한 설명보다 "어디서 시작하는지"를 빨리 찾기 위한 지도다. endpoint를 찾을 때는 decorator 줄과 처리 함수 줄을 함께 본다. 예를 들어 `/ros/topics`는 `routers/monitoring.py` L16의 `@router.get('/ros/topics')`에서 endpoint가 선언되고, 바로 다음 L17의 `get_ros_topics()`가 실제 처리 함수다.
+
+일반적인 추적 순서는 다음과 같다.
+
+```text
+Frontend API 함수
+→ Backend router endpoint
+→ router 처리 함수
+→ ros_monitor public method 또는 interface_lab helper
+→ domain runtime/helper
+→ JSON 응답
+```
+
+Monitoring 조회는 runtime cache를 읽고, Interface Lab execution은 사용자가 명시 실행한 요청만 ROS2로 전송한다.
+
 ## 1. Backend app과 router
 
 | 기능 | 코드 위치 |

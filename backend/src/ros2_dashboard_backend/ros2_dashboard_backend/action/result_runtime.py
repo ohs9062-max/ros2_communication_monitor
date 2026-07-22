@@ -1,4 +1,4 @@
-"""Runtime owner for observed-goal-only action result lookup."""
+"""Action 모니터링의 result_runtime 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from ros2_dashboard_backend.action.subscriptions import (
 
 
 class ActionResultRuntime:
-    """Manage GetResult clients and pending observed goal result futures."""
+    """Action 모니터링 runtime 상태와 cache를 관리하는 클래스입니다."""
 
     def __init__(
         self,
@@ -28,7 +28,7 @@ class ActionResultRuntime:
         lock: Any,
         node_getter: Callable[[], Any],
     ) -> None:
-        """Initialize result runtime with shared action cache access."""
+        """Action 모니터링에서 내부 보조 처리를 수행하는 내부 helper 함수입니다."""
         self._action_subscriptions = action_subscriptions
         self._auto_fetch_result_for_observed_goals = (
             auto_fetch_result_for_observed_goals
@@ -43,18 +43,18 @@ class ActionResultRuntime:
         self,
         action_subscriptions: dict[str, dict[str, Any]],
     ) -> None:
-        """Rebind the mutable action subscription cache reference."""
+        """Action 모니터링에서 Action 실행 또는 상태를 처리하는 함수입니다."""
         self._action_subscriptions = action_subscriptions
 
     def clear(self) -> None:
-        """Clear result clients, service class cache, and pending futures."""
+        """Action 모니터링에서 cache와 runtime 상태를 초기화하는 함수입니다."""
         with self._lock:
             self._action_result_clients = {}
             self._action_result_service_classes = {}
             self._action_result_pending = {}
 
     def cleanup_actions(self, stale_names: list[str]) -> None:
-        """Drop pending futures and clients for disappeared actions."""
+        """Action 모니터링에서 Action 실행 또는 상태를 처리하는 함수입니다."""
         if not stale_names:
             return
 
@@ -70,7 +70,7 @@ class ActionResultRuntime:
         self,
         action_type: str | None,
     ) -> tuple[bool, str | None, str | None]:
-        """Return result support metadata for an action type."""
+        """Action 모니터링에서 요청된 처리를 수행하는 함수입니다."""
         if not self._auto_fetch_result_for_observed_goals:
             return False, None, 'observed goal result fetch disabled'
 
@@ -80,7 +80,7 @@ class ActionResultRuntime:
         return service_class is not None, result_policy, result_reason
 
     def update(self, actions: list[dict[str, Any]]) -> None:
-        """Complete pending futures and start eligible result requests."""
+        """Action 모니터링에서 runtime 상태를 갱신하는 함수입니다."""
         self._complete_action_result_futures()
         for action in actions:
             self._maybe_start_action_result_requests(action)

@@ -1,4 +1,4 @@
-"""Helpers for building ROS graph service items."""
+"""Service 모니터링의 discovery 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def build_service_item(
     active_check_allowlist: dict[str, Any],
     active_check_cache: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    """Build a public /ros/services item."""
+    """Service 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     category = service_category(name, service_type)
     status, reason = service_status(
         service_type,

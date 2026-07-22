@@ -1,4 +1,4 @@
-"""Action filtering helpers."""
+"""Action 모니터링의 filters 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ def is_action_included(
     exclude_names: tuple[str, ...] = (),
     exclude_prefixes: tuple[str, ...] = (),
 ) -> bool:
-    """Return whether an action is allowed by config filters."""
+    """Action 모니터링에서 Action 실행 또는 상태를 처리하는 함수입니다."""
     if include_names and name not in include_names:
         return False
 

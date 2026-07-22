@@ -1,4 +1,4 @@
-"""Runtime owner for allowlisted service active checks."""
+"""Service 모니터링의 active_check_runtime 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from ros2_dashboard_backend.service.active_check import (
 
 
 class ServiceActiveCheckRuntime:
-    """Manage active_check clients, pending futures, and cached states."""
+    """Service 모니터링 runtime 상태와 cache를 관리하는 클래스입니다."""
 
     def __init__(
         self,
@@ -26,7 +26,7 @@ class ServiceActiveCheckRuntime:
         lock: Any,
         node_getter: Callable[[], Any],
     ) -> None:
-        """Initialize active_check runtime with shared node and lock access."""
+        """Service 모니터링에서 내부 보조 처리를 수행하는 내부 helper 함수입니다."""
         self._active_check_config = active_check_config
         self._lock = lock
         self._node_getter = node_getter
@@ -38,11 +38,11 @@ class ServiceActiveCheckRuntime:
 
     @property
     def allowlist(self) -> dict[str, Any]:
-        """Return active_check allowlist entries keyed by service name."""
+        """Service 모니터링에서 요청된 처리를 수행하는 함수입니다."""
         return self._active_check_allowlist
 
     def cache_snapshot(self) -> dict[str, dict[str, Any]]:
-        """Return a copy of cached active_check state."""
+        """Service 모니터링에서 cache snapshot을 반환하는 함수입니다."""
         with self._lock:
             return {
                 name: state.copy()
@@ -50,7 +50,7 @@ class ServiceActiveCheckRuntime:
             }
 
     def clear(self) -> None:
-        """Clear runtime cache and client references."""
+        """Service 모니터링에서 cache와 runtime 상태를 초기화하는 함수입니다."""
         with self._lock:
             self._active_check_cache = {}
             self._active_check_pending = {}
@@ -58,7 +58,7 @@ class ServiceActiveCheckRuntime:
             self._active_check_last_run = 0.0
 
     def update(self, services: list[dict[str, Any]]) -> None:
-        """Update pending futures and start due active_check calls."""
+        """Service 모니터링에서 runtime 상태를 갱신하는 함수입니다."""
         now = time()
         self._complete_active_check_futures(now)
 

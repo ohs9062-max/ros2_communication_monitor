@@ -1,4 +1,4 @@
-"""Manage uploaded ROS 2 interface packages."""
+"""Interface Lab의 packages 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -36,11 +36,11 @@ PACKAGE_LOCK = None
 
 
 class InterfacePackageError(ValueError):
-    """Raised when an uploaded interface package is invalid."""
+    """Interface Lab에서 발생하는 예외를 표현하는 클래스입니다."""
 
 
 def default_packages_registry_path() -> Path:
-    """Return package registry path."""
+    """Interface Lab에서 요청된 처리를 수행하는 함수입니다."""
     backend_root = backend_workspace_root()
     configured = Path(
         os.getenv('INTERFACE_PACKAGES_REGISTRY_PATH', 'config/interface_packages.yaml'),
@@ -49,7 +49,7 @@ def default_packages_registry_path() -> Path:
 
 
 def default_uploaded_packages_root() -> Path:
-    """Return uploaded package storage root under the backend workspace."""
+    """Interface Lab에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     backend_root = backend_workspace_root()
     configured = Path(
         os.getenv(
@@ -66,7 +66,7 @@ def upload_interface_package(
     *,
     replace: bool = False,
 ) -> dict[str, Any]:
-    """Validate and store a zipped ROS 2 interface package."""
+    """Interface Lab에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     safe_name = PurePosixPath(file_name.replace('\\', '/')).name
     if not safe_name.lower().endswith('.zip'):
         raise InterfacePackageError('zip 파일만 업로드할 수 있습니다.')
@@ -94,7 +94,7 @@ def extract_multipart_package_files(
     content_type: str,
     body: bytes,
 ) -> list[tuple[str, bytes]]:
-    """Extract package folder files with their browser relative paths."""
+    """Interface Lab에서 요청된 처리를 수행하는 함수입니다."""
     if not content_type.lower().startswith('multipart/form-data'):
         raise InterfacePackageError('multipart/form-data 요청이 필요합니다.')
 
@@ -129,7 +129,7 @@ def upload_interface_package_folder(
     *,
     replace: bool = False,
 ) -> dict[str, Any]:
-    """Validate and store a browser folder upload as a ROS 2 interface package."""
+    """Interface Lab에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     if len(files) > MAX_PACKAGE_FILES:
         raise InterfacePackageError(f'파일은 최대 {MAX_PACKAGE_FILES}개까지 허용합니다.')
     total_size = sum(len(content) for _, content in files)
@@ -221,12 +221,12 @@ def _rebase_interface_paths(
 
 
 def packages_snapshot() -> dict[str, Any]:
-    """Return normalized uploaded package registry."""
+    """Interface Lab에서 cache snapshot을 반환하는 함수입니다."""
     return _load_packages_registry(default_packages_registry_path())
 
 
 def delete_interface_package(package_name: str) -> dict[str, Any]:
-    """Delete an uploaded interface package and remove it from the registry."""
+    """Interface Lab에서 등록 항목이나 파일을 삭제하는 함수입니다."""
     if not PACKAGE_NAME_PATTERN.fullmatch(package_name):
         raise InterfacePackageError('패키지명이 올바르지 않습니다.')
     destination = default_uploaded_packages_root() / package_name
@@ -247,7 +247,7 @@ def delete_interface_package(package_name: str) -> dict[str, Any]:
 
 
 def upsert_package_entry(entry: dict[str, Any]) -> dict[str, Any]:
-    """Insert or replace one package registry entry."""
+    """Interface Lab에서 요청된 처리를 수행하는 함수입니다."""
     path = default_packages_registry_path()
     registry = _load_packages_registry(path)
     registry['packages'] = [
@@ -261,7 +261,7 @@ def upsert_package_entry(entry: dict[str, Any]) -> dict[str, Any]:
 
 
 def mark_packages_build_applied() -> dict[str, Any]:
-    """Mark uploaded packages as built successfully."""
+    """Interface Lab에서 public API 응답 항목을 조립하는 함수입니다."""
     path = default_packages_registry_path()
     registry = _load_packages_registry(path)
     built_at = datetime.now(timezone.utc).isoformat()
@@ -274,7 +274,7 @@ def mark_packages_build_applied() -> dict[str, Any]:
 
 
 def refresh_package_imports() -> dict[str, Any]:
-    """Refresh import availability for uploaded packages."""
+    """Interface Lab에서 생성된 interface 타입 import 가능 여부를 확인하는 함수입니다."""
     path = default_packages_registry_path()
     registry = _load_packages_registry(path)
     checked_at = datetime.now(timezone.utc).isoformat()
@@ -311,7 +311,7 @@ def package_apply_summary(
     registry: dict[str, Any] | None = None,
     require_import_available: bool = False,
 ) -> dict[str, Any]:
-    """Return apply readiness/import summary for uploaded packages."""
+    """Interface Lab에서 interface build/apply 상태를 처리하는 함수입니다."""
     registry = registry or _load_packages_registry(default_packages_registry_path())
     not_applied: list[dict[str, Any]] = []
     import_pending: list[dict[str, Any]] = []
@@ -377,12 +377,12 @@ def package_apply_summary(
 
 
 def registered_package_services() -> list[dict[str, Any]]:
-    """Return package-uploaded service entries for callable matching."""
+    """Interface Lab에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     return _registered_package_interfaces('srv', 'service_type', 'request', 'response')
 
 
 def registered_package_messages() -> list[dict[str, Any]]:
-    """Return package-uploaded message entries for topic publish/subscribe."""
+    """Interface Lab에서 interface 등록 정보를 저장하는 함수입니다."""
     entries = []
     for package in packages_snapshot()['packages']:
         for item in package.get('interfaces', {}).get('msg', []):
@@ -401,7 +401,7 @@ def registered_package_messages() -> list[dict[str, Any]]:
 
 
 def registered_package_actions() -> list[dict[str, Any]]:
-    """Return package-uploaded action entries for callable matching."""
+    """Interface Lab에서 Action 실행 또는 상태를 처리하는 함수입니다."""
     entries = []
     for package in packages_snapshot()['packages']:
         for item in package.get('interfaces', {}).get('action', []):

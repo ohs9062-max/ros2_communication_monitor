@@ -1,4 +1,4 @@
-"""Runtime owner for ROS 2 topic graph and subscription monitoring."""
+"""Topic 모니터링의 runtime 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class TopicRuntime:
-    """Collect topic graph data and own topic subscription caches."""
+    """Topic 모니터링 runtime 상태와 cache를 관리하는 클래스입니다."""
 
     def __init__(
         self,
@@ -49,7 +49,7 @@ class TopicRuntime:
         lock: Any,
         node_getter: Callable[[], Any],
     ) -> None:
-        """Initialize topic runtime with shared monitor dependencies."""
+        """Topic 모니터링에서 내부 보조 처리를 수행하는 내부 helper 함수입니다."""
         self._action_monitor_subscriber_count = (
             action_monitor_subscriber_count
         )
@@ -61,14 +61,14 @@ class TopicRuntime:
         self._subscriptions: dict[str, dict[str, Any]] = {}
 
     def clear(self) -> None:
-        """Clear cached topic graph and subscription state."""
+        """Topic 모니터링에서 cache와 runtime 상태를 초기화하는 함수입니다."""
         with self._lock:
             self._topics = []
             self._last_updated = 0.0
             self._subscriptions = {}
 
     def snapshot(self) -> dict[str, Any]:
-        """Return a thread-safe snapshot of the cached topic list."""
+        """Topic 모니터링에서 cache snapshot을 반환하는 함수입니다."""
         with self._lock:
             topics = [topic.copy() for topic in self._topics]
             subscriptions = {
@@ -101,7 +101,7 @@ class TopicRuntime:
     def alert_snapshot(
         self,
     ) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
-        """Return topic and subscription inputs for alert builders."""
+        """Topic 모니터링에서 cache snapshot을 반환하는 함수입니다."""
         with self._lock:
             topics = [topic.copy() for topic in self._topics]
             subscriptions = {
@@ -118,7 +118,7 @@ class TopicRuntime:
         return topics, subscriptions
 
     def update(self) -> None:
-        """Refresh topic graph metadata and subscription state."""
+        """Topic 모니터링에서 runtime 상태를 갱신하는 함수입니다."""
         node = self._node_getter()
         if node is None:
             return
@@ -177,7 +177,7 @@ class TopicRuntime:
         )
 
     def latest_message(self, name: str) -> dict[str, Any]:
-        """Return the cached latest message preview for a topic."""
+        """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
         if self._node_getter() is None:
             return self._latest_response(
                 success=False,
@@ -228,7 +228,7 @@ class TopicRuntime:
         )
 
     def topic_hz(self, name: str) -> dict[str, Any]:
-        """Return the recent message frequency for a topic."""
+        """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
         if self._node_getter() is None:
             return self._hz_response(
                 success=False,

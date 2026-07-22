@@ -1,1 +1,1 @@
-"""FastAPI routers for the ROS 2 dashboard backend."""
+"""FastAPI Router 패키지 초기화 모듈입니다."""

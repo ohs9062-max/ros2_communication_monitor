@@ -1,4 +1,4 @@
-"""Manual ROS 2 service introspection demo nodes."""
+"""Service 모니터링의 introspection_test_nodes 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ SERVICE_NAME = '/introspection_add_two_ints'
 
 
 class IntrospectionAddTwoIntsServer(Node):
-    """AddTwoInts server with service introspection enabled."""
+    """Service 모니터링의 IntrospectionAddTwoIntsServer 역할을 담당하는 클래스입니다."""
 
     def __init__(self) -> None:
-        """Create the test service and enable CONTENTS introspection."""
+        """Service 모니터링에서 내부 보조 처리를 수행하는 내부 helper 함수입니다."""
         super().__init__('introspection_add_two_ints_server')
         self._service = self.create_service(
             AddTwoInts,
@@ -47,10 +47,10 @@ class IntrospectionAddTwoIntsServer(Node):
 
 
 class IntrospectionAddTwoIntsClient(Node):
-    """One-shot AddTwoInts client with service introspection enabled."""
+    """Service 모니터링의 IntrospectionAddTwoIntsClient 역할을 담당하는 클래스입니다."""
 
     def __init__(self) -> None:
-        """Create the test client and enable CONTENTS introspection."""
+        """Service 모니터링에서 내부 보조 처리를 수행하는 내부 helper 함수입니다."""
         super().__init__('introspection_add_two_ints_client')
         self.client = self.create_client(AddTwoInts, SERVICE_NAME)
         self.client.configure_introspection(
@@ -63,7 +63,7 @@ class IntrospectionAddTwoIntsClient(Node):
         )
 
     def call_once(self, a: int, b: int) -> None:
-        """Send one manual request to the introspection test service."""
+        """Service 모니터링에서 요청된 처리를 수행하는 함수입니다."""
         if not self.client.wait_for_service(timeout_sec=5.0):
             self.get_logger().error(f'Service not available: {SERVICE_NAME}')
             return
@@ -84,7 +84,7 @@ class IntrospectionAddTwoIntsClient(Node):
 
 
 def server_main(args: list[str] | None = None) -> None:
-    """Run the introspection demo server."""
+    """Service 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     rclpy.init(args=args)
     node = IntrospectionAddTwoIntsServer()
     try:
@@ -98,7 +98,7 @@ def server_main(args: list[str] | None = None) -> None:
 
 
 def client_main(args: list[str] | None = None) -> None:
-    """Run one manual introspection demo request."""
+    """Service 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     parser = argparse.ArgumentParser()
     parser.add_argument('--a', type=int, default=1)
     parser.add_argument('--b', type=int, default=2)

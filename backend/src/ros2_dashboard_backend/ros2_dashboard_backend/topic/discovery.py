@@ -1,4 +1,4 @@
-"""Helpers for building ROS graph topic items."""
+"""Topic 모니터링의 discovery 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ def build_topic_item(
     supported_type: bool,
     deep_monitoring: bool,
 ) -> dict[str, Any]:
-    """Build the public /ros/topics item without changing its keys."""
+    """Topic 모니터링에서 public API 응답 항목을 조립하는 함수입니다."""
     status, reason = topic_status(
         publisher_count,
         external_subscriber_count,

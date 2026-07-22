@@ -1,4 +1,4 @@
-"""Runtime owner for ROS 2 action graph and event monitoring."""
+"""Action 모니터링의 runtime 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ActionRuntime:
-    """Collect action graph data and own action event subscriptions."""
+    """Action 모니터링 runtime 상태와 cache를 관리하는 클래스입니다."""
 
     def __init__(
         self,
@@ -42,7 +42,7 @@ class ActionRuntime:
         lock: Any,
         node_getter: Callable[[], Any],
     ) -> None:
-        """Initialize action runtime with shared monitor dependencies."""
+        """Action 모니터링에서 내부 보조 처리를 수행하는 내부 helper 함수입니다."""
         self._config = config
         self._lock = lock
         self._node_getter = node_getter
@@ -59,7 +59,7 @@ class ActionRuntime:
         )
 
     def clear(self) -> None:
-        """Clear action graph, subscriptions, and result runtime state."""
+        """Action 모니터링에서 cache와 runtime 상태를 초기화하는 함수입니다."""
         with self._lock:
             self._actions = []
             self._last_updated = 0.0
@@ -68,7 +68,7 @@ class ActionRuntime:
         self._result_runtime.clear()
 
     def snapshot(self) -> dict[str, Any]:
-        """Return a thread-safe snapshot of cached action state."""
+        """Action 모니터링에서 cache snapshot을 반환하는 함수입니다."""
         with self._lock:
             actions = [action.copy() for action in self._actions]
             last_updated = self._last_updated
@@ -82,7 +82,7 @@ class ActionRuntime:
         }
 
     def update(self) -> list[dict[str, Any]]:
-        """Refresh action graph, subscriptions, and observed results."""
+        """Action 모니터링에서 runtime 상태를 갱신하는 함수입니다."""
         node = self._node_getter()
         if node is None:
             return []
@@ -137,7 +137,7 @@ class ActionRuntime:
         return actions
 
     def monitor_subscriber_count(self, topic_name: str) -> int:
-        """Return subscriptions created for action status or feedback."""
+        """Action 모니터링에서 요청된 처리를 수행하는 함수입니다."""
         count = 0
         with self._lock:
             entries = list(self._subscriptions.items())

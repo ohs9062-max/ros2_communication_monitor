@@ -1,4 +1,4 @@
-"""Shared action monitoring constants and helpers."""
+"""Action 모니터링의 models 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ TERMINAL_GOAL_STATUSES = {
 
 
 def is_valid_action_type(action_type: str | None) -> bool:
-    """Return whether an action type looks like a ROS 2 action type."""
+    """Action 모니터링에서 Action 실행 또는 상태를 처리하는 함수입니다."""
     if not action_type:
         return False
 
@@ -61,7 +61,7 @@ def action_status(
     server_count: int,
     client_count: int,
 ) -> tuple[str, str]:
-    """Return public status and reason for a ROS 2 action."""
+    """Action 모니터링에서 Action 실행 또는 상태를 처리하는 함수입니다."""
     if not is_valid_action_type(action_type):
         return ACTION_STATUS_UNKNOWN, 'action type is unknown'
 
@@ -78,12 +78,12 @@ def action_status(
 
 
 def goal_status_label(status_code: int | None) -> str:
-    """Return a human-readable label for action_msgs/GoalStatus.status."""
+    """Action 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     return GOAL_STATUS_LABELS.get(status_code, GOAL_STATUS_UNKNOWN)
 
 
 def goal_id_to_hex(goal_id: Any) -> str | None:
-    """Convert unique_identifier_msgs/msg/UUID to a readable hex key."""
+    """Action 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     uuid = getattr(goal_id, 'uuid', None)
     if uuid is None:
         return None
@@ -92,7 +92,7 @@ def goal_id_to_hex(goal_id: Any) -> str | None:
 
 
 def default_runtime() -> dict[str, Any]:
-    """Return an empty action runtime state."""
+    """Action 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     return {
         'last_goal_status': GOAL_STATUS_UNKNOWN,
         'last_goal_id': None,
@@ -112,7 +112,7 @@ def action_meta(
     actions: list[dict[str, Any]],
     last_updated: float,
 ) -> dict[str, int | float]:
-    """Build metadata for /ros/actions."""
+    """Action 모니터링에서 Action 실행 또는 상태를 처리하는 함수입니다."""
     return {
         'count': len(actions),
         'active_count': sum(

@@ -1,4 +1,4 @@
-"""Message preview builders for ROS 2 topic monitoring."""
+"""Topic 모니터링의 preview 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from ros2_dashboard_backend.topic.models import (
 
 
 def build_message_preview(topic_type: str, message: Any) -> dict[str, Any]:
-    """Build a JSON-safe preview for a supported ROS message."""
+    """Topic 모니터링에서 public API 응답 항목을 조립하는 함수입니다."""
     builder = _preview_builders().get(topic_type)
     if builder is None:
         return {}
@@ -20,7 +20,7 @@ def build_message_preview(topic_type: str, message: Any) -> dict[str, Any]:
 
 
 def is_preview_supported(topic_type: str | None) -> bool:
-    """Return whether a topic type has a preview builder."""
+    """Topic 모니터링에서 조건 만족 여부를 판단하는 함수입니다."""
     if topic_type is None:
         return False
 
@@ -28,7 +28,7 @@ def is_preview_supported(topic_type: str | None) -> bool:
 
 
 def get_supported_preview_types() -> tuple[str, ...]:
-    """Return all topic types with preview support."""
+    """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     return SUPPORTED_PREVIEW_TYPES
 
 

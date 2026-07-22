@@ -1,4 +1,4 @@
-"""FastAPI entry point for the ROS 2 dashboard backend."""
+"""ROS2 Dashboard Backend의 main 관련 기능을 담당하는 모듈입니다."""
 
 from contextlib import asynccontextmanager
 from typing import Any
@@ -19,7 +19,7 @@ from ros2_dashboard_backend.routers import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Start and stop the ROS 2 monitor coordinator with the API process."""
+    """ROS2 Dashboard Backend에서 요청된 처리를 수행하는 함수입니다."""
     ros_monitor.start()
     try:
         yield
@@ -47,7 +47,7 @@ app.include_router(action_execution.router)
 
 @app.get('/health')
 def health() -> dict[str, Any]:
-    """Return backend health status."""
+    """ROS2 Dashboard Backend에서 요청된 처리를 수행하는 함수입니다."""
     return {
         'success': True,
         'data': {

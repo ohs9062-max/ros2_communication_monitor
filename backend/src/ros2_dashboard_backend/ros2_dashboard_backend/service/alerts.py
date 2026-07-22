@@ -1,4 +1,4 @@
-"""Alert builders for service monitoring."""
+"""Service 모니터링의 alerts 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def build_service_alerts(
     services: list[dict[str, Any]],
     detected_at: float,
 ) -> list[dict[str, Any]]:
-    """Build alerts for failed allowlisted service active checks."""
+    """Service 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     alerts = []
     for service in services:
         if service.get('category') != SERVICE_CATEGORY_USER:

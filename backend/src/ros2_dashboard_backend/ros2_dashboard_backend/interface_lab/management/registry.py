@@ -1,4 +1,4 @@
-"""Parse and persist uploaded ROS 2 interface definition files."""
+"""Interface Lab의 registry 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -36,11 +36,11 @@ DEPENDENCY_PATTERN = re.compile(
 
 
 class InterfaceUploadError(ValueError):
-    """Raised when an uploaded interface file is invalid."""
+    """Interface Lab에서 발생하는 예외를 표현하는 클래스입니다."""
 
 
 def default_registry_path() -> Path:
-    """Return the registry path without coupling it to monitor.yaml."""
+    """Interface Lab에서 요청된 처리를 수행하는 함수입니다."""
     backend_root = backend_workspace_root()
     configured = Path(
         os.getenv('INTERFACE_REGISTRY_PATH', 'config/interface_registry.yaml'),
@@ -49,7 +49,7 @@ def default_registry_path() -> Path:
 
 
 def default_interface_package() -> tuple[str, Path]:
-    """Return the configured, existing ROS interface package."""
+    """Interface Lab에서 요청된 처리를 수행하는 함수입니다."""
     backend_root = backend_workspace_root()
     package_name = os.getenv(
         'INTERFACE_PACKAGE_NAME', 'ros2_dashboard_interfaces',
@@ -60,7 +60,7 @@ def default_interface_package() -> tuple[str, Path]:
 
 
 def extract_multipart_file(content_type: str, body: bytes) -> tuple[str, bytes]:
-    """Extract the first named file part using only the standard library."""
+    """Interface Lab에서 요청된 처리를 수행하는 함수입니다."""
     if not content_type.lower().startswith('multipart/form-data'):
         raise InterfaceUploadError('multipart/form-data 요청이 필요합니다.')
 
@@ -84,7 +84,7 @@ def register_interface(
     content: bytes,
     registry_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Validate, parse, and upsert one interface definition."""
+    """Interface Lab에서 interface 등록 정보를 저장하는 함수입니다."""
     safe_name = _safe_file_name(file_name)
     suffix = Path(safe_name).suffix.lower()
     kind = suffix.removeprefix('.')
@@ -372,7 +372,7 @@ def _atomic_write(path: Path, content: str) -> None:
 
 
 def registry_snapshot(registry_path: Path | None = None) -> dict[str, Any]:
-    """Return the normalized registry document."""
+    """Interface Lab에서 cache snapshot을 반환하는 함수입니다."""
     path = registry_path or default_registry_path()
     with _REGISTRY_LOCK:
         return _load_registry(path)
@@ -386,7 +386,7 @@ def delete_registry_entry(
     full_type: str | None = None,
     registry_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Remove one registry entry without deleting generated interface files."""
+    """Interface Lab에서 등록 항목이나 파일을 삭제하는 함수입니다."""
     if kind not in ALLOWED_KINDS:
         raise InterfaceUploadError('kind는 msg, srv, action 중 하나여야 합니다.')
     path = registry_path or default_registry_path()
@@ -420,7 +420,7 @@ def delete_registry_entry(
 def mark_registry_build_applied(
     registry_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Persist that the current registered interface files have been built."""
+    """Interface Lab에서 public API 응답 항목을 조립하는 함수입니다."""
     path = registry_path or default_registry_path()
     applied_at = datetime.now(timezone.utc).isoformat()
     with _REGISTRY_LOCK:
@@ -439,7 +439,7 @@ def mark_registry_build_applied(
 def refresh_registry_imports(
     registry_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Re-check generated Python imports for all registered interface types."""
+    """Interface Lab에서 생성된 interface 타입 import 가능 여부를 확인하는 함수입니다."""
     path = registry_path or default_registry_path()
     checked_at = datetime.now(timezone.utc).isoformat()
     with _REGISTRY_LOCK:
@@ -475,7 +475,7 @@ def registry_apply_summary(
     *,
     require_import_available: bool = False,
 ) -> dict[str, Any]:
-    """Return actual disk-backed apply state for the current registry."""
+    """Interface Lab에서 interface build/apply 상태를 처리하는 함수입니다."""
     path = registry_path or default_registry_path()
     with _REGISTRY_LOCK:
         if not path.is_file():
@@ -492,7 +492,7 @@ def registry_apply_summary(
 
 
 def parse_interface(raw_text: str, kind: str) -> dict[str, Any]:
-    """Parse the supported top-level sections of a ROS interface file."""
+    """Interface Lab에서 요청된 처리를 수행하는 함수입니다."""
     sections = _split_sections(raw_text)
     expected = {'msg': 1, 'srv': 2, 'action': 3}[kind]
     if len(sections) != expected:

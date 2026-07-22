@@ -1,4 +1,4 @@
-"""Shared node monitoring constants and helpers."""
+"""Node 모니터링의 models 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ ALERT_CODE_NODE_STALE = 'node_stale'
 
 
 def full_node_name(name: str, namespace: str) -> str:
-    """Return a ROS-style full node name without duplicate slashes."""
+    """Node 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     normalized_namespace = namespace or '/'
     if normalized_namespace == '/':
         return f'/{name.lstrip("/")}'
@@ -28,7 +28,7 @@ def node_status(
     discovered: bool,
     stale: bool = False,
 ) -> tuple[str, str]:
-    """Return public node status and reason."""
+    """Node 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     if discovered:
         return NODE_STATUS_ACTIVE, 'node discovered in ROS2 graph'
 
@@ -41,7 +41,7 @@ def node_status(
 def graph_entities(
     names_and_types: list[tuple[str, list[str]]],
 ) -> list[dict[str, Any]]:
-    """Convert rclpy graph tuples to public API entities."""
+    """Node 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     return [
         {
             'name': name,
@@ -57,7 +57,7 @@ def node_meta(
     nodes: list[dict[str, Any]],
     last_updated: float,
 ) -> dict[str, int | float]:
-    """Build metadata for /ros/nodes."""
+    """Node 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     return {
         'count': len(nodes),
         'active_count': _status_count(nodes, NODE_STATUS_ACTIVE),

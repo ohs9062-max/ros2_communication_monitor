@@ -1,4 +1,4 @@
-"""Runtime owner for ROS 2 node graph monitoring."""
+"""Node 모니터링의 runtime 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class NodeRuntime:
-    """Collect node graph metadata and keep short-lived stale nodes."""
+    """Node 모니터링 runtime 상태와 cache를 관리하는 클래스입니다."""
 
     def __init__(
         self,
@@ -35,7 +35,7 @@ class NodeRuntime:
         node_getter: Callable[[], Any],
         stale_timeout_sec: float,
     ) -> None:
-        """Initialize node runtime with shared node and lock access."""
+        """Node 모니터링에서 내부 보조 처리를 수행하는 내부 helper 함수입니다."""
         self._exclude_names = exclude_names
         self._exclude_prefixes = exclude_prefixes
         self._include_names = include_names
@@ -46,13 +46,13 @@ class NodeRuntime:
         self._last_updated = 0.0
 
     def clear(self) -> None:
-        """Clear cached node state."""
+        """Node 모니터링에서 cache와 runtime 상태를 초기화하는 함수입니다."""
         with self._lock:
             self._nodes = {}
             self._last_updated = 0.0
 
     def snapshot(self) -> dict[str, Any]:
-        """Return a thread-safe node snapshot."""
+        """Node 모니터링에서 cache snapshot을 반환하는 함수입니다."""
         with self._lock:
             nodes = [node.copy() for node in self._nodes.values()]
             last_updated = self._last_updated
@@ -67,7 +67,7 @@ class NodeRuntime:
         }
 
     def update(self) -> list[dict[str, Any]]:
-        """Refresh node graph cache from rclpy Graph API."""
+        """Node 모니터링에서 runtime 상태를 갱신하는 함수입니다."""
         node = self._node_getter()
         if node is None:
             return []

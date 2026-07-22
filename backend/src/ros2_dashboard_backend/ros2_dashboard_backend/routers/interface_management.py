@@ -1,4 +1,4 @@
-"""Interface registration and package management API routes."""
+"""FastAPI Router의 interface_management 관련 기능을 담당하는 모듈입니다."""
 
 from typing import Any
 
@@ -39,7 +39,7 @@ router = APIRouter()
 
 @router.post('/ros/interfaces/upload')
 async def upload_ros_interface(request: Request) -> dict[str, Any]:
-    """Register one uploaded ROS interface definition without executing it."""
+    """FastAPI Router에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     content_length = request.headers.get('content-length')
     if content_length:
         try:
@@ -87,7 +87,7 @@ async def upload_ros_interface(request: Request) -> dict[str, Any]:
 
 @router.get('/ros/interfaces/registry')
 def get_interface_registry() -> dict[str, Any]:
-    """Return uploaded interface definitions."""
+    """FastAPI Router에서 요청된 처리를 수행하는 함수입니다."""
     try:
         registry = registry_snapshot()
     except InterfaceUploadError as exc:
@@ -106,7 +106,7 @@ def delete_interface_registry_entry(
     source: str | None = Query(default=None),
     full_type: str | None = Query(default=None),
 ) -> dict[str, Any]:
-    """Delete a registry entry and its file when it belongs to uploaded_interfaces."""
+    """FastAPI Router에서 등록 항목이나 파일을 삭제하는 함수입니다."""
     try:
         collection_name = {'msg': 'messages', 'srv': 'services', 'action': 'actions'}.get(kind)
         items = registry_snapshot()['interface_registry'].get(collection_name, [])
@@ -145,7 +145,7 @@ def delete_interface_registry_entry(
 
 @router.post('/ros/interfaces/manual-type')
 async def register_manual_interface_type(request: Request) -> dict[str, Any]:
-    """Register an existing full type string without creating interface files."""
+    """FastAPI Router에서 interface 등록 정보를 저장하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError as exc:
@@ -170,7 +170,7 @@ async def register_manual_interface_type(request: Request) -> dict[str, Any]:
 
 @router.post('/ros/interfaces/manual-definition')
 async def write_manual_interface_definition(request: Request) -> dict[str, Any]:
-    """Create a user-authored interface under uploaded_interfaces."""
+    """FastAPI Router에서 요청된 처리를 수행하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError as exc:
@@ -196,7 +196,7 @@ async def write_manual_interface_definition(request: Request) -> dict[str, Any]:
 
 @router.post('/ros/interfaces/manual-definition/validate')
 async def validate_manual_interface_definition(request: Request) -> dict[str, Any]:
-    """Validate a user-authored interface without writing files."""
+    """FastAPI Router에서 입력값을 검증하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError as exc:
@@ -221,7 +221,7 @@ async def validate_manual_interface_definition(request: Request) -> dict[str, An
 
 @router.put('/ros/interfaces/manual-definition/{kind}/{type_name}')
 async def update_manual_interface_definition(kind: str, type_name: str, request: Request) -> dict[str, Any]:
-    """Validate and update a user-authored interface."""
+    """FastAPI Router에서 runtime 상태를 갱신하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError as exc:
@@ -246,7 +246,7 @@ async def update_manual_interface_definition(kind: str, type_name: str, request:
 
 @router.delete('/ros/interfaces/manual-definition/{kind}/{type_name}')
 def delete_manual_interface_definition(kind: str, type_name: str) -> dict[str, Any]:
-    """Delete a user-authored interface file and registry entry."""
+    """FastAPI Router에서 등록 항목이나 파일을 삭제하는 함수입니다."""
     try:
         result = delete_manual_definition(kind=kind, type_name=type_name)
         mark_interface_change_pending(
@@ -263,7 +263,7 @@ def delete_manual_interface_definition(kind: str, type_name: str) -> dict[str, A
 
 @router.post('/ros/interfaces/uploaded-interfaces/rebuild-cmake')
 def rebuild_uploaded_interfaces_cmake_endpoint() -> dict[str, Any]:
-    """Regenerate uploaded_interfaces CMakeLists.txt from actual files."""
+    """FastAPI Router에서 public API 응답 항목을 조립하는 함수입니다."""
     result = rebuild_uploaded_interfaces_cmake()
     mark_interface_change_pending('uploaded_interfaces package metadata 재생성됨; rebuild 필요')
     return {
@@ -278,7 +278,7 @@ async def upload_ros_interface_package(
     request: Request,
     replace: bool = Query(False),
 ) -> dict[str, Any]:
-    """Upload one zipped ROS 2 interface package while preserving its package name."""
+    """FastAPI Router에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     content_length = request.headers.get('content-length')
     if content_length:
         try:
@@ -316,7 +316,7 @@ async def upload_ros_interface_package_folder(
     request: Request,
     replace: bool = Query(False),
 ) -> dict[str, Any]:
-    """Upload one ROS 2 interface package folder using browser relative paths."""
+    """FastAPI Router에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     content_length = request.headers.get('content-length')
     if content_length:
         try:
@@ -349,7 +349,7 @@ async def upload_ros_interface_package_folder(
 
 @router.get('/ros/interfaces/packages')
 def get_interface_packages() -> dict[str, Any]:
-    """Return uploaded interface package registry."""
+    """FastAPI Router에서 요청된 처리를 수행하는 함수입니다."""
     try:
         registry = packages_snapshot()
     except InterfacePackageError as exc:
@@ -366,7 +366,7 @@ def get_interface_packages() -> dict[str, Any]:
 
 @router.delete('/ros/interfaces/packages/{package_name}')
 def delete_ros_interface_package(package_name: str) -> dict[str, Any]:
-    """Delete one uploaded interface package."""
+    """FastAPI Router에서 등록 항목이나 파일을 삭제하는 함수입니다."""
     try:
         result = delete_interface_package(package_name)
     except InterfacePackageError as exc:

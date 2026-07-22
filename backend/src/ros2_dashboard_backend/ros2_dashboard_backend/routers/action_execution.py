@@ -1,4 +1,4 @@
-"""Action execution API routes."""
+"""FastAPI Router의 action_execution 관련 기능을 담당하는 모듈입니다."""
 
 from typing import Any
 
@@ -13,7 +13,7 @@ router = APIRouter()
 
 @router.get('/ros/interfaces/callable-actions')
 def get_callable_actions() -> dict[str, Any]:
-    """Return registered, importable action types with action server state."""
+    """FastAPI Router에서 현재 실행 가능한 후보를 조회하는 함수입니다."""
     snapshot = ros_monitor.callable_actions()
     return {
         'success': True,
@@ -25,7 +25,7 @@ def get_callable_actions() -> dict[str, Any]:
 
 @router.post('/ros/interfaces/action-goal')
 async def send_registered_action_goal(request: Request) -> dict[str, Any]:
-    """Send one registered and importable ROS 2 action goal explicitly."""
+    """FastAPI Router에서 Action 실행 또는 상태를 처리하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError as exc:
@@ -74,7 +74,7 @@ async def send_registered_action_goal(request: Request) -> dict[str, Any]:
 
 @router.get('/ros/interfaces/action-goal/history')
 def get_action_goal_history() -> dict[str, Any]:
-    """Return recent explicit action goal history."""
+    """FastAPI Router에서 실행 이력을 반환하거나 관리하는 함수입니다."""
     snapshot = ros_monitor.action_goal_history()
     return {
         'success': True,
@@ -86,14 +86,14 @@ def get_action_goal_history() -> dict[str, Any]:
 
 @router.get('/ros/interfaces/receive/actions/history')
 def get_receive_action_history() -> dict[str, Any]:
-    """Return action feedback/result receive history."""
+    """FastAPI Router에서 실행 이력을 반환하거나 관리하는 함수입니다."""
     snapshot = ros_monitor.receive_action_history()
     return {'success': True, 'data': snapshot['history'], 'meta': snapshot['meta']}
 
 
 @router.post('/ros/interfaces/receive/actions/history/reset')
 async def reset_receive_action_history(request: Request) -> dict[str, Any]:
-    """Reset receive-shaped action feedback/result history."""
+    """FastAPI Router에서 실행 이력을 반환하거나 관리하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError:

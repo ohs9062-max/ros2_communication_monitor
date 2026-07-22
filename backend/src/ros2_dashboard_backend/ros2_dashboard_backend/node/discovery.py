@@ -1,4 +1,4 @@
-"""Helpers for building ROS graph node items."""
+"""Node 모니터링의 discovery 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ def build_node_item(
     action_clients: list[tuple[str, list[str]]],
     updated_at: float,
 ) -> dict[str, Any]:
-    """Build a public /ros/nodes item for a discovered node."""
+    """Node 모니터링에서 public API 응답 항목을 조립하는 함수입니다."""
     status, reason = node_status(discovered=True)
     publisher_entities = graph_entities(topic_publishers)
     subscriber_entities = graph_entities(topic_subscribers)
@@ -60,7 +60,7 @@ def stale_node_item(
     cached_node: dict[str, Any],
     updated_at: float,
 ) -> dict[str, Any]:
-    """Return a cached node item marked stale."""
+    """Node 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     node = cached_node.copy()
     status, reason = node_status(discovered=False, stale=True)
     node['status'] = status

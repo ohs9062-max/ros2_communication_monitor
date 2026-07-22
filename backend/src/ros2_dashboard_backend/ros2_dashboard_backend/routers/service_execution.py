@@ -1,4 +1,4 @@
-"""Service execution API routes."""
+"""FastAPI Router의 service_execution 관련 기능을 담당하는 모듈입니다."""
 
 from typing import Any
 
@@ -13,7 +13,7 @@ router = APIRouter()
 
 @router.get('/ros/interfaces/callable-services')
 def get_callable_services() -> dict[str, Any]:
-    """Return registered, importable service types with active servers."""
+    """FastAPI Router에서 현재 실행 가능한 후보를 조회하는 함수입니다."""
     snapshot = ros_monitor.callable_services()
     return {
         'success': True,
@@ -25,7 +25,7 @@ def get_callable_services() -> dict[str, Any]:
 
 @router.post('/ros/interfaces/service-call')
 async def call_registered_service(request: Request) -> dict[str, Any]:
-    """Call one registered and importable ROS 2 service explicitly."""
+    """FastAPI Router에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError as exc:
@@ -66,7 +66,7 @@ async def call_registered_service(request: Request) -> dict[str, Any]:
 
 @router.get('/ros/interfaces/service-call/history')
 def get_service_call_history() -> dict[str, Any]:
-    """Return recent explicit service call history."""
+    """FastAPI Router에서 실행 이력을 반환하거나 관리하는 함수입니다."""
     snapshot = ros_monitor.service_call_history()
     return {
         'success': True,
@@ -78,14 +78,14 @@ def get_service_call_history() -> dict[str, Any]:
 
 @router.get('/ros/interfaces/receive/services/history')
 def get_receive_service_history() -> dict[str, Any]:
-    """Return service response receive history."""
+    """FastAPI Router에서 실행 이력을 반환하거나 관리하는 함수입니다."""
     snapshot = ros_monitor.receive_service_history()
     return {'success': True, 'data': snapshot['history'], 'meta': snapshot['meta']}
 
 
 @router.post('/ros/interfaces/receive/services/history/reset')
 async def reset_receive_service_history(request: Request) -> dict[str, Any]:
-    """Reset receive-shaped service response history."""
+    """FastAPI Router에서 실행 이력을 반환하거나 관리하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError:

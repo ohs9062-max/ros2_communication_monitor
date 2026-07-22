@@ -1,4 +1,4 @@
-"""Interface build, apply, and import-check API routes."""
+"""FastAPI Router의 interface_apply 관련 기능을 담당하는 모듈입니다."""
 
 from typing import Any
 
@@ -24,7 +24,7 @@ router = APIRouter()
 
 @router.post('/ros/interfaces/apply')
 def apply_ros_interfaces(background_tasks: BackgroundTasks) -> dict[str, Any]:
-    """Build registered ROS interfaces and schedule uvicorn reload on success."""
+    """FastAPI Router에서 interface build/apply 상태를 처리하는 함수입니다."""
     try:
         status = run_interface_apply()
     except InterfaceApplyInProgress as exc:
@@ -70,7 +70,7 @@ def apply_ros_interfaces(background_tasks: BackgroundTasks) -> dict[str, Any]:
 
 @router.get('/ros/interfaces/apply/status')
 def get_interface_apply_status() -> dict[str, Any]:
-    """Return the latest interface apply build status."""
+    """FastAPI Router에서 interface build/apply 상태를 처리하는 함수입니다."""
     try:
         status = apply_status()
     except InterfaceApplyError as exc:
@@ -84,7 +84,7 @@ def get_interface_apply_status() -> dict[str, Any]:
 
 @router.post('/ros/interfaces/import-check')
 def check_ros_interface_imports() -> dict[str, Any]:
-    """Refresh generated interface import availability in the registry."""
+    """FastAPI Router에서 생성된 interface 타입 import 가능 여부를 확인하는 함수입니다."""
     try:
         result = run_import_check_and_update_registry()
         record_import_check_status(result)

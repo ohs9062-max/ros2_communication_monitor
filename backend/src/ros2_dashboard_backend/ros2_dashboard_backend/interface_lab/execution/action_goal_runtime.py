@@ -1,4 +1,4 @@
-"""Explicit user-triggered action goal runtime for registered interfaces."""
+"""Interface Lab의 action_goal_runtime 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -31,11 +31,11 @@ MAX_TIMEOUT_SEC = 60.0
 
 
 class ActionGoalError(ValueError):
-    """Raised when an explicit action goal request is not allowed or failed."""
+    """Interface Lab에서 발생하는 예외를 표현하는 클래스입니다."""
 
 
 class ActionGoalRuntime:
-    """Run explicit user-triggered action goals for registered .action types."""
+    """Interface Lab runtime 상태와 cache를 관리하는 클래스입니다."""
 
     def __init__(
         self,
@@ -51,7 +51,7 @@ class ActionGoalRuntime:
         self._receive_reset_by_key: dict[tuple[str | None, str | None], float] = {}
 
     def clear(self) -> None:
-        """Clear cached clients and goal history."""
+        """Interface Lab에서 cache와 runtime 상태를 초기화하는 함수입니다."""
         with self._lock:
             self._clients = {}
             self._history = []
@@ -59,7 +59,7 @@ class ActionGoalRuntime:
             self._receive_reset_by_key = {}
 
     def callable_actions(self) -> dict[str, Any]:
-        """Return registered actions with explicit goal eligibility state."""
+        """Interface Lab에서 현재 실행 가능한 후보를 조회하는 함수입니다."""
         refresh_install_python_paths()
         registered = self._registered_actions()
         graph = self._action_graph()
@@ -95,7 +95,7 @@ class ActionGoalRuntime:
         goal_data: dict[str, Any],
         timeout_sec: float | None = None,
     ) -> dict[str, Any]:
-        """Send one registered action goal and wait for feedback/result."""
+        """Interface Lab에서 요청된 처리를 수행하는 함수입니다."""
         timeout = _normalized_timeout(timeout_sec)
         refresh_install_python_paths()
         allowed = self._allowed_action(action_name, action_type)
@@ -214,7 +214,7 @@ class ActionGoalRuntime:
         return result
 
     def history(self) -> dict[str, Any]:
-        """Return recent explicit action goal history."""
+        """Interface Lab에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         with self._lock:
             goals = [item.copy() for item in self._history]
         return {
@@ -225,7 +225,7 @@ class ActionGoalRuntime:
         }
 
     def receive_history(self) -> dict[str, Any]:
-        """Return action goal feedback/result history in the receive format."""
+        """Interface Lab에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         goals = self.history()['goals']
         events = []
         for goal_index, goal in enumerate(goals):
@@ -287,7 +287,7 @@ class ActionGoalRuntime:
         action_name: str | None = None,
         action_type: str | None = None,
     ) -> dict[str, Any]:
-        """Hide previous receive-shaped history without clearing goal history."""
+        """Interface Lab에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         previous = len([
             item for item in self.receive_history()['history']
             if not action_name
@@ -300,7 +300,7 @@ class ActionGoalRuntime:
         return {'cleared': previous}
 
     def summary_by_action(self) -> dict[tuple[str, str], dict[str, Any]]:
-        """Return last goal and counters keyed by (action_name, action_type)."""
+        """Interface Lab에서 Action 실행 또는 상태를 처리하는 함수입니다."""
         with self._lock:
             goals = [item.copy() for item in self._history]
         summaries: dict[tuple[str, str], dict[str, Any]] = {}

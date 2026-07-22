@@ -1,1 +1,1 @@
-"""Topic monitoring helpers."""
+"""Topic 모니터링 패키지 초기화 모듈입니다."""

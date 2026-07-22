@@ -1,4 +1,4 @@
-"""Service filtering and supported type decisions."""
+"""Service 모니터링의 filters 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -28,22 +28,22 @@ INTERNAL_SERVICE_SUFFIXES = (
 
 
 def is_parameter_service(name: str) -> bool:
-    """Return whether a service is a ROS 2 parameter service."""
+    """Service 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     return any(name.endswith(suffix) for suffix in PARAMETER_SERVICE_SUFFIXES)
 
 
 def is_internal_service(name: str) -> bool:
-    """Return whether a service is an internal ROS 2 helper service."""
+    """Service 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     return any(name.endswith(suffix) for suffix in INTERNAL_SERVICE_SUFFIXES)
 
 
 def is_action_internal_service(name: str) -> bool:
-    """Return whether a service belongs to an action implementation."""
+    """Service 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     return '/_action/' in name
 
 
 def service_category(name: str, service_type: str | None) -> str:
-    """Return the public category for a ROS 2 service."""
+    """Service 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     if is_parameter_service(name):
         return SERVICE_CATEGORY_PARAMETER
 
@@ -60,7 +60,7 @@ def service_category(name: str, service_type: str | None) -> str:
 
 
 def is_hidden_by_default(category: str) -> bool:
-    """Return whether a category is hidden from /ros/services by default."""
+    """Service 모니터링에서 조건 만족 여부를 판단하는 함수입니다."""
     return service_hidden_by_default(category)
 
 
@@ -70,7 +70,7 @@ def is_service_included(
     include_names: tuple[str, ...] = (),
     exclude_names: tuple[str, ...] = (),
 ) -> bool:
-    """Return whether a service is allowed by explicit config filters."""
+    """Service 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     if include_names:
         return name in include_names and name not in exclude_names
 
@@ -81,7 +81,7 @@ def is_service_included(
 
 
 def is_supported_type(service_type: str | None) -> bool:
-    """Return whether the service type has deep monitoring support."""
+    """Service 모니터링에서 조건 만족 여부를 판단하는 함수입니다."""
     if service_type is None:
         return False
 

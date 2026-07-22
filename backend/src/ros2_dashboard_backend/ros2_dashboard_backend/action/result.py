@@ -1,4 +1,4 @@
-"""Helpers for observed-goal-only action result lookup."""
+"""Action 모니터링의 result 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from rosidl_runtime_py.utilities import get_action
 def load_result_service_class(
     action_type: str | None,
 ) -> tuple[type | None, str | None, str | None]:
-    """Load generated GetResult service class for an action type."""
+    """Action 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     if action_type is None:
         return None, None, 'action type is unknown'
 
@@ -43,14 +43,14 @@ def build_get_result_request(
     service_class: type,
     goal_id_message: Any,
 ) -> Any:
-    """Build a GetResult request for an observed goal_id message."""
+    """Action 모니터링에서 public API 응답 항목을 조립하는 함수입니다."""
     request = service_class.Request()
     request.goal_id.uuid = list(getattr(goal_id_message, 'uuid', []))
     return request
 
 
 def build_result_state(response: Any) -> dict[str, Any]:
-    """Convert GetResult response into runtime result state."""
+    """Action 모니터링에서 public API 응답 항목을 조립하는 함수입니다."""
     status_label = goal_status_label(getattr(response, 'status', None))
     if status_label == GOAL_STATUS_SUCCEEDED:
         result_status = RESULT_STATUS_SUCCESS
@@ -67,7 +67,7 @@ def build_result_state(response: Any) -> dict[str, Any]:
 
 
 def build_result_error_state(message: str) -> dict[str, Any]:
-    """Return a result unavailable runtime state."""
+    """Action 모니터링에서 public API 응답 항목을 조립하는 함수입니다."""
     return {
         'result_status': RESULT_STATUS_UNAVAILABLE,
         'result_preview': None,

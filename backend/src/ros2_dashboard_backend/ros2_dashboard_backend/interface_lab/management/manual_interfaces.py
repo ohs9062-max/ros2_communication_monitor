@@ -1,4 +1,4 @@
-"""Manual interface registration and definition helpers."""
+"""Interface Lab의 manual_interfaces 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ def register_manual_type(
     description: str = '',
     registry_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Register an existing environment type without creating files."""
+    """Interface Lab에서 interface 등록 정보를 저장하는 함수입니다."""
     package_name, kind, type_name = _parse_full_type(full_type)
     import_available, import_error = _check_import(package_name, kind, type_name)
     entry = {
@@ -97,7 +97,7 @@ def write_manual_definition(
     definition: str,
     registry_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Write a user-authored interface into backend/src/uploaded_interfaces."""
+    """Interface Lab에서 요청된 처리를 수행하는 함수입니다."""
     validated = validate_manual_definition(
         package=package,
         kind=kind,
@@ -157,7 +157,7 @@ def update_manual_definition(
     definition: str,
     registry_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Validate and overwrite an existing manual definition."""
+    """Interface Lab에서 runtime 상태를 갱신하는 함수입니다."""
     return write_manual_definition(
         package='uploaded_interfaces',
         kind=kind,
@@ -173,7 +173,7 @@ def delete_manual_definition(
     type_name: str,
     registry_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Delete one manual definition file and regenerate CMake from disk."""
+    """Interface Lab에서 등록 항목이나 파일을 삭제하는 함수입니다."""
     if kind not in ALLOWED_KINDS:
         raise InterfaceUploadError('kind는 msg, srv, action 중 하나여야 합니다.')
     if not TYPE_NAME_PATTERN.fullmatch(type_name):
@@ -190,7 +190,7 @@ def delete_manual_definition(
 
 
 def rebuild_uploaded_interfaces_cmake() -> dict[str, Any]:
-    """Regenerate uploaded_interfaces package metadata from actual files only."""
+    """Interface Lab에서 public API 응답 항목을 조립하는 함수입니다."""
     package_name = 'uploaded_interfaces'
     package_root = backend_workspace_root() / 'src' / package_name
     package_state = regenerate_uploaded_interfaces_package(package_root)
@@ -210,7 +210,7 @@ def delete_uploaded_interface(
     full_type: str | None = None,
     registry_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Delete one single-file uploaded_interfaces entry and rebuild metadata."""
+    """Interface Lab에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     if kind not in ALLOWED_KINDS:
         raise InterfaceUploadError('kind는 msg, srv, action 중 하나여야 합니다.')
     expected_suffix = f'.{kind}'
@@ -272,7 +272,7 @@ def remove_uploaded_interface_registry_entry(
     full_type: str | None,
     registry_path: Path | None = None,
 ) -> None:
-    """Remove exactly one uploaded_interfaces registry record."""
+    """Interface Lab에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     path = registry_path or default_registry_path()
     registry = _load_registry(path)
     collection = registry['interface_registry'][KIND_COLLECTIONS[kind]]
@@ -294,7 +294,7 @@ def validate_manual_definition(
     type_name: str,
     definition: str,
 ) -> dict[str, Any]:
-    """Validate a user-authored interface without writing files."""
+    """Interface Lab에서 입력값을 검증하는 함수입니다."""
     package_name = package.strip() or 'uploaded_interfaces'
     if not PACKAGE_NAME_PATTERN.fullmatch(package_name):
         raise InterfaceUploadError('validation_error: package 이름은 소문자로 시작하고 소문자/숫자/_만 포함해야 합니다.')
@@ -402,7 +402,7 @@ def _ensure_uploaded_interfaces_package(package_root: Path, package_name: str) -
 
 
 def scan_uploaded_interface_files(package_root: Path | None = None) -> list[str]:
-    """Return the current msg/srv/action files in deterministic CMake order."""
+    """Interface Lab에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     root = package_root or backend_workspace_root() / 'src' / 'uploaded_interfaces'
     interface_paths: list[str] = []
     for folder, suffix in (('msg', '.msg'), ('srv', '.srv'), ('action', '.action')):
@@ -414,7 +414,7 @@ def scan_uploaded_interface_files(package_root: Path | None = None) -> list[str]
 
 
 def regenerate_uploaded_interfaces_package(package_root: Path | None = None) -> dict[str, Any]:
-    """Rewrite CMakeLists.txt and package.xml from the files currently on disk."""
+    """Interface Lab에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     root = package_root or backend_workspace_root() / 'src' / 'uploaded_interfaces'
     package_name = 'uploaded_interfaces'
     _ensure_uploaded_interfaces_package(root, package_name)
@@ -430,7 +430,7 @@ def regenerate_uploaded_interfaces_cmake(
     interface_paths: list[str],
     dependencies: list[str],
 ) -> None:
-    """Completely rewrite CMakeLists.txt; never retain stale interface entries."""
+    """Interface Lab에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     if not interface_paths:
         cmake = '''cmake_minimum_required(VERSION 3.8)
 project(uploaded_interfaces)
@@ -465,7 +465,7 @@ def regenerate_uploaded_interfaces_package_xml(
     has_interfaces: bool,
     dependencies: list[str],
 ) -> None:
-    """Completely rewrite package.xml to match an interface or empty package."""
+    """Interface Lab에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     rosidl_dependencies = ''
     if has_interfaces:
         dependency_tags = ''.join(f'  <depend>{name}</depend>\n' for name in dependencies)

@@ -1,4 +1,4 @@
-"""Helpers for topic subscription cache entries."""
+"""Topic 모니터링의 subscriptions 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def build_subscription_entry(
     topic_type: str,
     subscription: Any,
 ) -> dict[str, Any]:
-    """Create a cache entry for a topic subscription."""
+    """Topic 모니터링에서 public API 응답 항목을 조립하는 함수입니다."""
     return {
         'type': topic_type,
         'subscription': subscription,
@@ -32,7 +32,7 @@ def has_subscription(
     *,
     topic_type: str,
 ) -> bool:
-    """Return whether a cache entry matches a topic type."""
+    """Topic 모니터링에서 조건 만족 여부를 판단하는 함수입니다."""
     return entry is not None and entry.get('type') == topic_type
 
 
@@ -43,7 +43,7 @@ def update_subscription_entry(
     received_at: float,
     window_sec: float,
 ) -> None:
-    """Update cached latest message and timestamp history in place."""
+    """Topic 모니터링에서 runtime 상태를 갱신하는 함수입니다."""
     entry['message_preview'] = message_preview
     entry['last_received_at'] = received_at
     entry['timestamps'].append(received_at)
@@ -61,7 +61,7 @@ def cleanup_candidates(
     now: float,
     cleanup_after_sec: float,
 ) -> list[tuple[str, Any]]:
-    """Mark disappeared topics and return subscriptions ready to destroy."""
+    """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     candidates = []
     for name, entry in subscriptions.items():
         if name in graph_topic_names:
@@ -85,7 +85,7 @@ def remove_subscription_entry(
     name: str,
     subscription: Any,
 ) -> bool:
-    """Remove a subscription entry if it still matches the destroyed object."""
+    """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     entry = subscriptions.get(name)
     if entry is None or entry.get('subscription') is not subscription:
         return False

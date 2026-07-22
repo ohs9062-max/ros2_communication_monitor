@@ -1,4 +1,4 @@
-"""Shared topic monitoring constants and small helpers."""
+"""Topic 모니터링의 models 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def topic_status(
     publisher_count: int,
     subscriber_count: int,
 ) -> tuple[str, str]:
-    """Return the public status and reason for publisher/subscriber counts."""
+    """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     if publisher_count > 0 and subscriber_count > 0:
         return TOPIC_STATUS_ACTIVE, 'publisher and subscriber exist'
 
@@ -64,7 +64,7 @@ def topic_status(
 
 
 def topic_primary_type(topic: dict[str, Any]) -> str | None:
-    """Return the first ROS message type for a topic item."""
+    """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     topic_types = topic.get('types')
     if isinstance(topic_types, list) and topic_types:
         return topic_types[0]
@@ -73,7 +73,7 @@ def topic_primary_type(topic: dict[str, Any]) -> str | None:
 
 
 def text_or_empty(value: Any) -> str:
-    """Return a safe string for alert text fields."""
+    """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     if value is None:
         return ''
 
@@ -84,7 +84,7 @@ def text_or_empty(value: Any) -> str:
 
 
 def copy_message_preview(value: Any) -> dict[str, Any] | None:
-    """Copy a cached message preview if it is a mapping."""
+    """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     if not isinstance(value, dict):
         return None
 
@@ -92,7 +92,7 @@ def copy_message_preview(value: Any) -> dict[str, Any] | None:
 
 
 def copy_values(value: Any) -> list[dict[str, Any]]:
-    """Copy MonitorStatus key-value entries safely."""
+    """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     if not isinstance(value, list):
         return []
 

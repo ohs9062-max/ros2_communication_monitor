@@ -1,1 +1,1 @@
-"""Interface Lab explicit execution runtimes."""
+"""Interface Lab 패키지 초기화 모듈입니다."""

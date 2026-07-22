@@ -1,4 +1,4 @@
-"""Allowlisted service active check helpers."""
+"""Service 모니터링의 active_check 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ ALERT_CODE_ACTIVE_CHECK_TYPE_MISMATCH = (
 
 
 def allowlist_map(active_check_config: Any) -> dict[str, Any]:
-    """Return active check allowlist entries keyed by service name."""
+    """Service 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     return {
         item.name: item
         for item in active_check_config.allowlist
@@ -48,7 +48,7 @@ def active_check_supported(
     service: dict[str, Any],
     allowlisted: bool,
 ) -> bool:
-    """Return whether active_check may run for the service."""
+    """Service 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     return (
         allowlisted
         and service.get('category') == SERVICE_CATEGORY_USER
@@ -63,7 +63,7 @@ def build_active_check_state(
     allowlist_item: Any | None,
     cache_entry: dict[str, Any] | None,
 ) -> tuple[bool, dict[str, Any]]:
-    """Build public active_check fields for a service item."""
+    """Service 모니터링에서 public API 응답 항목을 조립하는 함수입니다."""
     supported = active_check_supported(
         service=service,
         allowlisted=allowlist_item is not None,
@@ -124,7 +124,7 @@ def pending_state(
     started_at: float,
     timeout_sec: float,
 ) -> dict[str, Any]:
-    """Build active_check pending state."""
+    """Service 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     return _state(
         enabled=True,
         last_status=ACTIVE_CHECK_STATUS_PENDING,
@@ -138,7 +138,7 @@ def timeout_state(
     started_at: float,
     timeout_sec: float,
 ) -> dict[str, Any]:
-    """Build active_check timeout state."""
+    """Service 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     return _state(
         enabled=True,
         last_status=ACTIVE_CHECK_STATUS_TIMEOUT,
@@ -156,7 +156,7 @@ def error_state(
     timeout_sec: float,
     response_time_ms: float | None = None,
 ) -> dict[str, Any]:
-    """Build active_check error state."""
+    """Service 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     return _state(
         enabled=True,
         last_status=ACTIVE_CHECK_STATUS_ERROR,
@@ -175,7 +175,7 @@ def response_state(
     timeout_sec: float,
     response_time_ms: float,
 ) -> dict[str, Any]:
-    """Build active_check state from a service response."""
+    """Service 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     response_preview = response_to_preview(response)
     try:
         success = response_success(response_preview, success_field)
@@ -204,17 +204,17 @@ def response_state(
 
 
 def load_service_class(service_type: str) -> type:
-    """Load a ROS 2 service class by type string."""
+    """Service 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     return get_service(service_type)
 
 
 def build_request(service_class: type, request_data: dict[str, Any]) -> Any:
-    """Create a Request object and apply configured fields."""
+    """Service 모니터링에서 public API 응답 항목을 조립하는 함수입니다."""
     return build_ros_message(service_class.Request, request_data, label='request')
 
 
 def response_to_preview(response: Any) -> dict[str, Any]:
-    """Return a JSON-safe response preview."""
+    """Service 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     return ros_message_to_json(response)
 
 
@@ -222,7 +222,7 @@ def response_success(
     response_preview: dict[str, Any],
     success_field: str | None,
 ) -> bool:
-    """Return whether a response counts as success."""
+    """Service 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     if success_field is None:
         return True
 

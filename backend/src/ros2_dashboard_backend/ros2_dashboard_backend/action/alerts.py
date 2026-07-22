@@ -1,4 +1,4 @@
-"""Alert builders for action monitoring."""
+"""Action 모니터링의 alerts 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ def build_action_alerts(
     actions: list[dict[str, Any]],
     detected_at: float,
 ) -> list[dict[str, Any]]:
-    """Build user-visible action alerts."""
+    """Action 모니터링에서 Action 실행 또는 상태를 처리하는 함수입니다."""
     alerts = []
     for action in actions:
         runtime = action.get('runtime', {})

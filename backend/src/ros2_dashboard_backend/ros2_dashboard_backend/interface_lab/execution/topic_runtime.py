@@ -1,4 +1,4 @@
-"""Explicit Interface Lab receive/observe runtime."""
+"""Interface Lab의 topic_runtime 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -24,11 +24,11 @@ MAX_PUBLISH_HISTORY_ITEMS = 100
 
 
 class InterfaceReceiveError(ValueError):
-    """Raised when receive/observe setup fails."""
+    """Interface Lab에서 발생하는 예외를 표현하는 클래스입니다."""
 
 
 class InterfaceReceiveRuntime:
-    """Manage user-triggered topic subscriptions and receive history."""
+    """Interface Lab runtime 상태와 cache를 관리하는 클래스입니다."""
 
     def __init__(self, *, lock: Any, node_getter: Callable[[], Any]) -> None:
         self._lock = lock
@@ -62,7 +62,7 @@ class InterfaceReceiveRuntime:
                 pass
 
     def message_schema(self, *, message_type: str) -> dict[str, Any]:
-        """Return schema and graph state for one registered message type."""
+        """Interface Lab에서 interface schema를 반환하는 함수입니다."""
         refresh_install_python_paths()
         message_type = message_type.strip()
         entry = self._registered_message(message_type)
@@ -78,7 +78,7 @@ class InterfaceReceiveRuntime:
         }
 
     def callable_messages(self) -> dict[str, Any]:
-        """Return registered messages with graph hints for Topic work."""
+        """Interface Lab에서 현재 실행 가능한 후보를 조회하는 함수입니다."""
         refresh_install_python_paths()
         messages = []
         graph = self._topic_graph()
@@ -235,7 +235,7 @@ class InterfaceReceiveRuntime:
         topic_name: str | None = None,
         topic_type: str | None = None,
     ) -> dict[str, Any]:
-        """Clear accumulated explicit topic receive history."""
+        """Interface Lab에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         cleared = 0
         with self._lock:
             if topic_name and topic_type:
@@ -277,7 +277,7 @@ class InterfaceReceiveRuntime:
         topic_type: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        """Publish one user-triggered message to a registered topic type."""
+        """Interface Lab에서 Topic 메시지를 발행하는 함수입니다."""
         node = self._node_getter()
         if node is None:
             raise InterfaceReceiveError('ROS2 monitor node가 실행 중이 아닙니다.')
@@ -348,14 +348,14 @@ class InterfaceReceiveRuntime:
         return result
 
     def publish_history(self, *, limit: int | None = None) -> dict[str, Any]:
-        """Return recent explicit topic publish history."""
+        """Interface Lab에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         normalized_limit = _normalize_limit(limit or MAX_PUBLISH_HISTORY_ITEMS)
         with self._lock:
             items = [item.copy() for item in self._publish_history]
         return {'history': items[:normalized_limit], 'meta': {'count': len(items[:normalized_limit])}}
 
     def reset_publish_history(self, *, topic_name: str | None = None, topic_type: str | None = None) -> dict[str, Any]:
-        """Clear explicit topic publish history."""
+        """Interface Lab에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         with self._lock:
             before = len(self._publish_history)
             if topic_name and topic_type:

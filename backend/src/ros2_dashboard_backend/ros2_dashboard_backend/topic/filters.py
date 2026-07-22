@@ -1,4 +1,4 @@
-"""Topic filtering and supported type decisions."""
+"""Topic 모니터링의 filters 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ def is_topic_included(
     exclude_names: tuple[str, ...] = (),
     exclude_prefixes: tuple[str, ...] = (),
 ) -> bool:
-    """Return whether a topic name should appear in topic monitoring."""
+    """Topic 모니터링에서 조건 만족 여부를 판단하는 함수입니다."""
     if include_names and name not in include_names:
         return False
 
@@ -31,7 +31,7 @@ def is_topic_type_excluded(
     *,
     exclude_types: tuple[str, ...] = (),
 ) -> bool:
-    """Return whether a primary topic type is excluded."""
+    """Topic 모니터링에서 조건 만족 여부를 판단하는 함수입니다."""
     if topic_type is None:
         return False
 
@@ -43,7 +43,7 @@ def is_supported_type(
     *,
     supported_types: tuple[str, ...],
 ) -> bool:
-    """Return whether the topic type supports deep monitoring."""
+    """Topic 모니터링에서 조건 만족 여부를 판단하는 함수입니다."""
     if topic_type is None:
         return False
 
@@ -57,7 +57,7 @@ def should_deep_monitor(
     topic_type: str | None,
     supported_type: bool,
 ) -> bool:
-    """Return whether a topic is eligible for automatic deep monitoring."""
+    """Topic 모니터링에서 조건 만족 여부를 판단하는 함수입니다."""
     return (
         auto_discover
         and auto_subscribe_supported_types

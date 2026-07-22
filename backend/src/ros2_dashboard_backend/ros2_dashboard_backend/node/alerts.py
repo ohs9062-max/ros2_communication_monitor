@@ -1,4 +1,4 @@
-"""Alert builders for node monitoring."""
+"""Node 모니터링의 alerts 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def build_node_alerts(
     nodes: list[dict[str, Any]],
     detected_at: float,
 ) -> list[dict[str, Any]]:
-    """Build alerts for stale nodes."""
+    """Node 모니터링에서 Alert 항목을 조립하는 함수입니다."""
     alerts = []
     for node in nodes:
         if node.get('status') != NODE_STATUS_STALE:

@@ -1,4 +1,4 @@
-"""Shared service monitoring constants and helpers."""
+"""Service 모니터링의 models 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ ALERT_CODE_SERVICE_WAITING_SERVER = 'service_waiting_server'
 
 
 def is_valid_service_type(service_type: str | None) -> bool:
-    """Return whether a service type looks like a ROS 2 srv type."""
+    """Service 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     if not service_type:
         return False
 
@@ -38,7 +38,7 @@ def service_status(
     server_count: int,
     client_count: int | None,
 ) -> tuple[str, str]:
-    """Return public status and reason for a ROS 2 service."""
+    """Service 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     if not is_valid_service_type(service_type):
         return SERVICE_STATUS_UNKNOWN, 'service type is unknown'
 
@@ -58,7 +58,7 @@ def service_status(
 
 
 def service_hidden_by_default(category: str) -> bool:
-    """Return whether a service category is hidden from the default view."""
+    """Service 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     return category != SERVICE_CATEGORY_USER
 
 
@@ -68,7 +68,7 @@ def service_meta(
     all_services: list[dict] | None = None,
     last_updated: float,
 ) -> dict[str, int | float]:
-    """Build metadata for /ros/services."""
+    """Service 모니터링에서 Service 실행 또는 상태를 처리하는 함수입니다."""
     counted_services = all_services if all_services is not None else services
 
     return {

@@ -1,4 +1,4 @@
-"""Helpers for building ROS graph action items."""
+"""Action 모니터링의 discovery 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -11,12 +11,12 @@ from ros2_dashboard_backend.action.models import (
 
 
 def action_status_topic(name: str) -> str:
-    """Return the internal status topic name for an action."""
+    """Action 모니터링에서 Action 실행 또는 상태를 처리하는 함수입니다."""
     return f'{name}/_action/status'
 
 
 def action_feedback_topic(name: str) -> str:
-    """Return the internal feedback topic name for an action."""
+    """Action 모니터링에서 Action 실행 또는 상태를 처리하는 함수입니다."""
     return f'{name}/_action/feedback'
 
 
@@ -35,7 +35,7 @@ def build_action_item(
     result_reason: str | None,
     runtime: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    """Build a public /ros/actions item."""
+    """Action 모니터링에서 Action 실행 또는 상태를 처리하는 함수입니다."""
     status, reason = action_status(
         action_type,
         server_count,

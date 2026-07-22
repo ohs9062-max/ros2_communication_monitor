@@ -1,4 +1,4 @@
-"""Topic message frequency, age, and stale calculations."""
+"""Topic 모니터링의 hz 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def recent_timestamps(
     now: float,
     window_sec: float,
 ) -> list[float]:
-    """Keep timestamps that fall inside the configured Hz window."""
+    """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     earliest = now - window_sec
     return [timestamp for timestamp in timestamps if timestamp >= earliest]
 
@@ -28,7 +28,7 @@ def hz_status(
     now: float,
     stale_timeout_sec: float,
 ) -> tuple[float | None, bool, str]:
-    """Return age, stale flag, and status for the latest message."""
+    """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     if last_received_at is None:
         return None, False, HZ_STATUS_NEVER_RECEIVED
 
@@ -47,7 +47,7 @@ def build_hz_snapshot(
     stale_timeout_sec: float,
     now: float,
 ) -> dict[str, Any]:
-    """Build the data fields used by /ros/topics/hz."""
+    """Topic 모니터링에서 cache snapshot을 반환하는 함수입니다."""
     message_count = len(timestamps)
     hz = 0.0
     if message_count > 0:

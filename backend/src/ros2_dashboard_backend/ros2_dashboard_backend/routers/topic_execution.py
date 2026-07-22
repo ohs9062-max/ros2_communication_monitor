@@ -1,4 +1,4 @@
-"""Topic execution and explicit receive API routes."""
+"""FastAPI Router의 topic_execution 관련 기능을 담당하는 모듈입니다."""
 
 from typing import Any
 
@@ -13,7 +13,7 @@ router = APIRouter()
 
 @router.get('/ros/interfaces/callable-messages')
 def get_callable_messages() -> dict[str, Any]:
-    """Return registered, importable message types for Topic work."""
+    """FastAPI Router에서 현재 실행 가능한 후보를 조회하는 함수입니다."""
     snapshot = ros_monitor.callable_messages()
     return {
         'success': True,
@@ -25,7 +25,7 @@ def get_callable_messages() -> dict[str, Any]:
 
 @router.get('/ros/interfaces/message-schema')
 def get_message_schema(full_type: str = Query(...)) -> dict[str, Any]:
-    """Return schema for one registered Message full_type."""
+    """FastAPI Router에서 interface schema를 반환하는 함수입니다."""
     try:
         snapshot = ros_monitor.message_schema(message_type=full_type)
     except InterfaceReceiveError as exc:
@@ -39,7 +39,7 @@ def get_message_schema(full_type: str = Query(...)) -> dict[str, Any]:
 
 @router.post('/ros/interfaces/topic-publish')
 async def publish_registered_topic(request: Request) -> dict[str, Any]:
-    """Publish one registered and importable ROS 2 message explicitly."""
+    """FastAPI Router에서 Topic 메시지를 발행하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError as exc:
@@ -77,14 +77,14 @@ async def publish_registered_topic(request: Request) -> dict[str, Any]:
 
 @router.get('/ros/interfaces/topic-publish/history')
 def get_topic_publish_history(limit: int | None = Query(default=100)) -> dict[str, Any]:
-    """Return explicit topic publish history."""
+    """FastAPI Router에서 실행 이력을 반환하거나 관리하는 함수입니다."""
     snapshot = ros_monitor.topic_publish_history(limit=limit)
     return {'success': True, 'data': snapshot['history'], 'meta': snapshot['meta']}
 
 
 @router.post('/ros/interfaces/topic-publish/history/reset')
 async def reset_topic_publish_history(request: Request) -> dict[str, Any]:
-    """Reset accumulated explicit topic publish history."""
+    """FastAPI Router에서 실행 이력을 반환하거나 관리하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError:
@@ -98,7 +98,7 @@ async def reset_topic_publish_history(request: Request) -> dict[str, Any]:
 
 @router.post('/ros/interfaces/receive/topics/start')
 async def start_receive_topic(request: Request) -> dict[str, Any]:
-    """Start explicit Interface Lab topic receive."""
+    """FastAPI Router에서 수신 상태와 이력을 관리하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError as exc:
@@ -116,7 +116,7 @@ async def start_receive_topic(request: Request) -> dict[str, Any]:
 
 @router.post('/ros/interfaces/receive/topics/stop')
 async def stop_receive_topic(request: Request) -> dict[str, Any]:
-    """Stop explicit Interface Lab topic receive."""
+    """FastAPI Router에서 수신 상태와 이력을 관리하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError as exc:
@@ -130,7 +130,7 @@ async def stop_receive_topic(request: Request) -> dict[str, Any]:
 
 @router.get('/ros/interfaces/receive/topics')
 def get_receive_topics() -> dict[str, Any]:
-    """Return explicit topic receive states."""
+    """FastAPI Router에서 수신 상태와 이력을 관리하는 함수입니다."""
     snapshot = ros_monitor.receive_topics()
     return {'success': True, 'data': snapshot['topics'], 'meta': snapshot['meta']}
 
@@ -142,7 +142,7 @@ def get_receive_topic_history(
     full_type: str | None = Query(default=None),
     limit: int | None = Query(default=500),
 ) -> dict[str, Any]:
-    """Return explicit topic receive history."""
+    """FastAPI Router에서 실행 이력을 반환하거나 관리하는 함수입니다."""
     snapshot = ros_monitor.receive_topic_history(
         topic_name=topic_name,
         topic_type=topic_type or full_type,
@@ -153,7 +153,7 @@ def get_receive_topic_history(
 
 @router.post('/ros/interfaces/receive/topics/history/reset')
 async def reset_receive_topic_history(request: Request) -> dict[str, Any]:
-    """Reset accumulated explicit topic receive history."""
+    """FastAPI Router에서 실행 이력을 반환하거나 관리하는 함수입니다."""
     try:
         payload = await request.json()
     except ValueError:

@@ -1,4 +1,4 @@
-"""Alert builders for topic monitoring."""
+"""Topic 모니터링의 alerts 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -41,7 +41,7 @@ def build_alerts(
     detected_at: float,
     stale_timeout_sec: float,
 ) -> list[dict[str, Any]]:
-    """Build de-duplicated topic and MonitorStatus alerts."""
+    """Topic 모니터링에서 Alert 항목을 조립하는 함수입니다."""
     alerts_by_id = {}
     for topic in topics:
         for alert_item in _topic_alerts(
@@ -64,7 +64,7 @@ def build_alerts(
 
 
 def build_alert_meta(alerts: list[dict[str, Any]]) -> dict[str, int]:
-    """Build alert count metadata for /ros/alerts."""
+    """Topic 모니터링에서 Alert 항목을 조립하는 함수입니다."""
     return {
         'count': len(alerts),
         'info_count': sum(1 for alert in alerts if alert['level'] == 'info'),

@@ -1,4 +1,4 @@
-"""Runtime owner for ROS 2 service graph and active-check state."""
+"""Service 모니터링의 runtime 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class ServiceRuntime:
-    """Collect service graph data and coordinate safe active checks."""
+    """Service 모니터링 runtime 상태와 cache를 관리하는 클래스입니다."""
 
     def __init__(
         self,
@@ -31,7 +31,7 @@ class ServiceRuntime:
         lock: Any,
         node_getter: Callable[[], Any],
     ) -> None:
-        """Initialize service runtime with shared monitor dependencies."""
+        """Service 모니터링에서 내부 보조 처리를 수행하는 내부 helper 함수입니다."""
         self._config = config
         self._lock = lock
         self._node_getter = node_getter
@@ -44,7 +44,7 @@ class ServiceRuntime:
         )
 
     def clear(self) -> None:
-        """Clear service graph and active-check runtime state."""
+        """Service 모니터링에서 cache와 runtime 상태를 초기화하는 함수입니다."""
         with self._lock:
             self._services = []
             self._last_updated = 0.0
@@ -56,7 +56,7 @@ class ServiceRuntime:
         *,
         include_hidden: bool = False,
     ) -> dict[str, Any]:
-        """Return a thread-safe public service snapshot."""
+        """Service 모니터링에서 cache snapshot을 반환하는 함수입니다."""
         with self._lock:
             all_services = [service.copy() for service in self._services]
             last_updated = self._last_updated
@@ -79,12 +79,12 @@ class ServiceRuntime:
         }
 
     def alert_snapshot(self) -> list[dict[str, Any]]:
-        """Return service items used by the service alert builder."""
+        """Service 모니터링에서 cache snapshot을 반환하는 함수입니다."""
         with self._lock:
             return [service.copy() for service in self._services]
 
     def update(self) -> list[dict[str, Any]]:
-        """Refresh service graph data and merge active-check cache."""
+        """Service 모니터링에서 runtime 상태를 갱신하는 함수입니다."""
         node = self._node_getter()
         if node is None:
             return []
@@ -130,7 +130,7 @@ class ServiceRuntime:
         self,
         services: list[dict[str, Any]],
     ) -> None:
-        """Advance allowlisted active checks after graph refresh."""
+        """Service 모니터링에서 runtime 상태를 갱신하는 함수입니다."""
         self._active_checks.update(services)
 
     def _client_count(self, name: str) -> int:

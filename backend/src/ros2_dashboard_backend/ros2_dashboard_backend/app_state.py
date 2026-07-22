@@ -1,4 +1,4 @@
-"""Shared application singletons for FastAPI routers."""
+"""ROS2 Dashboard Backend의 app_state 관련 기능을 담당하는 모듈입니다."""
 
 from ros2_dashboard_backend.config_loader import load_backend_config
 from ros2_dashboard_backend.ros_monitor import RosMonitor

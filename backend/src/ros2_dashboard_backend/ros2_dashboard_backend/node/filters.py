@@ -1,4 +1,4 @@
-"""Node include/exclude filter helpers."""
+"""Node 모니터링의 filters 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ def is_node_included(
     exclude_names: tuple[str, ...] = (),
     exclude_prefixes: tuple[str, ...] = (),
 ) -> bool:
-    """Return whether a node is allowed by config filters."""
+    """Node 모니터링에서 조건 만족 여부를 판단하는 함수입니다."""
     full_name = full_node_name(name, namespace)
     names = {name, full_name}
 

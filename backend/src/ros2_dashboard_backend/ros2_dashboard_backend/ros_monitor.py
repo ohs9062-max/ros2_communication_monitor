@@ -1,4 +1,4 @@
-"""ROS 2 graph monitoring utilities for the dashboard backend."""
+"""RosMonitor coordinator의 ros_monitor 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -24,10 +24,10 @@ from ros2_dashboard_backend.topic.runtime import TopicRuntime
 
 
 class RosMonitor:
-    """Coordinate ROS 2 graph runtimes and public monitor snapshots."""
+    """RosMonitor coordinator의 RosMonitor 역할을 담당하는 클래스입니다."""
 
     def __init__(self, config: MonitorConfig | None = None) -> None:
-        """Initialize the monitor without starting ROS 2 resources."""
+        """RosMonitor coordinator에서 내부 보조 처리를 수행하는 내부 helper 함수입니다."""
         self._config = config or MonitorConfig()
         self._node: Node | None = None
         self._thread: Thread | None = None
@@ -72,7 +72,7 @@ class RosMonitor:
         )
 
     def start(self) -> None:
-        """Start rclpy, create the monitor node, and spin in the background."""
+        """RosMonitor coordinator에서 요청된 처리를 수행하는 함수입니다."""
         if self._thread and self._thread.is_alive():
             return
 
@@ -88,7 +88,7 @@ class RosMonitor:
         self._thread.start()
 
     def stop(self) -> None:
-        """Stop spinning and release ROS 2 resources."""
+        """RosMonitor coordinator에서 요청된 처리를 수행하는 함수입니다."""
         node = self._node
 
         if rclpy.ok():
@@ -111,7 +111,7 @@ class RosMonitor:
         self._node_runtime.clear()
 
     def snapshot(self) -> dict[str, Any]:
-        """Return a thread-safe snapshot of the cached topic list."""
+        """RosMonitor coordinator에서 cache snapshot을 반환하는 함수입니다."""
         return self._topic_runtime.snapshot()
 
     def service_snapshot(
@@ -119,7 +119,7 @@ class RosMonitor:
         *,
         include_hidden: bool = False,
     ) -> dict[str, Any]:
-        """Return a thread-safe snapshot of the cached service list."""
+        """RosMonitor coordinator에서 cache snapshot을 반환하는 함수입니다."""
         snapshot = self._service_runtime.snapshot(
             include_hidden=include_hidden,
         )
@@ -145,7 +145,7 @@ class RosMonitor:
         return snapshot
 
     def callable_services(self) -> dict[str, Any]:
-        """Return registered services that can be explicitly called."""
+        """RosMonitor coordinator에서 현재 실행 가능한 후보를 조회하는 함수입니다."""
         return self._service_call_runtime.callable_services()
 
     def call_service(
@@ -156,7 +156,7 @@ class RosMonitor:
         request_data: dict[str, Any],
         timeout_sec: float | None = None,
     ) -> dict[str, Any]:
-        """Run one explicit user-triggered service call."""
+        """RosMonitor coordinator에서 Service 실행 또는 상태를 처리하는 함수입니다."""
         return self._service_call_runtime.call_service(
             service_name=service_name,
             service_type=service_type,
@@ -165,11 +165,11 @@ class RosMonitor:
         )
 
     def service_call_history(self) -> dict[str, Any]:
-        """Return recent explicit service call history."""
+        """RosMonitor coordinator에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         return self._service_call_runtime.history()
 
     def receive_service_history(self) -> dict[str, Any]:
-        """Return receive-shaped service response history."""
+        """RosMonitor coordinator에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         return self._service_call_runtime.receive_history()
 
     def reset_receive_service_history(
@@ -178,14 +178,14 @@ class RosMonitor:
         service_name: str | None = None,
         service_type: str | None = None,
     ) -> dict[str, Any]:
-        """Hide previous service receive-shaped history without clearing call history."""
+        """RosMonitor coordinator에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         return self._service_call_runtime.reset_receive_history(
             service_name=service_name,
             service_type=service_type,
         )
 
     def action_snapshot(self) -> dict[str, Any]:
-        """Return a thread-safe snapshot of the cached action list."""
+        """RosMonitor coordinator에서 cache snapshot을 반환하는 함수입니다."""
         snapshot = self._action_runtime.snapshot()
         summaries = self._action_goal_runtime.summary_by_action()
         callable_items = self._action_goal_runtime.callable_actions()['actions']
@@ -210,7 +210,7 @@ class RosMonitor:
         return snapshot
 
     def callable_actions(self) -> dict[str, Any]:
-        """Return registered actions that can receive explicit goals."""
+        """RosMonitor coordinator에서 현재 실행 가능한 후보를 조회하는 함수입니다."""
         return self._action_goal_runtime.callable_actions()
 
     def send_action_goal(
@@ -221,7 +221,7 @@ class RosMonitor:
         goal_data: dict[str, Any],
         timeout_sec: float | None = None,
     ) -> dict[str, Any]:
-        """Run one explicit user-triggered action goal."""
+        """RosMonitor coordinator에서 Action 실행 또는 상태를 처리하는 함수입니다."""
         return self._action_goal_runtime.send_goal(
             action_name=action_name,
             action_type=action_type,
@@ -230,11 +230,11 @@ class RosMonitor:
         )
 
     def action_goal_history(self) -> dict[str, Any]:
-        """Return recent explicit action goal history."""
+        """RosMonitor coordinator에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         return self._action_goal_runtime.history()
 
     def receive_action_history(self) -> dict[str, Any]:
-        """Return receive-shaped action feedback/result history."""
+        """RosMonitor coordinator에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         return self._action_goal_runtime.receive_history()
 
     def reset_receive_action_history(
@@ -243,14 +243,14 @@ class RosMonitor:
         action_name: str | None = None,
         action_type: str | None = None,
     ) -> dict[str, Any]:
-        """Hide previous action receive-shaped history without clearing goal history."""
+        """RosMonitor coordinator에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         return self._action_goal_runtime.reset_receive_history(
             action_name=action_name,
             action_type=action_type,
         )
 
     def start_receive_topic(self, *, topic_name: str, topic_type: str, history_limit: int = 100) -> dict[str, Any]:
-        """Start explicit topic receive."""
+        """RosMonitor coordinator에서 수신 상태와 이력을 관리하는 함수입니다."""
         return self._receive_runtime.start_topic(
             topic_name=topic_name,
             topic_type=topic_type,
@@ -258,11 +258,11 @@ class RosMonitor:
         )
 
     def stop_receive_topic(self, *, topic_name: str, topic_type: str | None = None) -> dict[str, Any]:
-        """Stop explicit topic receive."""
+        """RosMonitor coordinator에서 수신 상태와 이력을 관리하는 함수입니다."""
         return self._receive_runtime.stop_topic(topic_name=topic_name, topic_type=topic_type)
 
     def receive_topics(self) -> dict[str, Any]:
-        """Return receive topic states."""
+        """RosMonitor coordinator에서 수신 상태와 이력을 관리하는 함수입니다."""
         return self._receive_runtime.topics()
 
     def receive_topic_history(
@@ -272,7 +272,7 @@ class RosMonitor:
         topic_type: str | None = None,
         limit: int | None = None,
     ) -> dict[str, Any]:
-        """Return explicit topic receive history."""
+        """RosMonitor coordinator에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         return self._receive_runtime.topic_history(
             topic_name=topic_name,
             topic_type=topic_type,
@@ -285,18 +285,18 @@ class RosMonitor:
         topic_name: str | None = None,
         topic_type: str | None = None,
     ) -> dict[str, Any]:
-        """Clear explicit topic receive history."""
+        """RosMonitor coordinator에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         return self._receive_runtime.reset_topic_history(
             topic_name=topic_name,
             topic_type=topic_type,
         )
 
     def callable_messages(self) -> dict[str, Any]:
-        """Return registered message types for explicit Topic work."""
+        """RosMonitor coordinator에서 현재 실행 가능한 후보를 조회하는 함수입니다."""
         return self._receive_runtime.callable_messages()
 
     def message_schema(self, *, message_type: str) -> dict[str, Any]:
-        """Return schema for one registered Message full_type."""
+        """RosMonitor coordinator에서 interface schema를 반환하는 함수입니다."""
         return self._receive_runtime.message_schema(message_type=message_type)
 
     def publish_topic(
@@ -306,7 +306,7 @@ class RosMonitor:
         topic_type: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        """Publish one explicit user-triggered Topic message."""
+        """RosMonitor coordinator에서 Topic 메시지를 발행하는 함수입니다."""
         return self._receive_runtime.publish_topic(
             topic_name=topic_name,
             topic_type=topic_type,
@@ -314,7 +314,7 @@ class RosMonitor:
         )
 
     def topic_publish_history(self, *, limit: int | None = None) -> dict[str, Any]:
-        """Return explicit Topic publish history."""
+        """RosMonitor coordinator에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         return self._receive_runtime.publish_history(limit=limit)
 
     def reset_topic_publish_history(
@@ -323,18 +323,18 @@ class RosMonitor:
         topic_name: str | None = None,
         topic_type: str | None = None,
     ) -> dict[str, Any]:
-        """Clear explicit Topic publish history."""
+        """RosMonitor coordinator에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         return self._receive_runtime.reset_publish_history(
             topic_name=topic_name,
             topic_type=topic_type,
         )
 
     def node_snapshot(self) -> dict[str, Any]:
-        """Return a thread-safe snapshot of the cached node list."""
+        """RosMonitor coordinator에서 cache snapshot을 반환하는 함수입니다."""
         return self._node_runtime.snapshot()
 
     def websocket_snapshot(self) -> dict[str, Any]:
-        """Return a lightweight monitor snapshot for WebSocket clients."""
+        """RosMonitor coordinator에서 cache snapshot을 반환하는 함수입니다."""
         timestamp = time()
         topic_snapshot = self.snapshot()
         service_snapshot = self.service_snapshot()
@@ -366,15 +366,15 @@ class RosMonitor:
         }
 
     def latest_message(self, name: str) -> dict[str, Any]:
-        """Return the cached latest message preview for a topic."""
+        """RosMonitor coordinator에서 요청된 처리를 수행하는 함수입니다."""
         return self._topic_runtime.latest_message(name)
 
     def topic_hz(self, name: str) -> dict[str, Any]:
-        """Return the recent message frequency for a topic."""
+        """RosMonitor coordinator에서 요청된 처리를 수행하는 함수입니다."""
         return self._topic_runtime.topic_hz(name)
 
     def alerts(self) -> dict[str, Any]:
-        """Return current ROS 2 monitoring alerts."""
+        """RosMonitor coordinator에서 Alert 항목을 조립하는 함수입니다."""
         detected_at = time()
         services = self._service_runtime.alert_snapshot()
         actions = self._action_runtime.snapshot()['actions']

@@ -1,4 +1,4 @@
-"""Explicit user-triggered service call runtime for registered interfaces."""
+"""Interface Lab의 service_call_runtime 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -26,11 +26,11 @@ MAX_TIMEOUT_SEC = 10.0
 
 
 class ServiceCallError(ValueError):
-    """Raised when an explicit service call request is not allowed or failed."""
+    """Interface Lab에서 발생하는 예외를 표현하는 클래스입니다."""
 
 
 class ServiceCallRuntime:
-    """Run explicit user-triggered service calls for registered .srv types."""
+    """Interface Lab runtime 상태와 cache를 관리하는 클래스입니다."""
 
     def __init__(
         self,
@@ -46,7 +46,7 @@ class ServiceCallRuntime:
         self._receive_reset_by_key: dict[tuple[str | None, str | None], float] = {}
 
     def clear(self) -> None:
-        """Clear cached clients and call history."""
+        """Interface Lab에서 cache와 runtime 상태를 초기화하는 함수입니다."""
         with self._lock:
             self._clients = {}
             self._history = []
@@ -54,7 +54,7 @@ class ServiceCallRuntime:
             self._receive_reset_by_key = {}
 
     def callable_services(self) -> dict[str, Any]:
-        """Return registered services with explicit call eligibility state."""
+        """Interface Lab에서 현재 실행 가능한 후보를 조회하는 함수입니다."""
         refresh_install_python_paths()
         registered = self._registered_services()
         graph = self._service_graph()
@@ -90,7 +90,7 @@ class ServiceCallRuntime:
         request_data: dict[str, Any],
         timeout_sec: float | None = None,
     ) -> dict[str, Any]:
-        """Call one registered service and return a JSON-safe response."""
+        """Interface Lab에서 Service 실행 또는 상태를 처리하는 함수입니다."""
         timeout = _normalized_timeout(timeout_sec)
         refresh_install_python_paths()
         allowed = self._allowed_service(service_name, service_type)
@@ -170,7 +170,7 @@ class ServiceCallRuntime:
         return result
 
     def history(self) -> dict[str, Any]:
-        """Return recent explicit service call history."""
+        """Interface Lab에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         with self._lock:
             calls = [item.copy() for item in self._history]
         return {
@@ -181,7 +181,7 @@ class ServiceCallRuntime:
         }
 
     def receive_history(self) -> dict[str, Any]:
-        """Return service call history in the Interface Lab receive format."""
+        """Interface Lab에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         calls = self.history()['calls']
         events = []
         for index, call in enumerate(calls):
@@ -222,7 +222,7 @@ class ServiceCallRuntime:
         service_name: str | None = None,
         service_type: str | None = None,
     ) -> dict[str, Any]:
-        """Hide previous receive-shaped history without clearing call history."""
+        """Interface Lab에서 실행 이력을 반환하거나 관리하는 함수입니다."""
         previous = len([
             item for item in self.receive_history()['history']
             if not service_name
@@ -235,7 +235,7 @@ class ServiceCallRuntime:
         return {'cleared': previous}
 
     def summary_by_service(self) -> dict[tuple[str, str], dict[str, Any]]:
-        """Return last call and counters keyed by (service_name, service_type)."""
+        """Interface Lab에서 Service 실행 또는 상태를 처리하는 함수입니다."""
         with self._lock:
             calls = [item.copy() for item in self._history]
         summaries: dict[tuple[str, str], dict[str, Any]] = {}

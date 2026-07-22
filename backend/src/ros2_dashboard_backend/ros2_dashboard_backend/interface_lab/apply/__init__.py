@@ -1,1 +1,1 @@
-"""Interface Lab build, apply, and import-check helpers."""
+"""Interface Lab 패키지 초기화 모듈입니다."""

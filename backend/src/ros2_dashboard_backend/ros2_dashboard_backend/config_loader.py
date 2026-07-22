@@ -1,4 +1,4 @@
-"""Configuration loading for the ROS 2 dashboard backend."""
+"""Backend 설정 로딩의 config_loader 관련 기능을 담당하는 모듈입니다."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ DEFAULT_SUPPORTED_TOPIC_TYPES = SUPPORTED_PREVIEW_TYPES
 
 @dataclass(frozen=True)
 class ServiceActiveCheckTarget:
-    """Allowlisted service active check target."""
+    """Backend 설정 로딩의 ServiceActiveCheckTarget 역할을 담당하는 클래스입니다."""
 
     name: str
     service_type: str
@@ -51,7 +51,7 @@ class ServiceActiveCheckTarget:
 
 @dataclass(frozen=True)
 class ServiceActiveCheckConfig:
-    """Runtime policy for allowlisted service active checks."""
+    """Backend 설정 로딩 설정 값을 담는 데이터 클래스입니다."""
 
     enabled: bool = False
     interval_sec: float = 10.0
@@ -61,7 +61,7 @@ class ServiceActiveCheckConfig:
 
 @dataclass(frozen=True)
 class MonitorConfig:
-    """Runtime policy for ROS 2 graph monitoring."""
+    """Backend 설정 로딩 설정 값을 담는 데이터 클래스입니다."""
 
     poll_interval_sec: float = 1.0
     stale_timeout_sec: float = 3.0
@@ -90,14 +90,14 @@ class MonitorConfig:
 
 @dataclass(frozen=True)
 class BackendConfig:
-    """Backend application settings loaded from .env and monitor.yaml."""
+    """Backend 설정 로딩 설정 값을 담는 데이터 클래스입니다."""
 
     cors_origins: tuple[str, ...]
     monitor: MonitorConfig
 
 
 def load_backend_config() -> BackendConfig:
-    """Load backend settings with safe defaults."""
+    """Backend 설정 로딩에서 필요한 ROS2 타입이나 설정을 불러오는 함수입니다."""
     backend_root = _backend_root()
     _load_env(backend_root)
 
@@ -316,7 +316,7 @@ def _config_string_tuple(
     *,
     default: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
-    """Read both legacy short keys and explicit *_names config keys."""
+    """Backend 설정 로딩에서 내부 보조 처리를 수행하는 내부 helper 함수입니다."""
     values = _string_tuple(data.get(base_key))
     if values:
         return values

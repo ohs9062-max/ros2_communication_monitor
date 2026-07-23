@@ -25,14 +25,37 @@ export function isInternalNode(node) {
   return name.includes('ros2cli_daemon') || fullName.includes('ros2cli_daemon')
 }
 
-export function isPrimaryNode(node) {
+export function isPrimaryNode(node, topics = []) {
   const fullName = normalizeNodeName(node.full_name ?? node.name)
 
   if (isHiddenFromPrimary(node, fullName)) {
     return false
   }
 
-  return node.status === 'stale' || PRIMARY_NODE_NAMES.has(fullName)
+  return (
+    node.status === 'stale' ||
+    PRIMARY_NODE_NAMES.has(fullName) ||
+    nodeUsesSupportedTopicType(node, topics)
+  )
+}
+
+function nodeUsesSupportedTopicType(node, topics) {
+  const supportedTypes = new Set(
+    topics
+      .filter((topic) => topic.supported_type === true)
+      .flatMap((topic) => topic.types ?? [topic.type])
+      .filter(Boolean),
+  )
+  if (!supportedTypes.size) {
+    return false
+  }
+
+  return [
+    ...(node.topic_publishers ?? []),
+    ...(node.topic_subscribers ?? []),
+  ].some((topic) =>
+    (topic.types ?? [topic.type]).some((type) => supportedTypes.has(type)),
+  )
 }
 
 function isHiddenFromPrimary(node, fullName) {

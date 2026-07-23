@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from ros2_dashboard_backend.topic.preview import is_preview_supported
-
-
 def is_topic_included(
     name: str,
     *,
@@ -47,7 +44,7 @@ def is_supported_type(
     if topic_type is None:
         return False
 
-    return topic_type in supported_types and is_preview_supported(topic_type)
+    return topic_type in supported_types
 
 
 def should_deep_monitor(

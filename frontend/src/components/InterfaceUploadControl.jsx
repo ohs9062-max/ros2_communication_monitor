@@ -219,8 +219,10 @@ export function InterfaceUploadControl({
     }
 
     if (publishGraphTopics.length === 1) {
+      const nextName = publishGraphTopics[0].name
+      if (source === 'auto' && currentName === nextName) return
       topicPublishNameSourceRef.current = 'auto'
-      setTopicPublishName(publishGraphTopics[0].name)
+      setTopicPublishName(nextName)
     }
   }, [publishGraphTopics, selectedMessage?.message_type, topicPublishName])
 

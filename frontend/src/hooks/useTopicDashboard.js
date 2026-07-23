@@ -76,6 +76,16 @@ export function useTopicDashboard({
     [selectedTopicName, topicItems],
   )
   const hzTopicNamesKey = useMemo(() => hzTopicNames.join('\n'), [hzTopicNames])
+  const displayedTopicHzByName = useMemo(() => {
+    if (hz.data?.data?.name !== selectedTopicName) {
+      return topicHzByName
+    }
+
+    return {
+      ...topicHzByName,
+      [selectedTopicName]: hz.data,
+    }
+  }, [hz.data, selectedTopicName, topicHzByName])
 
   useEffect(() => {
     const names = hzTopicNamesKey ? hzTopicNamesKey.split('\n') : []
@@ -142,7 +152,7 @@ export function useTopicDashboard({
     selectedTopicName,
     setIncludeAllTopics,
     setSelectedTopicName,
-    topicHzByName,
+    topicHzByName: displayedTopicHzByName,
     topicItems,
     topicParticipants,
     topics,

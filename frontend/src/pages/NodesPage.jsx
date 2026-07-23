@@ -13,7 +13,7 @@ const NODE_FILTERS = [
   { id: 'hidden', label: '숨김 포함' },
 ]
 
-export function NodesPage({ dashboard }) {
+export function NodesPage({ dashboard, topics }) {
   const {
     alerts,
     error,
@@ -35,9 +35,9 @@ export function NodesPage({ dashboard }) {
   const primaryNodes = useMemo(
     () =>
       nodes.filter((node) =>
-        !isInternalNode(node) && isPrimaryNode(node),
+        !isInternalNode(node) && isPrimaryNode(node, topics),
       ),
-    [nodes],
+    [nodes, topics],
   )
 
   const filteredNodes = useMemo(() => {
@@ -48,7 +48,7 @@ export function NodesPage({ dashboard }) {
 
     return baseNodes.filter((node) => {
       const matchesStatus = statusFilter === 'primary'
-        ? isPrimaryNode(node)
+        ? isPrimaryNode(node, topics)
         : statusFilter === 'all' || statusFilter === 'hidden'
           ? true
           : node.status === statusFilter
@@ -57,9 +57,13 @@ export function NodesPage({ dashboard }) {
 
       return matchesStatus && matchesSearch
     })
-  }, [includeInternalNodes, nodes, search, statusFilter])
+  }, [includeInternalNodes, nodes, search, statusFilter, topics])
 
   useEffect(() => {
+    if (!filteredNodes.length) {
+      return
+    }
+
     if (filteredNodes.some((node) => node.full_name === selectedNodeName)) {
       return
     }

@@ -234,8 +234,10 @@ export function InterfaceLabPage({ websocket }) {
     }
 
     if (publishGraphTopics.length === 1) {
+      const nextName = publishGraphTopics[0].name
+      if (source === 'auto' && currentName === nextName) return
       topicPublishNameSourceRef.current = 'auto'
-      setTopicPublishName(publishGraphTopics[0].name)
+      setTopicPublishName(nextName)
     }
   }, [publishGraphTopics, selectedDetail?.kind, selectedDetail?.fullType, topicPublishName])
 

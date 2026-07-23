@@ -103,10 +103,14 @@ def load_backend_config() -> BackendConfig:
 
     monitor_config_path = _monitor_config_path(backend_root)
     monitor_data = _load_monitor_yaml(monitor_config_path)
+    registered_message_types = _registered_message_types(backend_root)
 
     return BackendConfig(
         cors_origins=_cors_origins(),
-        monitor=_monitor_config(monitor_data),
+        monitor=_monitor_config(
+            monitor_data,
+            registered_message_types=registered_message_types,
+        ),
     )
 
 
@@ -178,7 +182,11 @@ def _load_monitor_yaml(config_path: Path) -> dict[str, Any]:
     return {}
 
 
-def _monitor_config(data: dict[str, Any]) -> MonitorConfig:
+def _monitor_config(
+    data: dict[str, Any],
+    *,
+    registered_message_types: tuple[str, ...] = (),
+) -> MonitorConfig:
     monitor = _mapping(data.get('monitor'))
     topics = _mapping(data.get('topics'))
     services = _mapping(data.get('services'))
@@ -212,10 +220,13 @@ def _monitor_config(data: dict[str, Any]) -> MonitorConfig:
             'exclude',
             default=DEFAULT_TOPIC_EXCLUDES,
         ),
-        topics_supported_types=_string_tuple(
-            topics.get('supported_types'),
-            default=DEFAULT_SUPPORTED_TOPIC_TYPES,
-        ),
+        topics_supported_types=tuple(dict.fromkeys(
+            _string_tuple(
+                topics.get('supported_types'),
+                default=DEFAULT_SUPPORTED_TOPIC_TYPES,
+            )
+            + registered_message_types,
+        )),
         services_include=_config_string_tuple(services, 'include'),
         services_exclude=_config_string_tuple(services, 'exclude'),
         services_active_check=_service_active_check_config(
@@ -250,6 +261,58 @@ def _monitor_config(data: dict[str, Any]) -> MonitorConfig:
             default=True,
         ),
     )
+
+
+def _registered_message_types(backend_root: Path) -> tuple[str, ...]:
+    registry_paths = (
+        _backend_config_path(
+            backend_root,
+            env_name='INTERFACE_REGISTRY_PATH',
+            default='config/interface_registry.yaml',
+        ),
+        _backend_config_path(
+            backend_root,
+            env_name='INTERFACE_PACKAGES_REGISTRY_PATH',
+            default='config/interface_packages.yaml',
+        ),
+    )
+    message_types: list[str] = []
+    for path in registry_paths:
+        data = _load_monitor_yaml(path)
+        registry_messages = _mapping(data.get('interface_registry')).get('messages')
+        if isinstance(registry_messages, list):
+            for item in registry_messages:
+                entry = _mapping(item)
+                build = _mapping(entry.get('build'))
+                full_type = entry.get('full_type')
+                if build.get('import_available') is True and isinstance(full_type, str):
+                    message_types.append(full_type)
+
+        packages = data.get('packages')
+        if not isinstance(packages, list):
+            continue
+        for package_item in packages:
+            package = _mapping(package_item)
+            messages = _mapping(package.get('interfaces')).get('msg')
+            if not isinstance(messages, list):
+                continue
+            for item in messages:
+                entry = _mapping(item)
+                full_type = entry.get('type')
+                if entry.get('import_available') is True and isinstance(full_type, str):
+                    message_types.append(full_type)
+
+    return tuple(dict.fromkeys(message_types))
+
+
+def _backend_config_path(
+    backend_root: Path,
+    *,
+    env_name: str,
+    default: str,
+) -> Path:
+    path = Path(os.getenv(env_name, default))
+    return path if path.is_absolute() else backend_root / path
 
 
 def _cors_origins() -> tuple[str, ...]:

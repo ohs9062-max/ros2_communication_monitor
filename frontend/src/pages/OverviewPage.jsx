@@ -8,6 +8,7 @@ import {
   getTopicSummary,
   overallStatus,
 } from '../utils/status.js'
+import { isPrimaryNode } from '../utils/nodeFilters.js'
 
 export function OverviewPage({
   actionDashboard,
@@ -27,10 +28,10 @@ export function OverviewPage({
     actionDashboard.actions,
     actionDashboard.meta,
   )
-  const nodeSummary = getNodeSummary(
-    nodeDashboard.nodes,
-    nodeDashboard.meta,
+  const primaryNodes = nodeDashboard.nodes.filter(
+    (node) => isPrimaryNode(node, topicItems),
   )
+  const nodeSummary = getNodeSummary(primaryNodes)
   const alertMeta = alerts.data?.meta ?? {}
   const alertItems = alerts.data?.data ?? []
   const alertSummary = getAlertSummary(alertMeta, alertItems)

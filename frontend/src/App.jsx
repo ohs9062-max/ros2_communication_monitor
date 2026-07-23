@@ -19,7 +19,7 @@ import {
 
 function App() {
   const { activePage, navigate } = useBrowserRoute()
-  const topicDashboardEnabled = ['overview', 'topics', 'alerts'].includes(activePage)
+  const topicDashboardEnabled = ['overview', 'topics', 'nodes', 'alerts'].includes(activePage)
   const serviceDashboardEnabled = ['overview', 'services', 'alerts'].includes(activePage)
   const actionDashboardEnabled = ['overview', 'actions', 'alerts'].includes(activePage)
   const nodeDashboardEnabled = ['overview', 'nodes', 'alerts'].includes(activePage)
@@ -58,7 +58,9 @@ function App() {
           serviceDashboard={serviceDashboard}
         />
       )}
-      {activePage === 'nodes' && <NodesPage dashboard={nodeDashboard} />}
+      {activePage === 'nodes' && (
+        <NodesPage dashboard={nodeDashboard} topics={dashboard.topicItems} />
+      )}
       {activePage === 'services' && (
         <ServicesPage dashboard={serviceDashboard} />
       )}

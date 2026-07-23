@@ -126,9 +126,7 @@ class TopicRuntime:
         topics = []
         updated_at = time()
         topic_names_and_types = node.get_topic_names_and_types()
-        graph_topic_names = {
-            name for name, _types in topic_names_and_types
-        }
+        externally_present_topic_names = set()
 
         for name, types in topic_names_and_types:
             if not self._is_topic_included(name):
@@ -151,6 +149,8 @@ class TopicRuntime:
                 0,
                 raw_subscriber_count - monitor_subscriber_count,
             )
+            if publisher_count > 0 or external_subscriber_count > 0:
+                externally_present_topic_names.add(name)
             topics.append(
                 build_topic_item(
                     name=name,
@@ -172,7 +172,7 @@ class TopicRuntime:
             self._last_updated = updated_at
 
         self._cleanup_disappeared_subscriptions(
-            graph_topic_names,
+            externally_present_topic_names,
             updated_at,
         )
 
@@ -365,7 +365,7 @@ class TopicRuntime:
 
     def _cleanup_disappeared_subscriptions(
         self,
-        graph_topic_names: set[str],
+        externally_present_topic_names: set[str],
         now: float,
     ) -> None:
         node = self._node_getter()
@@ -375,7 +375,7 @@ class TopicRuntime:
         with self._lock:
             candidates = cleanup_candidates(
                 self._subscriptions,
-                graph_topic_names=graph_topic_names,
+                retained_topic_names=externally_present_topic_names,
                 now=now,
                 cleanup_after_sec=(
                     DEFAULT_SUBSCRIPTION_CLEANUP_AFTER_SEC

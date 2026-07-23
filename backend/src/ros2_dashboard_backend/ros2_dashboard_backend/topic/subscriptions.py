@@ -57,14 +57,14 @@ def update_subscription_entry(
 def cleanup_candidates(
     subscriptions: dict[str, dict[str, Any]],
     *,
-    graph_topic_names: set[str],
+    retained_topic_names: set[str],
     now: float,
     cleanup_after_sec: float,
 ) -> list[tuple[str, Any]]:
     """Topic 모니터링에서 요청된 처리를 수행하는 함수입니다."""
     candidates = []
     for name, entry in subscriptions.items():
-        if name in graph_topic_names:
+        if name in retained_topic_names:
             entry.pop('disappeared_at', None)
             continue
 

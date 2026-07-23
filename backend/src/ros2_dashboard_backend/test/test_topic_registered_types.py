@@ -17,6 +17,10 @@ from ros2_dashboard_backend.topic.runtime import TopicRuntime
 class _FakeNode:
     def __init__(self) -> None:
         self.subscriptions = []
+        self.publisher_count = 0
+        self.external_subscriber_count = 0
+        self.topic_name = '/demo_cleaning_schedule'
+        self.topic_type = 'rths_interfaces/msg/CleaningSchedule'
 
     def create_subscription(self, message_class, topic_name, callback, qos):
         subscription = {
@@ -30,6 +34,21 @@ class _FakeNode:
 
     def destroy_subscription(self, subscription) -> None:
         self.subscriptions.remove(subscription)
+
+    def get_topic_names_and_types(self):
+        if (
+            self.publisher_count > 0
+            or self.external_subscriber_count > 0
+            or self.subscriptions
+        ):
+            return [(self.topic_name, [self.topic_type])]
+        return []
+
+    def count_publishers(self, _topic_name):
+        return self.publisher_count
+
+    def count_subscribers(self, _topic_name):
+        return self.external_subscriber_count + len(self.subscriptions)
 
 
 def test_registered_importable_messages_extend_monitor_supported_types(
@@ -115,3 +134,61 @@ def test_registered_custom_message_is_subscribed_and_measures_hz() -> None:
     assert snapshot['data']['last_received_at'] is not None
     assert snapshot['data']['message_count'] == 2
     assert snapshot['data']['hz'] > 0
+
+
+def test_monitor_only_topic_is_removed_after_cleanup_grace_period(
+    monkeypatch,
+) -> None:
+    topic_type = 'rths_interfaces/msg/CleaningSchedule'
+    node = _FakeNode()
+    node.publisher_count = 1
+    runtime = TopicRuntime(
+        action_monitor_subscriber_count=lambda _name: 0,
+        config=MonitorConfig(topics_supported_types=(topic_type,)),
+        lock=Lock(),
+        node_getter=lambda: node,
+    )
+    monkeypatch.setattr(
+        'ros2_dashboard_backend.topic.runtime.'
+        'DEFAULT_SUBSCRIPTION_CLEANUP_AFTER_SEC',
+        0.0,
+    )
+
+    runtime.update()
+    assert len(node.subscriptions) == 1
+
+    node.publisher_count = 0
+    runtime.update()
+    runtime.update()
+    assert node.subscriptions == []
+
+    runtime.update()
+    assert runtime.snapshot()['topics'] == []
+
+
+def test_external_subscriber_keeps_waiting_topic_monitored(
+    monkeypatch,
+) -> None:
+    topic_type = 'rths_interfaces/msg/CleaningSchedule'
+    node = _FakeNode()
+    node.publisher_count = 1
+    runtime = TopicRuntime(
+        action_monitor_subscriber_count=lambda _name: 0,
+        config=MonitorConfig(topics_supported_types=(topic_type,)),
+        lock=Lock(),
+        node_getter=lambda: node,
+    )
+    monkeypatch.setattr(
+        'ros2_dashboard_backend.topic.runtime.'
+        'DEFAULT_SUBSCRIPTION_CLEANUP_AFTER_SEC',
+        0.0,
+    )
+
+    runtime.update()
+    node.publisher_count = 0
+    node.external_subscriber_count = 1
+    runtime.update()
+    runtime.update()
+
+    assert len(node.subscriptions) == 1
+    assert runtime.snapshot()['topics'][0]['status'] == 'waiting_publisher'

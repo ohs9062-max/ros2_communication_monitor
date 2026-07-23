@@ -1,4 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  graphPublishTopicCandidates,
+  topicHasType,
+  topicNameTypeWarning,
+} from '../utils/interfaceTopics.js'
 import {
   applyInterfaces,
   callRegisteredService,
@@ -94,11 +99,13 @@ export function InterfaceUploadControl({
   const [availableTopics, setAvailableTopics] = useState([])
   const [receiveTopics, setReceiveTopics] = useState([])
   const [selectedReceiveTopic, setSelectedReceiveTopic] = useState('')
+  const selectedReceiveTopicSourceRef = useRef('empty')
   const [receiveTopicSearch, setReceiveTopicSearch] = useState('')
   const [callableMessages, setCallableMessages] = useState([])
   const [topicImportableOnly, setTopicImportableOnly] = useState(false)
   const [selectedMessageKey, setSelectedMessageKey] = useState('')
   const [topicPublishName, setTopicPublishName] = useState('')
+  const topicPublishNameSourceRef = useRef('empty')
   const [topicMessageValues, setTopicMessageValues] = useState({})
   const [topicPublishBusy, setTopicPublishBusy] = useState(false)
   const [topicPublishResult, setTopicPublishResult] = useState(null)
@@ -150,6 +157,15 @@ export function InterfaceUploadControl({
   const selectedMessage = callableMessages.find(
     (message) => messageKey(message) === selectedMessageKey,
   )
+  const publishGraphTopics = useMemo(
+    () => graphPublishTopicCandidates(availableTopics, selectedMessage?.message_type),
+    [availableTopics, selectedMessage?.message_type],
+  )
+  const topicPublishWarning = topicNameTypeWarning(
+    availableTopics,
+    topicPublishName,
+    selectedMessage?.message_type,
+  )
   const visibleCallableMessages = topicImportableOnly
     ? callableMessages.filter((message) => message.import_available)
     : callableMessages
@@ -159,14 +175,16 @@ export function InterfaceUploadControl({
   const visibleCallableActions = actionImportableOnly
     ? callableActions.filter((action) => action.import_available)
     : callableActions
-  const filteredReceiveTopics = availableTopics.filter((topic) => {
+  const filteredReceiveTopics = useMemo(() => {
     const keyword = receiveTopicSearch.trim().toLowerCase()
-    const topicType = topic.type ?? topic.types?.[0] ?? ''
     const selectedType = selectedMessage?.message_type
-    if (topicImportableOnly && selectedType && !topicHasType(topic, selectedType)) return false
-    if (!keyword) return true
-    return `${topic.name} ${topicType}`.toLowerCase().includes(keyword)
-  })
+    return availableTopics.filter((topic) => {
+      const topicType = topic.type ?? topic.types?.[0] ?? ''
+      if (selectedType && !topicHasType(topic, selectedType)) return false
+      if (!keyword) return true
+      return `${topic.name} ${topicType}`.toLowerCase().includes(keyword)
+    })
+  }, [availableTopics, receiveTopicSearch, selectedMessage?.message_type])
   const selectedTopicReceiving = receiveTopics.some((topic) =>
     topic.topic_name === selectedReceiveTopic
       && (!selectedMessage?.message_type || topic.topic_type === selectedMessage.message_type)
@@ -180,6 +198,45 @@ export function InterfaceUploadControl({
     (!topicPublishName || event.topic_name === topicPublishName)
       && (!selectedMessage?.message_type || event.topic_type === selectedMessage.message_type),
   )
+
+  useEffect(() => {
+    if (!selectedMessage?.message_type) return
+    const currentName = topicPublishName.trim()
+    const currentIsCandidate = publishGraphTopics.some((topic) => topic.name === currentName)
+    const source = topicPublishNameSourceRef.current
+
+    if (source === 'user') {
+      if (currentName) return
+    } else if (source === 'graph') {
+      if (currentIsCandidate) return
+      topicPublishNameSourceRef.current = 'empty'
+      setTopicPublishName('')
+      return
+    } else if (source === 'auto' && publishGraphTopics.length !== 1) {
+      topicPublishNameSourceRef.current = 'empty'
+      setTopicPublishName('')
+      return
+    }
+
+    if (publishGraphTopics.length === 1) {
+      topicPublishNameSourceRef.current = 'auto'
+      setTopicPublishName(publishGraphTopics[0].name)
+    }
+  }, [publishGraphTopics, selectedMessage?.message_type, topicPublishName])
+
+  useEffect(() => {
+    if (!selectedMessage?.message_type) return
+    const currentIsCandidate = filteredReceiveTopics.some(
+      (topic) => topic.name === selectedReceiveTopic,
+    )
+    const source = selectedReceiveTopicSourceRef.current
+    if (source === 'user' && selectedReceiveTopic.trim()) return
+    if ((source === 'auto' || source === 'graph') && currentIsCandidate) return
+
+    const nextTopicName = filteredReceiveTopics[0]?.name ?? ''
+    selectedReceiveTopicSourceRef.current = nextTopicName ? 'auto' : 'empty'
+    setSelectedReceiveTopic(nextTopicName)
+  }, [filteredReceiveTopics, selectedMessage?.message_type, selectedReceiveTopic])
   const filteredReceiveServices = callableServices.filter((service) => {
     const keyword = receiveServiceSearch.trim().toLowerCase()
     if (!keyword) return true
@@ -552,12 +609,6 @@ export function InterfaceUploadControl({
       setTopicPublishHistory(publishHistoryPayload.data ?? [])
       setCallableServices(services)
       setCallableActions(actions)
-      if (!selectedReceiveTopic && topics[0]) {
-        setSelectedReceiveTopic(topics[0].name)
-      }
-      if (!topicPublishName && topics[0]) {
-        setTopicPublishName(topics[0].name)
-      }
       if (!selectedMessageKey && messages[0]) {
         const nextKey = messageKey(messages[0])
         setSelectedMessageKey(nextKey)
@@ -574,7 +625,7 @@ export function InterfaceUploadControl({
     } finally {
       if (!silent) setBusy(false)
     }
-  }, [selectedMessageKey, selectedReceiveActionKey, selectedReceiveServiceKey, selectedReceiveTopic, topicPublishName])
+  }, [selectedMessageKey, selectedReceiveActionKey, selectedReceiveServiceKey])
 
   const startSelectedTopicReceive = async () => {
     if (!selectedReceiveTopic.trim()) {
@@ -1592,8 +1643,8 @@ export function InterfaceUploadControl({
                 <select
                   value={selectedReceiveTopic}
                   onChange={(event) => {
+                    selectedReceiveTopicSourceRef.current = event.target.value ? 'graph' : 'empty'
                     setSelectedReceiveTopic(event.target.value)
-                    if (!topicPublishName) setTopicPublishName(event.target.value)
                   }}
                 >
                   {filteredReceiveTopics.map((topic) => (
@@ -1609,7 +1660,10 @@ export function InterfaceUploadControl({
                 <input
                   placeholder="/interface_lab_topic_test"
                   value={selectedReceiveTopic}
-                  onChange={(event) => setSelectedReceiveTopic(event.target.value)}
+                  onChange={(event) => {
+                    selectedReceiveTopicSourceRef.current = event.target.value ? 'user' : 'empty'
+                    setSelectedReceiveTopic(event.target.value)
+                  }}
                 />
               </label>
               <label className="interface-service-field">
@@ -1863,11 +1917,34 @@ export function InterfaceUploadControl({
                 </div>
               )}
               <label className="interface-service-field">
+                <span>기존 Graph Topic 후보</span>
+                <select
+                  value={publishGraphTopics.some((topic) => topic.name === topicPublishName) ? topicPublishName : ''}
+                  onChange={(event) => {
+                    topicPublishNameSourceRef.current = event.target.value ? 'graph' : 'empty'
+                    setTopicPublishName(event.target.value)
+                  }}
+                >
+                  <option value="">직접 입력</option>
+                  {publishGraphTopics.map((topic) => (
+                    <option key={topic.name} value={topic.name}>
+                      {topic.name} · {topic.type ?? topic.types?.[0] ?? '-'}
+                    </option>
+                  ))}
+                </select>
+                <small>
+                  선택하면 해당 Topic에 추가 Publisher로 발행합니다. 새 Topic을 만들려면 Publish Topic name을 직접 입력하세요.
+                </small>
+              </label>
+              <label className="interface-service-field">
                 <span>Publish Topic name</span>
                 <input
                   placeholder="/interface_lab_topic_test"
                   value={topicPublishName}
-                  onChange={(event) => setTopicPublishName(event.target.value)}
+                  onChange={(event) => {
+                    topicPublishNameSourceRef.current = event.target.value ? 'user' : 'empty'
+                    setTopicPublishName(event.target.value)
+                  }}
                 />
               </label>
               {selectedMessage && (
@@ -1876,9 +1953,9 @@ export function InterfaceUploadControl({
                   사용자가 Publish 버튼을 누를 때만 1회 전송합니다.
                 </div>
               )}
-              {selectedMessage?.graph_conflicts?.length ? (
+              {topicPublishWarning ? (
                 <div className="interface-service-state warning">
-                  같은 Topic 이름에 다른 type이 Graph에 있습니다. 선택한 full_type과 실제 Graph type을 확인하세요.
+                  {topicPublishWarning}
                 </div>
               ) : null}
               {selectedMessage?.message_schema?.map((field) => (
@@ -2393,15 +2470,6 @@ function actionKey(action) {
 
 function messageKey(message) {
   return `${message.message_type ?? message.full_type ?? message.file_name}|${message.source ?? ''}`
-}
-
-function topicHasType(topic, fullType) {
-  const types = Array.isArray(topic?.types)
-    ? topic.types
-    : Array.isArray(topic?.type)
-      ? topic.type
-      : [topic?.type]
-  return types.includes(fullType)
 }
 
 function topicStatusLabel(message) {

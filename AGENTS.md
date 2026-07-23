@@ -371,6 +371,32 @@ Interface Lab의 Topic Receive는 일반 TopicRuntime 자동 deep monitoring과 
 사용자가 명시적으로 수신 시작/중지를 누른 Topic만
 `interface_lab/execution/topic_runtime.py`의 `InterfaceReceiveRuntime`이 구독하고 history를 관리한다.
 
+Interface Lab Topic Publish 후보 정책:
+
+```text
+기존 Graph Topic 후보는 현재 선택 Message full_type과 Graph type이 exact match인 Topic만 표시한다.
+이 후보는 기존 Topic에 추가 Publisher로 참여할 채널을 선택하는 용도다.
+이름에 /_action/이 포함되거나 /_action으로 끝나는 Action 내부 Topic은
+일반 Message Publish 자동 후보에서 제외하되 Monitoring/Action 관찰 목록에서는 제거하지 않는다.
+Graph 후보가 정확히 1개이고 Publish Topic name이 비어 있을 때만 자동 입력할 수 있다.
+후보가 0개이면 공란을 유지하고, 2개 이상이면 사용자가 직접 선택한다.
+Graph 후보 선택 시 Topic 이름을 입력란에 복사하되 입력란은 계속 직접 편집 가능해야 한다.
+사용자가 직접 입력한 정상 Topic 이름은 polling, Graph 재조회, 렌더링으로 덮어쓰지 않는다.
+Graph에 없는 유효한 새 Topic 이름은 사용자의 명시적 Publish로 Publisher 생성을 허용한다.
+```
+
+Interface Lab Topic Publish type 안전 정책:
+
+```text
+Action 내부 Topic 이름은 Graph 존재/type 여부와 관계없이 일반 Message Publish에서 거부한다.
+같은 Topic 이름에 요청 full_type과 다른 Message type이 Graph에 하나라도 있으면
+interface_lab/execution/topic_runtime.py의 publish_topic()이 Publisher 생성 전에 거부한다.
+실제 publish를 수행하지 않고 success=false, published=false, sent_to_topic=false,
+error_type=action_internal_topic 또는 topic_type_conflict와 graph_state를
+기존 Publish history 형식으로 기록한다.
+Frontend 경고는 사용자 안내용이며 Backend Graph 검증을 대체하지 않는다.
+```
+
 ## 10. Service 정책
 
 Service는 Topic처럼 지속 메시지를 흘리지 않는다.
@@ -875,6 +901,12 @@ Service/Action 실행 후보는 graph name과 full_type exact match를 보존한
 schema 기반 동적 form은 nested custom msg 입력을 지원한다.
 삭제 성공 후 registry/package/callable/apply 상태를 다시 fetch한다.
 failed to fetch 같은 원문 에러는 사용자가 이해 가능한 한글 설명으로 표시한다.
+Topic Publish의 Graph 후보와 Topic Receive 후보는 의미가 다르므로 상태를 묶어 자동 변경하지 않는다.
+Publish Graph 후보는 exact Message full_type 일치와 Action 내부 Topic 제외 규칙을 적용한다.
+Publish Topic name 직접 입력은 새 Topic Publisher 생성 경로로 유지한다.
+Message import됨만 보기 체크 여부는 Message 목록만 필터링하며,
+Topic Receive Graph 후보의 exact Message full_type 비교는 체크/해제 상태와 관계없이 유지한다.
+Receive Graph 후보 변경 시 이전 자동/후보 선택값만 갱신하고 사용자가 직접 입력한 Topic 이름은 보존한다.
 ```
 
 Frontend participant map 정책:

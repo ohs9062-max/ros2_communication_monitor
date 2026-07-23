@@ -193,6 +193,52 @@ def test_topic_publish_validation_error_does_not_publish(monkeypatch):
     assert node.publishers == []
 
 
+def test_topic_publish_type_conflict_does_not_create_publisher(monkeypatch):
+    node = FakeNode()
+    node.topic_graph = [
+        ('/demo', ['other_msgs/msg/String']),
+    ]
+    runtime = InterfaceReceiveRuntime(lock=DummyLock(), node_getter=lambda: node)
+    _registered_message(monkeypatch)
+    monkeypatch.setattr(
+        'ros2_dashboard_backend.interface_lab.execution.topic_runtime.get_message',
+        lambda _type: FakeMessage,
+    )
+
+    result = runtime.publish_topic(
+        topic_name='/demo',
+        topic_type='std_msgs/msg/String',
+        payload={'data': 'blocked'},
+    )
+
+    assert result['success'] is False
+    assert result['published'] is False
+    assert result['sent_to_topic'] is False
+    assert result['error_type'] == 'topic_type_conflict'
+    assert result['graph_state']['type_matches'] is False
+    assert result['graph_state']['conflicts'][0]['type'] == 'other_msgs/msg/String'
+    assert node.publishers == []
+    assert runtime.publish_history()['history'][0]['error_type'] == 'topic_type_conflict'
+
+
+def test_topic_publish_action_internal_name_does_not_create_publisher(monkeypatch):
+    node = FakeNode()
+    runtime = InterfaceReceiveRuntime(lock=DummyLock(), node_getter=lambda: node)
+    _registered_message(monkeypatch)
+
+    result = runtime.publish_topic(
+        topic_name='/CanControl/_action/feedback',
+        topic_type='std_msgs/msg/String',
+        payload={'data': 'blocked'},
+    )
+
+    assert result['success'] is False
+    assert result['published'] is False
+    assert result['sent_to_topic'] is False
+    assert result['error_type'] == 'action_internal_topic'
+    assert node.publishers == []
+
+
 def test_topic_graph_conflict_is_reported(monkeypatch):
     node = FakeNode()
     node.topic_graph = [

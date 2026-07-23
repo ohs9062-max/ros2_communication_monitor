@@ -1,5 +1,10 @@
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { InterfaceUploadControl } from '../components/InterfaceUploadControl.jsx'
+import {
+  graphPublishTopicCandidates,
+  topicHasType,
+  topicNameTypeWarning,
+} from '../utils/interfaceTopics.js'
 import {
   callRegisteredService,
   fetchCallableActions,
@@ -60,6 +65,7 @@ export function InterfaceLabPage({ websocket }) {
   const [messageValues, setMessageValues] = useState({})
   const [topicPublishName, setTopicPublishName] = useState('')
   const [topicSubscribeName, setTopicSubscribeName] = useState('')
+  const topicPublishNameSourceRef = useRef('empty')
   const [timeoutSec, setTimeoutSec] = useState(2)
   const [goalTimeoutSec, setGoalTimeoutSec] = useState(10)
   const [executing, setExecuting] = useState(false)
@@ -134,6 +140,7 @@ export function InterfaceLabPage({ websocket }) {
     setRequestValues({})
     setGoalValues({})
     setMessageValues({})
+    topicPublishNameSourceRef.current = 'empty'
     setTopicPublishName('')
     setTopicSubscribeName('')
     setTimeoutSec(2)
@@ -177,6 +184,18 @@ export function InterfaceLabPage({ websocket }) {
   const selectedDetail = workspaceItems.find((item) => item.id === selected?.id)
     ?? workspaceItems.find((item) => item.stableKey === selected?.stableKey)
     ?? null
+  const publishGraphTopics = useMemo(
+    () => graphPublishTopicCandidates(topics, selectedDetail?.fullType),
+    [selectedDetail?.fullType, topics],
+  )
+  const selectedMessageDefaultTopic = selectedDetail?.connectedTopics?.[0]?.name
+    ?? selectedDetail?.topicStates?.[0]?.topic_name
+    ?? ''
+  const topicPublishWarning = topicNameTypeWarning(
+    topics,
+    topicPublishName,
+    selectedDetail?.fullType,
+  )
   const relatedItems = useMemo(
     () => relatedWorkspaceItems(selectedDetail, workspaceItems),
     [selectedDetail, workspaceItems],
@@ -191,13 +210,44 @@ export function InterfaceLabPage({ websocket }) {
       setGoalValues(defaultValues(selectedDetail.schema ?? []))
     } else if (selectedDetail?.kind === 'message') {
       setMessageValues(defaultValues(selectedDetail.schema ?? []))
-      const firstTopic = selectedDetail.connectedTopics?.[0]?.name
-        ?? selectedDetail.topicStates?.[0]?.topic_name
-        ?? ''
-      setTopicPublishName(firstTopic)
-      setTopicSubscribeName(firstTopic)
+      setTopicSubscribeName(selectedMessageDefaultTopic)
     }
-  }, [selectedDetail?.kind, selectedDetail?.schema, selectedDetail?.stableKey])
+  }, [selectedDetail?.kind, selectedDetail?.schema, selectedDetail?.stableKey, selectedMessageDefaultTopic])
+
+  useEffect(() => {
+    if (selectedDetail?.kind !== 'message') return
+    const currentName = topicPublishName.trim()
+    const currentIsCandidate = publishGraphTopics.some((topic) => topic.name === currentName)
+    const source = topicPublishNameSourceRef.current
+
+    if (source === 'user') {
+      if (currentName) return
+    } else if (source === 'graph') {
+      if (currentIsCandidate) return
+      topicPublishNameSourceRef.current = 'empty'
+      setTopicPublishName('')
+      return
+    } else if (source === 'auto' && publishGraphTopics.length !== 1) {
+      topicPublishNameSourceRef.current = 'empty'
+      setTopicPublishName('')
+      return
+    }
+
+    if (publishGraphTopics.length === 1) {
+      topicPublishNameSourceRef.current = 'auto'
+      setTopicPublishName(publishGraphTopics[0].name)
+    }
+  }, [publishGraphTopics, selectedDetail?.kind, selectedDetail?.fullType, topicPublishName])
+
+  const updateTopicPublishName = (value) => {
+    topicPublishNameSourceRef.current = value ? 'user' : 'empty'
+    setTopicPublishName(value)
+  }
+
+  const selectPublishGraphTopic = (value) => {
+    topicPublishNameSourceRef.current = value ? 'graph' : 'empty'
+    setTopicPublishName(value)
+  }
 
   const executeSelectedService = async () => {
     const target = selectedDetail?.connectedServices?.find((service) => service.callable)
@@ -461,10 +511,13 @@ export function InterfaceLabPage({ websocket }) {
                     requestValues={requestValues}
                     selectedHistoryItem={selectedHistoryItem}
                     setGoalTimeoutSec={setGoalTimeoutSec}
-                    setTopicPublishName={setTopicPublishName}
+                    setTopicPublishName={updateTopicPublishName}
+                    selectPublishGraphTopic={selectPublishGraphTopic}
                     setTopicSubscribeName={setTopicSubscribeName}
                     setTimeoutSec={setTimeoutSec}
                     topicPublishName={topicPublishName}
+                    publishGraphTopics={publishGraphTopics}
+                    topicPublishWarning={topicPublishWarning}
                     topicSubscribeName={topicSubscribeName}
                     timeoutSec={timeoutSec}
                   />
@@ -583,11 +636,14 @@ function InlineWorkspace({
   messageValues,
   requestValues,
   selectedHistoryItem,
+  selectPublishGraphTopic,
   setGoalTimeoutSec,
   setTopicPublishName,
   setTopicSubscribeName,
   setTimeoutSec,
   topicPublishName,
+  publishGraphTopics,
+  topicPublishWarning,
   topicSubscribeName,
   timeoutSec,
 }) {
@@ -639,11 +695,14 @@ function InlineWorkspace({
           messageValues={messageValues}
           requestValues={requestValues}
           selectedHistoryItem={selectedHistoryItem}
+          selectPublishGraphTopic={selectPublishGraphTopic}
           setGoalTimeoutSec={setGoalTimeoutSec}
           setTopicPublishName={setTopicPublishName}
           setTopicSubscribeName={setTopicSubscribeName}
           setTimeoutSec={setTimeoutSec}
           topicPublishName={topicPublishName}
+          publishGraphTopics={publishGraphTopics}
+          topicPublishWarning={topicPublishWarning}
           topicSubscribeName={topicSubscribeName}
           timeoutSec={timeoutSec}
         />
@@ -671,11 +730,14 @@ function InterfaceDetailPanel({
   messageValues,
   requestValues,
   selectedHistoryItem,
+  selectPublishGraphTopic,
   setGoalTimeoutSec,
   setTopicPublishName,
   setTopicSubscribeName,
   setTimeoutSec,
   topicPublishName,
+  publishGraphTopics,
+  topicPublishWarning,
   topicSubscribeName,
   timeoutSec,
 }) {
@@ -728,9 +790,12 @@ function InterfaceDetailPanel({
           onSubscribeStart={onTopicSubscribeStart}
           onSubscribeStop={onTopicSubscribeStop}
           selectedHistoryItem={selectedHistoryItem}
+          selectPublishGraphTopic={selectPublishGraphTopic}
           setTopicPublishName={setTopicPublishName}
           setTopicSubscribeName={setTopicSubscribeName}
           topicPublishName={topicPublishName}
+          publishGraphTopics={publishGraphTopics}
+          topicPublishWarning={topicPublishWarning}
           topicSubscribeName={topicSubscribeName}
         />
       )}
@@ -847,10 +912,13 @@ function TopicWorkspaceDetail({
   onReset,
   onSubscribeStart,
   onSubscribeStop,
+  publishGraphTopics,
   selectedHistoryItem,
+  selectPublishGraphTopic,
   setTopicPublishName,
   setTopicSubscribeName,
   topicPublishName,
+  topicPublishWarning,
   topicSubscribeName,
 }) {
   const activeSubscription = (item.topicStates ?? []).find(
@@ -878,7 +946,24 @@ function TopicWorkspaceDetail({
 
       <SectionTitle title="Topic Publish" />
       <label className="interface-service-field">
-        <span>topic_name</span>
+        <span>기존 Graph Topic 후보</span>
+        <select
+          onChange={(event) => selectPublishGraphTopic(event.target.value)}
+          value={publishGraphTopics.some((topic) => topic.name === topicPublishName) ? topicPublishName : ''}
+        >
+          <option value="">직접 입력</option>
+          {publishGraphTopics.map((topic) => (
+            <option key={topic.name} value={topic.name}>
+              {topic.name} · {firstType(topic.type ?? topic.types) ?? '-'}
+            </option>
+          ))}
+        </select>
+        <small>
+          선택하면 해당 Topic에 추가 Publisher로 발행합니다. 새 Topic을 만들려면 Publish Topic name을 직접 입력하세요.
+        </small>
+      </label>
+      <label className="interface-service-field">
+        <span>Publish Topic name</span>
         <input
           onChange={(event) => setTopicPublishName(event.target.value)}
           placeholder="/demo_topic"
@@ -886,6 +971,9 @@ function TopicWorkspaceDetail({
           value={topicPublishName}
         />
       </label>
+      {topicPublishWarning && (
+        <div className="interface-service-state warning">{topicPublishWarning}</div>
+      )}
       <p className="muted">
         full_type {item.fullType} · QoS {item.qos?.profile ?? 'default'} depth {item.qos?.depth ?? 10}
       </p>
@@ -1689,15 +1777,6 @@ function uniqueStrings(items = []) {
 function firstType(value) {
   if (Array.isArray(value)) return value[0]
   return value
-}
-
-function topicHasType(topic, fullType) {
-  const values = Array.isArray(topic?.types)
-    ? topic.types
-    : Array.isArray(topic?.type)
-    ? topic.type
-    : [topic?.type]
-  return values.includes(fullType)
 }
 
 function mergeByNameAndType(items = [], nameKey, typeKey) {

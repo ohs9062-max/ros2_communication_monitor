@@ -70,7 +70,15 @@ async def publish_registered_topic(request: Request) -> dict[str, Any]:
         'message': (
             '입력값이 Message 타입과 맞지 않아 Publish하지 않았습니다.'
             if result.get('error_type') == 'validation_error'
-            else 'Topic Publish가 완료되었습니다.'
+            else (
+                'Action 내부 Topic은 일반 Message Publish에서 사용할 수 없습니다.'
+                if result.get('error_type') == 'action_internal_topic'
+                else (
+                    '같은 Topic 이름에 다른 Message type이 있어 Publish하지 않았습니다.'
+                    if result.get('error_type') == 'topic_type_conflict'
+                    else 'Topic Publish가 완료되었습니다.'
+                )
+            )
         ),
     }
 

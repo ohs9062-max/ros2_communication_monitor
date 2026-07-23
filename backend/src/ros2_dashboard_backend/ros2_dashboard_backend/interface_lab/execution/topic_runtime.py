@@ -288,6 +288,47 @@ class InterfaceReceiveRuntime:
         self._ensure_registered_message(topic_type)
         started_at = time()
         graph_state = self._topic_graph_state(topic_name=topic_name, topic_type=topic_type)
+        if _is_action_internal_topic(topic_name):
+            result = {
+                'success': False,
+                'published': False,
+                'sent_to_topic': False,
+                'topic_name': topic_name,
+                'topic_type': topic_type,
+                'payload': payload,
+                'published_at': started_at,
+                'error_type': 'action_internal_topic',
+                'error': (
+                    f'{topic_name}은 ROS2 Action 내부 Topic이므로 '
+                    'Interface Lab의 일반 Message Publish에서 사용할 수 없습니다.'
+                ),
+                'graph_state': graph_state,
+                'qos': _qos_info(topic_type),
+            }
+            self._record_publish_history(result)
+            return result
+        if graph_state['conflicts']:
+            conflict_types = ', '.join(
+                sorted({str(item.get('type') or '') for item in graph_state['conflicts']})
+            )
+            result = {
+                'success': False,
+                'published': False,
+                'sent_to_topic': False,
+                'topic_name': topic_name,
+                'topic_type': topic_type,
+                'payload': payload,
+                'published_at': started_at,
+                'error_type': 'topic_type_conflict',
+                'error': (
+                    f'{topic_name}에는 다른 Message type({conflict_types})이 Graph에 있어 '
+                    f'{topic_type} Publisher를 생성할 수 없습니다.'
+                ),
+                'graph_state': graph_state,
+                'qos': _qos_info(topic_type),
+            }
+            self._record_publish_history(result)
+            return result
         try:
             message_class = get_message(topic_type)
             try:
@@ -552,3 +593,7 @@ def _safe_count(callback: Callable[[], int]) -> int:
         return int(callback())
     except Exception:
         return 0
+
+
+def _is_action_internal_topic(topic_name: str) -> bool:
+    return '/_action/' in topic_name or topic_name.endswith('/_action')

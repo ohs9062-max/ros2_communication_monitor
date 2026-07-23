@@ -6,6 +6,7 @@ string table_name
 # CREATE/UPDATE용 데이터 (UPDATE는 scheduling_id 포함해서 전달)
 rths_interfaces/CleaningSchedule[] items
 
+
 # LIST 옵션
 bool only_active
 string where

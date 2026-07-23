@@ -46,3 +46,13 @@ deactivate
 ## tmux
 ./scripts/run_dashboard_stack.sh
 tmux kill-session -t ros2_dashboard
+
+## schedule srv
+[
+  {
+    "scheduling_id": 0,
+    "scheduling_dt": "2026-07-24T10:00:00",
+    "count": 1,
+    "is_active": true
+  }
+]

@@ -38,10 +38,10 @@ class DemoCleaningScheduleTopicPublisher(Node):
         self._count = 0
         self._is_active = True
 
-        # self._timer = self.create_timer(
-        #     1.0,
-        #     self.publish_cleaning_schedule,
-        # )
+        self._timer = self.create_timer(
+             1.0,
+             self.publish_cleaning_schedule,
+         )
 
         self.get_logger().info(
             f"Demo {self._topic_name} topic "

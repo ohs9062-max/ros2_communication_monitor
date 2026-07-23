@@ -25,7 +25,10 @@ export function isInternalNode(node) {
   return name.includes('ros2cli_daemon') || fullName.includes('ros2cli_daemon')
 }
 
-export function isPrimaryNode(node, topics = []) {
+export function isPrimaryNode(
+  node,
+  { actions = [], services = [], topics = [] } = {},
+) {
   const fullName = normalizeNodeName(node.full_name ?? node.name)
 
   if (isHiddenFromPrimary(node, fullName)) {
@@ -35,26 +38,39 @@ export function isPrimaryNode(node, topics = []) {
   return (
     node.status === 'stale' ||
     PRIMARY_NODE_NAMES.has(fullName) ||
-    nodeUsesSupportedTopicType(node, topics)
+    nodeUsesRegisteredInterface(node, { actions, services, topics })
   )
 }
 
-function nodeUsesSupportedTopicType(node, topics) {
-  const supportedTypes = new Set(
-    topics
-      .filter((topic) => topic.supported_type === true)
-      .flatMap((topic) => topic.types ?? [topic.type])
+function nodeUsesRegisteredInterface(node, resources) {
+  return (
+    relationsUseTypes(
+      [...(node.topic_publishers ?? []), ...(node.topic_subscribers ?? [])],
+      registeredTypes(resources.topics, isRegisteredTopic),
+    ) ||
+    relationsUseTypes(
+      [...(node.service_servers ?? []), ...(node.service_clients ?? [])],
+      registeredTypes(resources.services, isRegisteredService),
+    ) ||
+    relationsUseTypes(
+      [...(node.action_servers ?? []), ...(node.action_clients ?? [])],
+      registeredTypes(resources.actions, isRegisteredAction),
+    )
+  )
+}
+
+function registeredTypes(items, predicate) {
+  return new Set(
+    items
+      .filter(predicate)
+      .flatMap((item) => item.types ?? [item.type])
       .filter(Boolean),
   )
-  if (!supportedTypes.size) {
-    return false
-  }
+}
 
-  return [
-    ...(node.topic_publishers ?? []),
-    ...(node.topic_subscribers ?? []),
-  ].some((topic) =>
-    (topic.types ?? [topic.type]).some((type) => supportedTypes.has(type)),
+function relationsUseTypes(relations, types) {
+  return types.size > 0 && relations.some((relation) =>
+    (relation.types ?? [relation.type]).some((type) => types.has(type)),
   )
 }
 
@@ -79,3 +95,8 @@ function normalizeNodeName(name) {
   const value = String(name ?? '')
   return value.startsWith('/') ? value : `/${value}`
 }
+import {
+  isRegisteredAction,
+  isRegisteredService,
+  isRegisteredTopic,
+} from './primaryFilters.js'

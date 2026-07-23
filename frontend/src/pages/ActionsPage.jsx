@@ -3,6 +3,7 @@ import { ActionDetailPanel } from '../components/ActionDetailPanel.jsx'
 import { ActionSummaryCards } from '../components/ActionSummaryCards.jsx'
 import { ActionTable } from '../components/ActionTable.jsx'
 import { AlertsPreview } from '../components/AlertsPreview.jsx'
+import { isPrimaryAction } from '../utils/primaryFilters.js'
 
 const ACTION_FILTERS = [
   { id: 'primary', label: '주요 항목' },
@@ -31,8 +32,8 @@ export function ActionsPage({ dashboard }) {
     setSelectedActionName,
   } = dashboard
 
-  const activeActions = useMemo(
-    () => actions.filter((action) => isActiveAction(action)),
+  const primaryActions = useMemo(
+    () => actions.filter((action) => isPrimaryAction(action)),
     [actions],
   )
 
@@ -43,7 +44,7 @@ export function ActionsPage({ dashboard }) {
       statusFilter === 'all' ||
       statusFilter === 'unobserved'
       ? actions
-      : activeActions
+      : primaryActions
 
     return baseActions.filter((action) => {
       if (!matchesActionStatusFilter(action, statusFilter)) {
@@ -67,7 +68,7 @@ export function ActionsPage({ dashboard }) {
         String(field ?? '').toLowerCase().includes(normalizedSearch),
       )
     })
-  }, [actions, activeActions, includeIdleActions, search, statusFilter])
+  }, [actions, includeIdleActions, primaryActions, search, statusFilter])
 
   useEffect(() => {
     if (filteredActions.some((action) => action.name === selectedActionName)) {
@@ -93,7 +94,7 @@ export function ActionsPage({ dashboard }) {
   return (
     <main className="topics-page">
       <section className="main-panel">
-        <ActionSummaryCards actions={actions} activeActions={activeActions} meta={meta} />
+        <ActionSummaryCards actions={actions} activeActions={primaryActions} meta={meta} />
         <AlertsPreview
           alerts={actionAlerts}
           emptyMessage="Action 알림 없음"
@@ -170,24 +171,6 @@ export function ActionsPage({ dashboard }) {
         participants={actionParticipants[detailAction?.name] ?? null}
       />
     </main>
-  )
-}
-
-function isActiveAction(action) {
-  const runtime = action.runtime ?? {}
-  const observedGoalCount =
-    Number(runtime.observed_goal_count ?? action.observed_goal_count ?? 0)
-  const lastGoalStatus = String(
-    runtime.last_goal_status ?? action.last_goal_status ?? '',
-  ).toLowerCase()
-
-  return (
-    observedGoalCount > 0 ||
-    Boolean(lastGoalStatus && lastGoalStatus !== 'unknown') ||
-    Boolean(runtime.feedback_preview) ||
-    Boolean(runtime.result_preview) ||
-    Boolean(runtime.result_status) ||
-    Boolean(runtime.result_error)
   )
 }
 

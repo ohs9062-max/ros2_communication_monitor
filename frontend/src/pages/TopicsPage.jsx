@@ -9,6 +9,7 @@ import {
   matchesStatusFilter,
   sortTopicsByHealth,
 } from '../utils/status.js'
+import { isPrimaryTopic } from '../utils/primaryFilters.js'
 
 export function TopicsPage({ dashboard }) {
   const [search, setSearch] = useState('')
@@ -33,7 +34,7 @@ export function TopicsPage({ dashboard }) {
   const activeTopics = useMemo(
     () =>
       topicItems.filter((topic) =>
-        isActiveTopic(topic, topicHzByName[topic.name]),
+        isPrimaryTopic(topic, topicHzByName[topic.name]),
       ),
     [topicItems, topicHzByName],
   )
@@ -206,62 +207,6 @@ function focusMonitorRowAttempt(name, select, attempt) {
 function findMonitorRow(name) {
   return [...document.querySelectorAll('[data-monitor-name]')].find(
     (row) => row.getAttribute('data-monitor-name') === name,
-  )
-}
-
-const INTERNAL_TOPIC_NAMES = new Set([
-  '/clock',
-  '/parameter_events',
-  '/rosout',
-  '/tf',
-  '/tf_static',
-])
-
-const IMPORTANT_TOPIC_NAMES = new Set([
-  '/cmd_vel',
-  '/odom',
-  '/imu',
-  '/joint_states',
-  '/scan',
-])
-
-function isInternalTopic(name) {
-  return (
-    INTERNAL_TOPIC_NAMES.has(name) ||
-    name.endsWith('/_action/status') ||
-    name.endsWith('/_action/feedback') ||
-    name.endsWith('/_service_event')
-  )
-}
-
-function isActiveTopic(topic, hzEntry) {
-  if (isInternalTopic(topic.name)) {
-    return false
-  }
-
-  const hzData = hzEntry?.data
-  const hz = Number(hzData?.hz)
-  const messageCount = Number(
-    hzData?.message_count ?? topic.message_count ?? topic.received_count ?? 0,
-  )
-  const hasPreview = Boolean(
-    topic.message_preview ?? topic.latest_message ?? topic.preview,
-  )
-
-  return (
-    topic.status === 'active' ||
-    IMPORTANT_TOPIC_NAMES.has(topic.name) ||
-    topic.received === true ||
-    hzData?.received === true ||
-    messageCount > 0 ||
-    (Number.isFinite(hz) && hz > 0) ||
-    (
-      (topic.external_subscriber_count ?? 0) > 0 &&
-      (topic.publisher_count ?? 0) > 0
-    ) ||
-    topic.detailed_monitoring === true ||
-    topic.deep_monitoring === true ||
-    hasPreview
   )
 }
 

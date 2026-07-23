@@ -100,6 +100,13 @@ ros2_dashboard/
    └─ src/
       ├─ App.jsx
       ├─ api/rosApi.js
+      ├─ hooks/
+      │  ├─ useTopicDashboard.js
+      │  └─ useVisualizationGraph.js
+      ├─ utils/
+      │  ├─ interfaceTopics.js
+      │  ├─ nodeFilters.js
+      │  └─ primaryFilters.js
       └─ pages/InterfaceLabPage.jsx
 ```
 
@@ -164,6 +171,20 @@ interface_lab/common/value_converter.py
 
 frontend/
 = Vite React + Electron UI. Dashboard와 Interface Lab 화면을 제공한다.
+
+frontend/src/utils/primaryFilters.js
+= Topic / Service / Action의 주요 항목 판정 기준을 공유한다.
+  YAML registry를 frontend에서 직접 읽거나 이름을 중복 하드코딩하지 않고,
+  Backend가 실제 통신 타입 exact match로 계산한 supported_type / allowlisted 신호를 사용한다.
+
+frontend/src/utils/nodeFilters.js
+= 기존 Node 주요 항목 / stale / hidden 정책과 함께
+  Node별 publisher / subscriber / client / server 관계 타입을
+  주요 Topic / Service / Action 타입과 exact match해 주요 Node를 판정한다.
+
+frontend/src/utils/interfaceTopics.js
+= Interface Lab Topic Publish Graph 후보의 exact Message type 일치와
+  Action 내부 Topic 제외 조건을 관리한다.
 ```
 
 `backend/build/`, `backend/install/`, `backend/log/`, `frontend/node_modules/`는 생성물이다.
@@ -286,6 +307,20 @@ auto_subscribe_supported_types
 service active_check allowlist
 ```
 
+Topic Runtime의 최종 지원 타입은 아래 원천을 합쳐 중복 제거한다.
+
+```text
+monitor.yaml의 topics.supported_types 또는 safe default
++
+interface_registry.yaml에서 import_available=true인 msg full_type
++
+interface_packages.yaml에서 import_available=true인 msg full_type
+```
+
+YAML registry의 srv / action 타입은 각 Runtime이 import 가능한 등록 타입을 읽고
+현재 ROS2 Graph의 실제 full_type과 exact match한 경우에만 `allowlisted=true`로 표시한다.
+Frontend는 YAML 파일을 다시 해석하지 않고 이 Backend 결과를 사용한다.
+
 원칙:
 
 ```text
@@ -348,14 +383,14 @@ backend 기능 구현의 데이터 소스로 사용하지 않는다.
 1. ROS2 graph에서 topic 목록 조회
 2. topic name과 message type 확인
 3. include / exclude 적용
-4. supported type이면 자동 subscription 생성
+4. 기본 지원 타입 또는 import 가능한 YAML 등록 msg 타입이면 자동 subscription 생성
 5. 기존 subscription이 있으면 재사용
 6. latest / hz / stale / alerts cache 계산
 ```
 
 깊은 모니터링은 topic name보다 message type 기준으로 처리한다.
 
-지원 타입 예:
+기본 지원 타입 예:
 
 ```text
 sensor_msgs/msg/LaserScan
@@ -366,6 +401,24 @@ geometry_msgs/msg/TwistStamped
 sensor_msgs/msg/JointState
 ros2_dashboard_interfaces/msg/MonitorStatus
 ```
+
+위 목록은 safe default 예시이며 최종 지원 타입을 제한하는 별도 하드코딩 gate가 아니다.
+YAML 등록 msg 타입은 generated Python message를 동적 import할 수 있고
+현재 Graph type과 full_type이 exact match할 때 같은 자동 감시 경로에 포함한다.
+preview 전용 Python 타입 목록이나 serializer 분기 유무를
+subscription 생성 가능 여부의 추가 조건으로 사용하지 않는다.
+
+Topic 상세 감시는 UI 표시만 의미하지 않는다.
+
+```text
+동적 subscription 생성
+최신 메시지와 마지막 수신 시각 저장
+수신 timestamp window 기반 Hz 계산
+stale / 미수신 판단
+supported_type / deep_monitoring / detailed_monitoring_enabled 결과 제공
+```
+
+custom msg preview가 제한적이더라도 실제 subscription, 마지막 수신 시각, Hz 계산은 유지한다.
 
 Interface Lab의 Topic Receive는 일반 TopicRuntime 자동 deep monitoring과 다르다.
 사용자가 명시적으로 수신 시작/중지를 누른 Topic만
@@ -429,6 +482,11 @@ server_count == 0 and client_count == 0
 type 없음 또는 비정상
 → unknown
 ```
+
+`/ros/services`의 `allowlisted`는 import 가능한 YAML 등록 srv 타입과
+Graph의 실제 service full_type이 exact match했다는 주요 항목 판정 신호다.
+background active_check 지원 여부와는 별개이며,
+등록됐다는 이유만으로 Service를 자동 호출하지 않는다.
 
 기본 제외 대상:
 
@@ -504,6 +562,10 @@ server_count == 0 and client_count == 0
 type 없음 또는 비정상
 → unknown
 ```
+
+`/ros/actions`의 `allowlisted`는 import 가능한 YAML 등록 action 타입과
+Graph의 실제 action full_type이 exact match했다는 주요 항목 판정 신호다.
+등록됐다는 이유만으로 Goal을 전송하지 않는다.
 
 관찰 대상:
 
@@ -874,6 +936,34 @@ ROS2 고유 용어 Topic / Service / Action / Node / Goal은 그대로 사용할
 긴 Topic/Service/Action/Node 이름은 줄바꿈 처리하고 가로 스크롤을 만들지 않는다.
 ```
 
+주요 항목 판정은 `frontend/src/utils/primaryFilters.js`와
+`frontend/src/utils/nodeFilters.js`의 공통 기준을 사용한다.
+
+```text
+YAML 등록 msg 타입과 Graph Topic type exact match
+→ Backend supported_type=true
+→ 주요 Topic
+
+YAML 등록 srv 타입과 Graph Service type exact match
+→ Backend allowlisted=true
+→ 주요 Service
+
+YAML 등록 action 타입과 Graph Action type exact match
+→ Backend allowlisted=true
+→ 주요 Action
+
+위 주요 Topic / Service / Action을 실제 관계 타입 exact match로 사용하는 Node
+→ 주요 Node
+```
+
+Node 관계는 `/ros/nodes`의 `topic_publishers`, `topic_subscribers`,
+`service_servers`, `service_clients`, `action_servers`, `action_clients`를 사용한다.
+이름만 같거나 YAML에 타입이 등록됐다는 이유만으로 관계없는 Node를 포함하지 않는다.
+기존 기본 주요 항목, active / observed 결과, stale 조건은 유지하며
+dashboard monitor 내부 Node와 숨김 / 내부 항목 제외 정책도 유지한다.
+Topics / Services / Actions / Nodes / Overview / Visualization은 같은 기준을 재사용하고,
+각 화면에서 등록 타입 또는 로봇 이름을 따로 하드코딩하지 않는다.
+
 Frontend polling 정책:
 
 ```text
@@ -882,12 +972,19 @@ setInterval/setTimeout은 cleanup에서 반드시 clearInterval/clearTimeout 한
 polling effect를 응답 data/latest/hz state에 의존시키지 않는다.
 fetcher 함수 identity 때문에 interval이 매 render 재생성되지 않도록 resetKey를 명시한다.
 Topic 상세 latest/hz는 Topics 화면에서 선택된 Topic에 대해서만 실행한다.
+선택 Topic의 개별 Hz 응답은 응답의 name과 현재 selectedTopicName이
+exact match할 때만 topicHzByName에 병합해 이전 요청 결과가 새 선택을 덮어쓰지 않게 한다.
 /_action/feedback, /_action/status, /_service_event, /clock, /rosout 등 내부 Topic은
 Topic 상세 기본 선택 후보와 목록용 Hz polling 후보에서 제외한다.
 숨김 포함 해제 후 표시 Topic이 0개이면 selectedTopicName은 빈 값으로 안정화하고
 다른 hook이 다시 내부 Topic을 기본 선택하지 않게 한다.
 App.jsx는 activePage 기준으로 필요한 dashboard hook만 polling enabled 처리한다.
+Nodes 주요 항목은 실제 관계 타입 판정에 Topic / Service / Action 데이터가 필요하므로
+Nodes 화면에서는 Node와 세 리소스 polling을 함께 활성화한다.
 WebSocket reconnect가 REST polling timer를 추가 생성하면 안 된다.
+filtered 목록에 맞춰 selected item을 보정하는 effect는 빈 목록에서 다른 hook의
+기본 선택과 경쟁해 `빈 값 ↔ 첫 항목`을 반복하지 않아야 하며,
+현재 값과 같은 state를 setter로 다시 넣지 않는다.
 ```
 
 Interface Lab UI:
@@ -904,6 +1001,9 @@ failed to fetch 같은 원문 에러는 사용자가 이해 가능한 한글 설
 Topic Publish의 Graph 후보와 Topic Receive 후보는 의미가 다르므로 상태를 묶어 자동 변경하지 않는다.
 Publish Graph 후보는 exact Message full_type 일치와 Action 내부 Topic 제외 규칙을 적용한다.
 Publish Topic name 직접 입력은 새 Topic Publisher 생성 경로로 유지한다.
+Publish Topic 입력 출처는 empty / auto / graph / user를 구분하고,
+Graph 후보가 정확히 1개인 자동 입력은 현재 이름이 이미 같으면 setter를 호출하지 않는다.
+polling 또는 후보 재계산은 user 출처의 직접 입력값을 덮어쓰지 않는다.
 Message import됨만 보기 체크 여부는 Message 목록만 필터링하며,
 Topic Receive Graph 후보의 exact Message full_type 비교는 체크/해제 상태와 관계없이 유지한다.
 Receive Graph 후보 변경 시 이전 자동/후보 선택값만 갱신하고 사용자가 직접 입력한 Topic 이름은 보존한다.
@@ -927,6 +1027,9 @@ Visualization 화면 정책:
 첫 진입 화면은 노드 중심이다.
 노드 중심은 Node 목록을 크게 보여주고, Node 선택 시 연결 중심으로 이동한다.
 연결 중심은 선택 Node와 직접 연결된 Topic / Service / Action 1-hop 관계만 표시한다.
+주요 항목 그래프는 공통 주요 항목 기준과 Node 관계의 full_type exact match를 사용한다.
+YAML 등록 Interface와 실제 관계가 확인된 Topic / Service / Action 및 Node를 포함하되,
+관계없는 Node나 내부 dashboard monitor Node는 포함하지 않는다.
 전체 중심 또는 전체 보기는 고급 확인용이며 ROS2 Graph가 복잡할 수 있다는 경고를 표시한다.
 React Flow 그래프는 polling마다 remount하거나 자동 fitView 하지 않는다.
 fitView는 최초 필요 시 또는 사용자가 버튼을 눌렀을 때만 실행한다.

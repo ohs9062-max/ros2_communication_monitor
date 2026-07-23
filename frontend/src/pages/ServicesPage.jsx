@@ -3,6 +3,7 @@ import { AlertsPreview } from '../components/AlertsPreview.jsx'
 import { ServiceDetailPanel } from '../components/ServiceDetailPanel.jsx'
 import { ServiceSummaryCards } from '../components/ServiceSummaryCards.jsx'
 import { ServiceTable } from '../components/ServiceTable.jsx'
+import { isRegisteredService } from '../utils/primaryFilters.js'
 import { matchesServiceStatusFilter } from '../utils/status.js'
 
 const SERVICE_FILTERS = [
@@ -258,6 +259,7 @@ function findMonitorRow(name) {
 
 function isPrimaryService(service) {
   return (
+    isRegisteredService(service) ||
     service.active_check_supported === true ||
     hasActiveCheckResult(service) ||
     hasResponseTime(service) ||

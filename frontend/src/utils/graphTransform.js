@@ -599,6 +599,7 @@ function shouldShowEntity(kind, entity, filters) {
 function isActiveEntity(kind, entity) {
   if (kind === 'topic') {
     return (
+      isRegisteredTopic(entity) ||
       entity.status === 'active' ||
       (entity.publisher_count ?? 0) > 0 ||
       (entity.subscriber_count ?? 0) > 0
@@ -606,6 +607,8 @@ function isActiveEntity(kind, entity) {
   }
 
   return (
+    (kind === 'service' && isRegisteredService(entity)) ||
+    (kind === 'action' && isRegisteredAction(entity)) ||
     entity.status === 'active' ||
     (entity.server_count ?? 0) > 0 ||
     (entity.client_count ?? 0) > 0
@@ -680,3 +683,8 @@ function entityId(kind, name) {
 function countKind(nodes, kind) {
   return nodes.filter((node) => node.data.kind === kind).length
 }
+import {
+  isRegisteredAction,
+  isRegisteredService,
+  isRegisteredTopic,
+} from './primaryFilters.js'

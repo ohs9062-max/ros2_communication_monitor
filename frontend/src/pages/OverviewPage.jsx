@@ -9,6 +9,11 @@ import {
   overallStatus,
 } from '../utils/status.js'
 import { isPrimaryNode } from '../utils/nodeFilters.js'
+import {
+  isPrimaryAction,
+  isPrimaryTopic,
+  isRegisteredService,
+} from '../utils/primaryFilters.js'
 
 export function OverviewPage({
   actionDashboard,
@@ -19,17 +24,22 @@ export function OverviewPage({
 }) {
   const [chartValueMode, setChartValueMode] = useState('percent')
   const { alerts, setSelectedTopicName, topicItems } = dashboard
-  const summary = getTopicSummary(topicItems)
+  const primaryTopics = topicItems.filter((topic) => isPrimaryTopic(topic))
+  const summary = getTopicSummary(primaryTopics)
+  const primaryServices = serviceDashboard.services.filter(isRegisteredService)
   const serviceSummary = getServiceSummary(
-    serviceDashboard.services,
-    serviceDashboard.meta,
+    primaryServices,
   )
+  const primaryActions = actionDashboard.actions.filter(isPrimaryAction)
   const actionSummary = getActionSummary(
-    actionDashboard.actions,
-    actionDashboard.meta,
+    primaryActions,
   )
   const primaryNodes = nodeDashboard.nodes.filter(
-    (node) => isPrimaryNode(node, topicItems),
+    (node) => isPrimaryNode(node, {
+      actions: actionDashboard.actions,
+      services: serviceDashboard.services,
+      topics: topicItems,
+    }),
   )
   const nodeSummary = getNodeSummary(primaryNodes)
   const alertMeta = alerts.data?.meta ?? {}

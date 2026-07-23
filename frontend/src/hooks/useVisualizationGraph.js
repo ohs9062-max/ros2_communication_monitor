@@ -132,7 +132,7 @@ export function useVisualizationGraph() {
     return nodes
       .filter((node) => {
         if (nodeFilterMode === 'primary') {
-          return isPrimaryNode(node, topics)
+          return isPrimaryNode(node, { actions, services, topics })
         }
         if (nodeFilterMode === 'active') {
           return node.status === 'active' && !isInternalNode(node)
@@ -159,7 +159,7 @@ export function useVisualizationGraph() {
         }
         return nodeConnectionCount(right) - nodeConnectionCount(left)
       })
-  }, [includeHidden, nodeFilterMode, nodes, search, topics])
+  }, [actions, includeHidden, nodeFilterMode, nodes, search, services, topics])
 
   const refresh = () => {
     nodeState.refresh()

@@ -20,8 +20,8 @@ import {
 function App() {
   const { activePage, navigate } = useBrowserRoute()
   const topicDashboardEnabled = ['overview', 'topics', 'nodes', 'alerts'].includes(activePage)
-  const serviceDashboardEnabled = ['overview', 'services', 'alerts'].includes(activePage)
-  const actionDashboardEnabled = ['overview', 'actions', 'alerts'].includes(activePage)
+  const serviceDashboardEnabled = ['overview', 'services', 'nodes', 'alerts'].includes(activePage)
+  const actionDashboardEnabled = ['overview', 'actions', 'nodes', 'alerts'].includes(activePage)
   const nodeDashboardEnabled = ['overview', 'nodes', 'alerts'].includes(activePage)
   const dashboard = useTopicDashboard({
     enabled: topicDashboardEnabled,
@@ -59,7 +59,12 @@ function App() {
         />
       )}
       {activePage === 'nodes' && (
-        <NodesPage dashboard={nodeDashboard} topics={dashboard.topicItems} />
+        <NodesPage
+          actions={actionDashboard.actions}
+          dashboard={nodeDashboard}
+          services={serviceDashboard.services}
+          topics={dashboard.topicItems}
+        />
       )}
       {activePage === 'services' && (
         <ServicesPage dashboard={serviceDashboard} />

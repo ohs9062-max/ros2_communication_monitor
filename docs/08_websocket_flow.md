@@ -1,93 +1,72 @@
 # WebSocket 흐름
 
-> 라인 번호는 2026-07-21 실제 코드 기준이다.
+## 무엇을 하는가
 
-## 1. WebSocket 역할
+`/ws/monitor`는 Backend와 Frontend 사이의 실시간 연결 상태와 가벼운 monitor 요약을 전달한다. 상세 REST API를 대체하는 통신 경로는 아니다.
 
-`/ws/monitor`는 raw ROS2 message stream이 아니다. Backend 연결 상태와 count/meta/alert 요약을 1초마다 보내는 경량 보조 채널이다. 상세 목록과 latest/hz는 REST polling이 기준이다.
+## Backend 전송 데이터
 
-즉 WebSocket은 "모든 ROS2 메시지를 실시간으로 밀어주는 통로"가 아니라, Dashboard가 전체 상태 변화를 빠르게 감지하기 위한 보조 신호다. Topic payload 상세, Hz, Service 상세, Action 상세은 계속 REST endpoint를 기준으로 읽는다.
-
-## 2. Backend 코드 추적
+`RosMonitor.websocket_snapshot()`은 다음 형식의 snapshot을 만든다.
 
 ```text
-Frontend WebSocket 연결
-→ monitoring router의 /ws/monitor
-→ WebSocketManager.connect()
-→ RosMonitor.websocket_snapshot()
-→ WebSocketManager.send_json()
-→ disconnect/오류 시 client 제거
+type: monitor_snapshot
+timestamp
+data:
+  topics: count와 상태 요약
+  services: count와 상태 요약
+  actions: count와 상태 요약
+  nodes: count와 상태 요약
+  alerts: 현재 Alert 목록
 ```
 
-| 단계 | 코드 위치 |
+Topic 전체 메시지나 모든 관계 배열을 WebSocket으로 계속 보내지 않는다. 목록과 상세 데이터는 각 REST API가 담당한다.
+
+## REST와 역할 차이
+
+| 방식 | 역할 |
 |---|---|
-| `/ws/monitor` endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/monitoring.py` L92 |
-| WebSocket handler | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/monitoring.py` L93 |
-| snapshot 생성 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py` L336 |
-| WebSocketManager | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/websocket_manager.py` L10 |
-| connect | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/websocket_manager.py` L17 |
-| disconnect | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/websocket_manager.py` L22 |
-| send_json | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/websocket_manager.py` L26 |
+| REST | 화면별 목록, 상세 상태, latest, Hz, 관계 데이터 |
+| WebSocket | 실시간 연결 표시와 가벼운 통합 snapshot |
 
-## 3. Frontend 코드 추적
+따라서 WebSocket이 잠깐 재연결 중이어도 REST polling으로 화면 데이터가 표시될 수 있다. Visualization도 관계 그래프의 원본은 REST에서 가져온다.
 
-```text
-monitorWebSocketUrl()
-→ useMonitorWebSocket()
-→ open/message/error/close callback
-→ App state
-→ Header와 VisualizationPage에 전달
-```
+## Frontend 연결
 
-| 단계 | 코드 위치 |
-|---|---|
-| WebSocket URL 생성 | `frontend/src/api/rosApi.js` L15 |
-| WebSocket hook | `frontend/src/hooks/useMonitorWebSocket.js` L6 |
-| URL memo | `frontend/src/hooks/useMonitorWebSocket.js` L12 |
-| App에서 hook 사용 | `frontend/src/App.jsx` L20 |
-| Header 연결 상태 표시 | `frontend/src/layout/Header.jsx` L3 |
-| Visualization에 snapshot 전달 | `frontend/src/pages/VisualizationPage.jsx` L11 |
+`useMonitorWebSocket()`은 다음 상태를 관리한다.
 
-## 4. Backend WebSocket을 라인으로 따라가기
+- `connecting`
+- `connected`
+- `error`
+- `disconnected`
+
+메시지를 받으면 JSON을 파싱해 `snapshot`과 `lastUpdatedAt`을 갱신한다. 연결이 닫히면 2.5초 뒤 재연결을 시도한다. hook cleanup에서는 재연결 timer를 지우고 현재 socket을 닫아 페이지 생명주기와 충돌하지 않게 한다.
+
+## reload 때의 동작
+
+Uvicorn worker가 reload되면 기존 WebSocket은 종료된다.
 
 ```text
-Frontend WebSocket 생성
-→ ws://.../ws/monitor
-→ routers/monitoring.py L92 @router.websocket('/ws/monitor')
-→ routers/monitoring.py L93 monitor_websocket(websocket)
-→ L95 websocket_manager.connect(websocket)
-→ L97 while True
-→ L98-L101 websocket_manager.send_json(websocket, ros_monitor.websocket_snapshot())
-→ ros_monitor.py L336 RosMonitor.websocket_snapshot()
-→ ros_monitor.py L339-L343 topics/services/actions/nodes/alerts snapshot 읽기
-→ ros_monitor.py L345-L366 monitor_snapshot payload 조립
-→ routers/monitoring.py L105 1초 대기
-→ 연결 종료 시 L106-L109 disconnect
+기존 worker shutdown
+→ socket close
+→ Frontend disconnected
+→ 새 worker와 ROS Runtime startup
+→ 재연결 timer
+→ connected
 ```
 
-WebSocket handler는 루프 안에서 직접 ROS2 Graph API를 호출하지 않는다. `websocket_snapshot()`이 REST와 같은 runtime cache 계층을 읽어 경량 구조로 바꾼다.
+짧은 끊김 자체는 예상할 수 있지만 새 worker가 준비된 뒤에도 연결이 돌아오지 않으면 Backend startup과 Frontend hook을 나눠 확인해야 한다.
 
-## 5. Frontend WebSocket을 라인으로 따라가기
+## 담당 파일
 
-```text
-frontend/src/api/rosApi.js L15 monitorWebSocketUrl()
-→ frontend/src/hooks/useMonitorWebSocket.js L6 hook 시작
-→ L12 URL memo
-→ WebSocket open/message/error/close callback 등록
-→ frontend/src/App.jsx L20 근처에서 hook 사용
-→ Header와 VisualizationPage에 연결 상태와 snapshot 전달
-```
+- `routers/monitoring.py`: `/ws/monitor`
+- `ros_monitor.py`: `websocket_snapshot()`
+- `frontend/src/hooks/useMonitorWebSocket.js`: 연결과 재연결
+- `frontend/src/layout/Header.jsx`: 연결 상태 표시
 
-Frontend는 WebSocket reconnect가 생겨도 REST polling interval을 중복 생성하지 않도록 hook cleanup을 유지해야 한다.
+## 문제가 생기면
 
-## 6. 정책
-
-- WebSocket reconnect는 기존 socket과 timer cleanup을 전제로 한다.
-- WebSocket 메시지를 받을 때마다 latest/hz REST fetch를 직접 유발하지 않는다.
-- WebSocket 연결 성공은 ROS2 장비나 특정 Topic 정상 상태를 의미하지 않는다.
-
-## 내가 반드시 알아야 할 것 3줄 요약
-
-1. `/ws/monitor`는 raw ROS2 메시지가 아니라 경량 요약 채널이다.
-2. REST와 WebSocket은 같은 runtime cache를 서로 다른 형태로 읽는다.
-3. 상세 화면의 기준 데이터는 계속 REST polling이다.
+1. `/health`가 계속 성공하는지 확인
+2. 브라우저 Network에서 WebSocket close code와 재연결 확인
+3. Uvicorn worker PID 변경 시각 확인
+4. 새 Backend에서 `RosMonitor.start()`가 완료됐는지 확인
+5. REST는 정상인데 WebSocket만 실패하는지 구분

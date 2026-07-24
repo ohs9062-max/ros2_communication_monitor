@@ -1,197 +1,100 @@
-# Topic 모니터링 및 실행 흐름
+# Topic Monitoring 흐름
 
-> 라인 번호는 2026-07-21 실제 코드 기준이다.
+## 무엇을 하는가
 
-## 1. Topic의 두 경로
+Topic Runtime은 현재 Graph의 Topic을 발견하고, 상세 감시 가능한 메시지 타입에는 자동 Subscription을 만든다. 수신 결과로 latest, Hz, missing, stale 상태를 계산한다.
 
-Topic은 자동 모니터링과 Interface Lab 명시 실행으로 나뉜다.
+이 자동 구독은 관찰용이다. Interface Lab에서 사용자가 누르는 Receive나 Publish와는 별도 경로다.
 
-- **Topic 모니터링**: Graph discovery, supported type 자동 구독, latest/hz/stale/alert cache.
-- **Interface Lab Topic 실행**: 사용자가 Message `full_type`과 topic name을 지정해 publish 또는 receive start/stop을 수행.
+## 지원 타입 병합
 
-두 경로를 반드시 구분해야 한다. Topic 모니터링은 Dashboard가 현재 ROS2 Topic 상태를 보기 위한 자동 관찰이고, Topic 실행은 Interface Lab에서 사용자가 직접 Topic 메시지를 보내거나 특정 Topic 수신을 켜는 기능이다.
-
-| 구분 | 자동 모니터링 | Interface Lab 실행 |
-|---|---|---|
-| 시작점 | `RosMonitor` timer | 사용자의 버튼 클릭 |
-| Router | `/ros/topics`, `/ros/topics/latest`, `/ros/topics/hz` | `/ros/interfaces/callable-messages`, `/message-schema`, `/topic-publish`, `/receive/topics/*` |
-| Runtime | `topic/runtime.py` L41 | `interface_lab/execution/topic_runtime.py` L30 |
-| 목적 | 상태 관찰, latest, Hz, stale 판단 | publish, receive start/stop, history |
-| 주의점 | topic 이름을 하드코딩하지 않음 | 사용자가 명시한 topic/type만 실행 |
-
-## 2. Topic 모니터링 코드 추적
+Backend가 상세 감시에 사용하는 최종 msg 타입 집합은 세 원천을 합쳐 중복 제거한다.
 
 ```text
-RosMonitor timer
-→ TopicRuntime.update()
-→ Graph API로 topic/type/publisher/subscriber 수집
-→ supported type subscription 유지
-→ latest/hz/cache 갱신
-→ REST latest/hz endpoint가 cache 조회
+monitor.yaml topics.supported_types
++
+interface_registry.yaml의 import_available=true msg full_type
++
+interface_packages.yaml의 import_available=true msg full_type
 ```
 
-| 단계 | 코드 위치 |
-|---|---|
-| TopicRuntime 생성/상태 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic/runtime.py` L41 |
-| cache clear | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic/runtime.py` L63 |
-| topic snapshot | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic/runtime.py` L70 |
-| Graph update | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic/runtime.py` L120 |
-| latest 조회 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic/runtime.py` L179 |
-| message preview 변환 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic/preview.py` L13 |
-| subscription entry 갱신 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic/subscriptions.py` L39 |
-| Hz 계산 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/topic/hz.py` L25 |
-| `/ros/topics` router | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/monitoring.py` L16 |
-| `/ros/topics/latest` router | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/monitoring.py` L31 |
-| `/ros/topics/hz` router | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/monitoring.py` L37 |
+설정 로딩은 `config_loader.py`가 담당한다. 현재 Graph의 실제 타입과 전체 문자열이 exact match하고 generated Python message를 import할 수 있어야 Subscription을 만든다.
 
-## 3. Interface Lab Topic 실행 코드 추적
+등록 custom msg는 별도의 preview 전용 하드코딩 목록에 들어 있지 않아도 감시할 수 있다. 메시지를 범용 JSON 형태로 완전히 예쁘게 보여주는 능력과 Subscription·수신 시각·Hz 계산 가능 여부를 같은 조건으로 묶지 않는다.
+
+## 갱신 흐름
 
 ```text
-Frontend form
-→ topic execution router
-→ InterfaceReceiveRuntime
-→ value_converter로 schema/validation/object 변환
-→ rclpy Publisher 또는 Subscription
-→ history 저장
+TopicRuntime.update()
+→ get_topic_names_and_types()
+→ include/exclude와 내부 Topic 정책 적용
+→ Publisher/Subscriber 수 계산
+→ 타입 지원 여부 판정
+→ 필요한 Subscription 생성 또는 재사용
+→ 사라진 감시 대상 Subscription 정리
+→ snapshot 갱신
 ```
 
-| 단계 | 코드 위치 |
-|---|---|
-| callable message endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/topic_execution.py` L14 |
-| message schema endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/topic_execution.py` L26 |
-| topic publish endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/topic_execution.py` L40 |
-| receive start endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/topic_execution.py` L99 |
-| receive stop endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/topic_execution.py` L117 |
-| receive history endpoint | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/routers/topic_execution.py` L138 |
-| InterfaceReceiveRuntime | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L30 |
-| message schema 생성 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L64 |
-| callable message 판단 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L80 |
-| receive start | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L113 |
-| receive stop | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L167 |
-| receive history | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L205 |
-| receive history reset | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L232 |
-| publish | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L273 |
-| publish history | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L350 |
-| publish history reset | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/execution/topic_runtime.py` L357 |
-| ROS message 생성 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/common/value_converter.py` L37 |
-| JSON-safe 변환 | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/common/value_converter.py` L122 |
-| schema helper | `backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/common/value_converter.py` L130 |
+Topic callback은 다음을 저장한다.
 
-## 4. Frontend polling 코드 추적
+- 최신 메시지의 JSON-safe 값
+- 마지막 수신 시각
+- Hz window 안의 수신 timestamp
 
-Topic 상세의 latest/hz polling은 `usePolling`으로 관리한다. 선택 topic, 화면 활성 상태, 숨김 포함 필터가 바뀌면 이전 timer를 cleanup해야 한다.
+## latest와 Hz
 
-| 단계 | 코드 위치 |
-|---|---|
-| polling hook | `frontend/src/hooks/usePolling.js` L3 |
-| Topic dashboard hook | `frontend/src/hooks/useTopicDashboard.js` L16 |
-| selected topic hz fetcher | `frontend/src/hooks/useTopicDashboard.js` L43 |
-| participant map | `frontend/src/hooks/useTopicDashboard.js` L62 |
-| topic list hz 보강 | `frontend/src/hooks/useTopicDashboard.js` L98 |
+`latest`는 마지막으로 받은 메시지와 수신 시각이다. `Hz`는 일정 시간 창에 들어온 수신 timestamp 간격으로 계산한다.
 
-## 5. `/ros/topics`를 라인으로 따라가기
+따라서 `supported_type=true`여도 첫 메시지가 오기 전에는 실제 Hz가 아직 없을 수 있다. 이때 “미지원”과 “아직 측정되지 않음”을 구분해야 한다.
+
+상세 감시는 다음이 실제로 작동한다는 뜻이다.
 
 ```text
-Frontend Topic 화면
-→ GET /ros/topics
-→ routers/monitoring.py L16 @router.get('/ros/topics')
-→ routers/monitoring.py L17 get_ros_topics()
-→ routers/monitoring.py L19 ros_monitor.snapshot()
-→ ros_monitor.py L113 RosMonitor.snapshot()
-→ topic/runtime.py L70 TopicRuntime.snapshot()
-→ topic/runtime.py L72-L82 lock 안에서 topics/subscriptions 복사
-→ topic/runtime.py L84-L93 latest/observed/message_count 보강
-→ topic/runtime.py L95-L99 topics/count/last_updated 반환
-→ routers/monitoring.py L20-L28 success/data/meta/message JSON 반환
-→ Frontend Topic list 표시
+동적 Subscription
+latest 저장
+last_received_at 저장
+Hz 계산
+missing / stale 판정
 ```
 
-이 흐름에서 `TopicRuntime.update()`는 호출되지 않는다. `update()`는 timer가 이미 실행해 둔 갱신 작업이고, REST는 snapshot만 읽는다.
+UI 문구만 `예`로 바꾸는 기능이 아니다.
 
-## 6. Topic Graph 갱신을 라인으로 따라가기
+## missing과 stale
 
-```text
-ros_monitor.py L531 _update_graph()
-→ topic/runtime.py L120 TopicRuntime.update()
-→ L122-L124 rclpy node 없으면 return
-→ L128 node.get_topic_names_and_types()
-→ L133-L135 include/exclude filter 적용
-→ L137-L143 type 확인 및 auto subscription 판단
-→ L144 node.count_publishers(name)
-→ L145 node.count_subscribers(name)
-→ L146-L153 monitor subscription 수를 빼서 external subscriber 계산
-→ L154-L166 build_topic_item()
-→ L170-L172 lock 안에서 topic cache 교체
-→ L174-L177 사라진 topic subscription 정리
-```
+- `topic_message_missing`: Publisher가 존재하고 상세 감시 대상이지만 아직 메시지를 받지 못함
+- `topic_stale`: 과거에 메시지를 받았지만 `stale_timeout_sec`보다 오래됨
 
-## 7. `/ros/topics/latest`와 `/ros/topics/hz`
+기존 명시적 감시 대상뿐 아니라 import 가능한 YAML 등록 msg 타입과 exact match한 Topic도 이 Alert 대상이 된다. command 성격 Topic이나 내부 Action Topic처럼 지속 수신을 기대하면 안 되는 대상은 기본 missing/stale Alert에서 제외한다.
 
-`/ros/topics/latest`는 선택 Topic의 최신 message preview를 읽는 endpoint다.
+## Graph에서 사라진 Topic
 
-```text
-routers/monitoring.py L31 @router.get('/ros/topics/latest')
-→ L32 get_latest_ros_topic(name)
-→ L34 ros_monitor.latest_message(name)
-→ ros_monitor.py L368 RosMonitor.latest_message()
-→ topic/runtime.py L179 TopicRuntime.latest_message()
-→ topic이 없거나 unsupported면 실패 JSON
-→ supported type이면 subscription 보장 후 cache의 preview 반환
-```
+Runtime은 `graph_present`, `ever_discovered`, `last_seen_at`, `disconnected_at`을 사용해 현재 상태를 기억한다.
 
-`/ros/topics/hz`는 선택 Topic의 최근 수신 주파수를 읽는 endpoint다.
+- 현재 있음: 현재 연결 수와 통신 상태 표시
+- 이전에 있었으나 사라짐: `disconnected`
+- 한 번도 발견되지 않음: 종료 오류로 만들지 않음
 
-```text
-routers/monitoring.py L37 @router.get('/ros/topics/hz')
-→ L38 get_ros_topic_hz(name)
-→ L40 ros_monitor.topic_hz(name)
-→ ros_monitor.py L372 RosMonitor.topic_hz()
-→ topic/runtime.py L230 TopicRuntime.topic_hz()
-→ 최근 timestamp window 기반 Hz snapshot 반환
-```
+Graph에서 사라진 Topic에 Subscription을 다시 만들지 않도록 타입 조회도 현재 Graph 존재 여부를 확인한다. Topic이 다시 나타나면 현재 항목으로 복구되고 필요한 Subscription이 다시 준비된다.
 
-## 8. Interface Lab Topic 실행을 라인으로 따라가기
+## 주요 Topic 판정
 
-Topic Publish는 다음 흐름이다.
+Backend의 `supported_type`과 상세 감시 신호가 Frontend 주요 항목 판정에 사용된다. YAML 등록 타입이라고 해서 이름만 같은 Topic을 포함하지 않고, Graph의 실제 msg `full_type`이 정확히 같아야 한다.
 
-```text
-Frontend Interface Lab form
-→ POST /ros/interfaces/topic-publish
-→ routers/topic_execution.py L40 endpoint
-→ L41 publish_registered_topic()
-→ L43-L58 JSON body와 topic_name/topic_type/message 검증
-→ L61-L65 ros_monitor.publish_topic(...)
-→ ros_monitor.py L302 RosMonitor.publish_topic()
-→ interface_lab/execution/topic_runtime.py L273 publish_topic()
-→ value_converter.py L37 ROS message object 생성
-→ publish history 저장
-→ Router가 성공/실패 JSON 반환
-```
+## 담당 파일
 
-Topic Receive start는 다음 흐름이다.
+- `config_loader.py`: 등록 msg 타입 병합
+- `topic/runtime.py`: Graph, Subscription, latest, Hz, snapshot
+- `topic/alerts.py`: missing, stale, disconnected Alert
+- `resource_state.py`: 발견/종료 상태 보조
+- `routers/monitoring.py`: Topic API
 
-```text
-POST /ros/interfaces/receive/topics/start
-→ routers/topic_execution.py L99 endpoint
-→ L100 start_receive_topic()
-→ L107-L111 ros_monitor.start_receive_topic(...)
-→ ros_monitor.py L252 RosMonitor.start_receive_topic()
-→ interface_lab/execution/topic_runtime.py L113 start_topic()
-→ 지정 topic/type subscription 생성
-→ 수신 callback이 history 저장
-```
-| latest API 함수 | `frontend/src/api/rosApi.js` L49 |
-| hz API 함수 | `frontend/src/api/rosApi.js` L53 |
+## 문제가 생기면
 
-## 5. 정책
+1. `/ros/topics`의 `type`, `supported_type`, `graph_present` 확인
+2. registry/package의 `import_available`과 `full_type` 확인
+3. Backend 실행 환경에서 generated message import 확인
+4. Publisher 수와 `last_received_at` 확인
+5. `monitor.yaml`의 include/exclude, timeout 확인
+6. Graph에서 사라진 항목이면 Subscription이 정리됐는지 확인
 
-- Topic monitoring subscription과 Interface Lab receive subscription은 서로 다른 runtime이다.
-- Interface Lab Publish/Receive는 `(topic_name, full_type)` 기준으로 cache/history를 관리한다.
-- 같은 Topic 이름 + 같은 full_type은 허용하고, 같은 Topic 이름 + 다른 full_type은 conflict로 표시한다.
-- validation 실패 시 ROS2 publish를 차단하고 `sent_to_topic=false`로 기록한다.
-
-## 내가 반드시 알아야 할 것 3줄 요약
-
-1. Topic 자동 모니터링은 `topic/runtime.py`, 사용자가 누르는 Publish/Receive는 `interface_lab/execution/topic_runtime.py`가 담당한다.
-2. latest/hz는 REST polling으로 cache를 읽으며, timer cleanup이 누락되면 요청 폭주가 난다.
-3. Interface Lab Topic 실행은 `(topic_name, full_type)` exact 기준으로 동작한다.
+사용자 명시 Publish/Receive는 [12_interface_lab_flow.md](12_interface_lab_flow.md)를 참고한다.

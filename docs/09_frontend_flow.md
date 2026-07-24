@@ -1,136 +1,93 @@
-# Frontend 전체 흐름
+# Frontend 데이터 흐름
 
-> 라인 번호는 2026-07-21 실제 코드 기준이다.
+## 무엇을 하는가
 
-## 1. Frontend 구조
-
-Frontend는 ROS2에 직접 접근하지 않는다. 모든 데이터는 `rosApi.js`의 REST/WebSocket 함수로 FastAPI Backend를 통해 받는다.
-
-흐름은 두 가지다.
-
-1. **모니터링 화면**: `usePolling()`과 도메인별 hook이 REST snapshot을 주기적으로 읽는다.
-2. **Interface Lab**: 사용자의 등록, apply, Topic Publish/Receive, Service Call, Action Goal 버튼 동작에 맞춰 API를 호출한다.
-
-Frontend의 핵심 원칙은 "ROS2를 직접 만지지 않는다"이다. React/Electron은 ROS2 graph나 rclpy를 모르고, FastAPI가 제공하는 JSON만 읽는다.
+Frontend는 Vite + React 기반 웹앱이다. ROS2에 직접 접근하지 않고 FastAPI의 REST와 WebSocket 결과를 화면 상태로 바꾼다.
 
 ```text
-React page
-→ domain hook
-→ frontend/src/api/rosApi.js
-→ FastAPI endpoint
-→ Backend runtime snapshot 또는 Interface Lab execution 결과
-→ JSON 응답
-→ hook state
-→ page/component 렌더링
+FastAPI
+→ rosApi.js
+→ polling/WebSocket hooks
+→ 공통 filter와 status helper
+→ page/component
 ```
 
-## 2. 공통 API와 polling 코드 추적
+## 화면별 데이터
 
-| 단계 | 코드 위치 |
+| 화면 | 주요 데이터 |
 |---|---|
-| REST base 요청 | `frontend/src/api/rosApi.js` L1 |
-| WebSocket URL | `frontend/src/api/rosApi.js` L15 |
-| latest API | `frontend/src/api/rosApi.js` L49 |
-| hz API | `frontend/src/api/rosApi.js` L53 |
-| alerts API | `frontend/src/api/rosApi.js` L57 |
-| 공통 polling hook | `frontend/src/hooks/usePolling.js` L3 |
-| App page state | `frontend/src/App.jsx` L20 |
-| WebSocket hook | `frontend/src/hooks/useMonitorWebSocket.js` L6 |
+| Overview | Topic/Service/Action/Node 집계와 최근 Alert |
+| Topics | Topic 목록, 선택 Topic latest/Hz |
+| Services | Service 목록과 Server/Client 관계 |
+| Actions | Action 목록과 Goal 관찰 상태 |
+| Nodes | Node 목록과 여섯 종류 통신 관계 |
+| Visualization | 네 리소스 REST 응답을 조합한 graph |
+| Alerts | active 목록과 resolved history |
+| Interface Lab | registry, Apply, 실행 후보와 history |
 
-`usePolling()`은 enabled, interval, resetKey 변화에 따라 기존 timer를 cleanup하고 새 polling을 시작한다. fetch 결과 state가 effect dependency에 들어가 자기 자신을 다시 호출하지 않게 유지해야 한다.
+`App.jsx`는 현재 page에 필요한 polling만 활성화한다. Nodes와 Visualization은 관계 판정에 여러 리소스 데이터가 필요하므로 Topic, Service, Action, Node를 함께 조회한다.
 
-## 3. 모니터링 화면 코드 추적
+## 주요 항목 필터
 
-| 화면 | 코드 위치 |
-|---|---|
-| Topic hook | `frontend/src/hooks/useTopicDashboard.js` L16 |
-| Service hook | `frontend/src/hooks/useServiceDashboard.js` L9 |
-| Action hook | `frontend/src/hooks/useActionDashboard.js` L9 |
-| Node hook | `frontend/src/hooks/useNodeDashboard.js` L8 |
-| participant map | `frontend/src/utils/participants.js` L1 |
-| primary node filter | `frontend/src/utils/nodeFilters.js` L28 |
+`primaryFilters.js`가 Topic, Service, Action의 공통 판정을 제공하고 `nodeFilters.js`가 관계 타입으로 주요 Node를 판정한다.
 
-Topic 상세의 latest/hz는 선택된 Topic이 있을 때만 동작하고, topic 변경/화면 이동/unmount/reconnect에서 timer가 누적되면 안 된다.
+- Topic: Backend `supported_type` 등 실제 감시 신호
+- Service: Backend `allowlisted`
+- Action: Backend `allowlisted`
+- Node: 위 주요 통신의 타입과 Node 관계 타입 exact match
 
-### Topic 화면을 라인으로 따라가기
+Overview, 각 목록, Visualization은 이 helper를 재사용한다. YAML 파일을 Frontend가 직접 읽지 않는다.
 
-```text
-frontend/src/App.jsx L20 page state
-→ Topic page 활성
-→ frontend/src/hooks/useTopicDashboard.js L16 hook 시작
-→ rosApi.js의 topics/latest/hz API 호출
-→ Backend routers/monitoring.py L16, L31, L37
-→ 응답 JSON을 hook state로 저장
-→ Topic page/component가 목록과 상세 표시
-```
+기존 기본 주요 항목을 위한 호환 규칙도 남아 있으므로 코드에 일부 기존 이름 기준이 존재한다. 다만 YAML 등록 custom Interface를 화면마다 새 이름으로 하드코딩하지 않고 Backend의 타입 판정 결과를 사용한다.
 
-Topic 상세 latest/hz polling은 선택된 Topic이 있을 때만 의미가 있다. 숨김 포함 필터가 꺼져 선택 Topic이 사라지면 selected topic을 안정적으로 비워야 한다.
+## 상태 표시
 
-### Service/Action/Node 화면을 라인으로 따라가기
+공통 status helper와 `StatusBadge`가 상태를 화면 색과 문구로 바꾼다.
 
-```text
-Service 화면
-→ useServiceDashboard.js L9
-→ GET /ros/services
-→ routers/monitoring.py L43
+- 현재 Graph에 있음: 정상, 사용 가능 또는 대기
+- 이전 발견 후 없음: `disconnected`, 빨강
+- 정보 부족: `unknown`, 중립이며 오류 집계 제외
+- 해결 Alert: `resolved`, 초록
 
-Action 화면
-→ useActionDashboard.js L9
-→ GET /ros/actions
-→ routers/monitoring.py L60
+Graph만으로 종료 원인을 알 수 없기 때문에 “비정상 종료”라고 단정하지 않는다.
 
-Node 화면
-→ useNodeDashboard.js L8
-→ GET /ros/nodes
-→ routers/monitoring.py L73
-```
+## Polling 안정성
 
-세 화면 모두 Backend runtime cache snapshot을 읽는다. 화면 진입이 ROS2 Service Call이나 Action Goal 실행을 유발하면 안 된다.
+공통 `usePolling`은 interval을 cleanup하고, 응답 state가 바뀔 때 interval 자체가 다시 만들어지지 않도록 안정적인 reset 기준을 사용한다.
 
-## 4. Interface Lab 코드 추적
+Topic latest/Hz는 현재 선택 Topic에 대해서만 요청한다. 늦게 도착한 이전 요청이 새 선택 값을 덮지 않도록 응답의 Topic 이름과 현재 선택 이름을 비교한다. Action 내부 Topic과 관리용 내부 Topic은 기본 상세 선택과 Hz polling 후보에서 제외한다.
 
-| 단계 | 코드 위치 |
-|---|---|
-| Interface Lab page | `frontend/src/pages/InterfaceLabPage.jsx` L6 |
-| 초기 병렬 fetch | `frontend/src/pages/InterfaceLabPage.jsx` L78-L85 |
-| topic publish 호출 | `frontend/src/pages/InterfaceLabPage.jsx` L263 |
-| topic receive start | `frontend/src/pages/InterfaceLabPage.jsx` L284 |
-| topic receive stop | `frontend/src/pages/InterfaceLabPage.jsx` L300 |
-| 작업 도구 component | `frontend/src/components/InterfaceUploadControl.jsx` L43 |
-| 작업 도구 receive history fetch | `frontend/src/components/InterfaceUploadControl.jsx` L515 |
-| 작업 도구 topic receive start | `frontend/src/components/InterfaceUploadControl.jsx` L571 |
-| 작업 도구 topic receive stop | `frontend/src/components/InterfaceUploadControl.jsx` L585 |
-| 작업 도구 topic publish | `frontend/src/components/InterfaceUploadControl.jsx` L625 |
+## Alert 표시
 
-Interface Lab form은 Backend schema 기반으로 동적으로 생성된다. nested custom msg와 array 입력은 frontend에서 형태를 만들고, 최종 검증과 ROS2 object 변환은 backend `interface_lab/common/value_converter.py`가 담당한다.
+Overview의 최근 Alert는 접힌 상태에서 3개를 보여주고 펼치면 최대 10개를 보여준다.
 
-### Interface Lab 실행을 라인으로 따라가기
+Alerts 화면은 다음 두 탭으로 나뉜다.
 
-```text
-frontend/src/pages/InterfaceLabPage.jsx L6 page
-→ L78-L85 초기 registry/package/callable/apply 상태 fetch
-→ frontend/src/components/InterfaceUploadControl.jsx L43 작업 도구 UI
-→ 사용자가 버튼 클릭
-→ rosApi.js API 함수 호출
-→ Backend interface router
-→ Backend가 validation/build/execution 수행
-→ JSON 결과 반환
-→ Frontend가 registry/history/callable/apply 상태 재조회
-```
+- 현재 Alert: `resolved`가 아닌 active 장애
+- 이전 Alert: Backend `history`의 해결 항목, 최대 50개
 
-예를 들어 Topic Publish는 Frontend에서 `InterfaceLabPage.jsx` L263 또는 작업 도구의 `InterfaceUploadControl.jsx` L625 근처에서 호출되고, Backend는 `routers/topic_execution.py` L40으로 들어간다. Service Call은 Backend `routers/service_execution.py` L26, Action Goal은 `routers/action_execution.py` L26으로 들어간다.
+resolved는 초록 “해결됨”으로 보이지만 현재 warning/error 집계에는 포함되지 않는다.
 
-## 5. 정책
+## Interface Lab
 
-- Frontend에 ROS2 감시 대상 이름을 하드코딩하지 않는다.
-- 숨김/내부 포함 토글은 표시 대상과 상세 polling 대상에 함께 반영한다.
-- WebSocket reconnect가 REST polling interval을 추가 생성하지 않게 한다.
-- Interface Lab 실행 API는 사용자가 명시적으로 누른 경우에만 호출한다.
-- Frontend는 Backend 응답의 기존 JSON key를 제거하거나 새 구조로 가정하지 않는다.
-- participant map은 `/ros/nodes` 응답을 Frontend에서 역매핑해 만들며, Backend API 구조를 바꾸지 않는다.
+Interface Lab은 Monitoring 화면과 달리 사용자 입력으로 실제 Publish, Receive, Call, Goal을 실행할 수 있다. Graph 후보 자동 입력은 사용자가 직접 입력한 Topic 이름을 polling 때 덮어쓰지 않도록 입력 출처를 구분한다.
 
-## 내가 반드시 알아야 할 것 3줄 요약
+세부 실행 흐름은 [12_interface_lab_flow.md](12_interface_lab_flow.md)에 있다.
 
-1. Frontend는 REST polling과 WebSocket 보조 채널만 사용하고 ROS2에 직접 접근하지 않는다.
-2. Topic/Service/Action/Node 모니터링은 도메인 hook, Interface Lab은 사용자 액션 중심 API 호출로 분리된다.
-3. polling effect에는 cleanup과 안정적인 dependency가 필수다.
+## 담당 파일
+
+- `frontend/src/api/rosApi.js`
+- `frontend/src/hooks/usePolling.js`
+- `frontend/src/hooks/useMonitorWebSocket.js`
+- `frontend/src/utils/primaryFilters.js`
+- `frontend/src/utils/nodeFilters.js`
+- `frontend/src/utils/status.js`
+- `frontend/src/pages/`
+
+## 문제가 생기면
+
+1. 같은 시각의 REST 응답과 화면 값을 비교
+2. Backend 필드가 Frontend helper에서 다른 이름으로 읽히는지 확인
+3. page 전환 뒤 불필요 polling이 남는지 확인
+4. effect dependency에 매 render 새 배열·객체·함수가 들어가는지 확인
+5. 동일 값을 반복 `setState`해 Maximum update depth가 생기는지 확인

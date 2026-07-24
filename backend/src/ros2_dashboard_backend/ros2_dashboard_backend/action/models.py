@@ -9,6 +9,7 @@ ACTION_STATUS_ACTIVE = 'active'
 ACTION_STATUS_WAITING_SERVER = 'waiting_server'
 ACTION_STATUS_INACTIVE = 'inactive'
 ACTION_STATUS_UNKNOWN = 'unknown'
+ACTION_STATUS_DISCONNECTED = 'disconnected'
 
 GOAL_STATUS_UNKNOWN = 'unknown'
 GOAL_STATUS_ACCEPTED = 'accepted'
@@ -125,7 +126,7 @@ def action_meta(
         ),
         'error_count': sum(
             1 for action in actions
-            if action.get('status') == ACTION_STATUS_UNKNOWN
+            if action.get('status') == ACTION_STATUS_DISCONNECTED
         ),
         'server_count': sum(
             int(action.get('server_count') or 0)

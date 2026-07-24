@@ -1804,31 +1804,93 @@ h3 {
   font-size: 16px;
 }
 
-.overview-preview-card .badge,
-.overview-preview-grid .alerts-preview .badge {
+.overview-preview-card .badge {
   font-size: 25px;
   padding: 6px 12px;
 }
 
+.overview-preview-grid .alerts-preview .badge {
+  font-size: 14px;
+  padding: 5px 9px;
+}
+
 .overview-preview-grid .alerts-preview .section-heading h2 {
-  font-size: 18px;
+  font-size: 16px;
 }
 
 .overview-preview-grid .alert-item {
-  gap: 14px;
-  padding: 14px 16px;
+  gap: 8px;
+  padding: 8px 12px;
 }
 
 .overview-preview-grid .alert-item strong {
   display: block;
   font-size: 15px;
-  line-height: 1.3;
+  line-height: 1.2;
   overflow-wrap: anywhere;
 }
 
 .overview-preview-grid .alert-item p {
   font-size: 14px;
-  line-height: 1.35;
+  line-height: 1.25;
+  margin: 2px 0;
+}
+
+.overview-preview-grid .alert-item .muted {
+  font-size: 13px;
+}
+
+.alerts-preview-heading-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.alerts-preview-toggle {
+  background: #0d131b;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 7px;
+}
+
+.alerts-preview-toggle:hover {
+  border-color: #475569;
+  color: var(--text);
+}
+
+.alert-tabs {
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px 0;
+}
+
+.alert-tabs button {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  gap: 7px;
+  padding: 8px 10px;
+}
+
+.alert-tabs button.active {
+  border-bottom-color: var(--blue);
+  color: var(--text);
+}
+
+.alert-tabs button span {
+  background: #182231;
+  border-radius: 999px;
+  font-size: 11px;
+  min-width: 22px;
+  padding: 2px 6px;
 }
 
 .overview-column-chart {
@@ -2618,6 +2680,12 @@ h3 {
   background: var(--yellow-bg);
   border-color: rgba(251, 191, 36, 0.34);
   color: #fde68a;
+}
+
+.notice-text.error {
+  background: var(--red-bg);
+  border-color: rgba(240, 120, 136, 0.34);
+  color: var(--red);
 }
 
 .detail-panel {

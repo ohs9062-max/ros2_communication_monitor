@@ -5,7 +5,7 @@ const WARNING_STATUSES = new Set([
   'waiting_publisher',
 ])
 
-const ERROR_STATUSES = new Set(['error', 'critical'])
+const ERROR_STATUSES = new Set(['error', 'critical', 'disconnected'])
 const INACTIVE_STATUSES = new Set(['inactive', 'unknown', 'unsupported'])
 
 export function getTopicSummary(topics) {
@@ -58,7 +58,9 @@ export function getServiceSummary(services, meta = {}) {
   const active = meta.active_count ?? countServicesByStatus(services, 'active')
   const warning =
     meta.warning_count ?? countServicesByStatus(services, 'waiting_server')
-  const error = meta.error_count ?? countServicesByStatus(services, 'unknown')
+  const error = meta.error_count ?? (
+    countServicesByStatus(services, 'disconnected')
+  )
   const activeCheckSupported =
     meta.active_check_supported_count ??
     services.filter((service) => service.active_check_supported === true).length
@@ -79,7 +81,9 @@ export function getActionSummary(actions, meta = {}) {
   const active = meta.active_count ?? countActionsByStatus(actions, 'active')
   const warning =
     meta.warning_count ?? countActionsByStatus(actions, 'waiting_server')
-  const error = meta.error_count ?? countActionsByStatus(actions, 'unknown')
+  const error = meta.error_count ?? (
+    countActionsByStatus(actions, 'disconnected')
+  )
   const inactive = Math.max(total - active - warning - error, 0)
   const observedGoals =
     meta.observed_goal_count ??
@@ -174,7 +178,7 @@ export function matchesServiceStatusFilter(service, filter) {
     return status === 'waiting_server' || status === 'warning'
   }
   if (filter === 'error') {
-    return status === 'unknown' || status === 'error' || status === 'critical'
+    return ERROR_STATUSES.has(status)
   }
   if (filter === 'unsupported') {
     return (

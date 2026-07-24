@@ -305,7 +305,16 @@ function statusTone(status) {
   ) {
     return 'warn'
   }
-  if (['error', 'critical', 'failed', 'aborted', 'timeout'].includes(value)) {
+  if (
+    [
+      'error',
+      'critical',
+      'disconnected',
+      'failed',
+      'aborted',
+      'timeout',
+    ].includes(value)
+  ) {
     return 'bad'
   }
   if (['accepted', 'executing'].includes(value)) {

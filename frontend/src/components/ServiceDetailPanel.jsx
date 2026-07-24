@@ -183,7 +183,9 @@ function statusTone(status) {
   if (['warning', 'waiting_server', 'pending'].includes(value)) {
     return 'warn'
   }
-  if (['error', 'critical', 'failed', 'timeout'].includes(value)) {
+  if (
+    ['error', 'critical', 'disconnected', 'failed', 'timeout'].includes(value)
+  ) {
     return 'bad'
   }
   if (['accepted', 'executing'].includes(value)) {

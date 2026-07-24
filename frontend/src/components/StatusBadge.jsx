@@ -6,7 +6,8 @@ function statusClass(value) {
     status === 'success' ||
     status === 'succeeded' ||
     status === 'feedback_received' ||
-    status === 'supported'
+    status === 'supported' ||
+    status === 'resolved'
   ) {
     return 'badge green'
   }
@@ -43,7 +44,8 @@ function statusClass(value) {
     status === 'never_received' ||
     status === 'zero_hz' ||
     status === 'result_error' ||
-    status === 'feedback_error'
+    status === 'feedback_error' ||
+    status === 'disconnected'
   ) {
     return 'badge red'
   }
@@ -103,6 +105,8 @@ function statusLabel(value) {
     result_waiting: '결과 대기',
     result_none: '결과 없음',
     result_error: '결과 조회 오류',
+    resolved: '해결됨',
+    disconnected: '연결 끊김',
     result_canceled: '취소됨',
   }
   return labels[status] ?? value ?? '알 수 없음'

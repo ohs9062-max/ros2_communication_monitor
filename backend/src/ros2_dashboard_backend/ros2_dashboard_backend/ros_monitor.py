@@ -19,7 +19,11 @@ from ros2_dashboard_backend.node.runtime import NodeRuntime
 from ros2_dashboard_backend.service.alerts import build_service_alerts
 from ros2_dashboard_backend.interface_lab.execution.service_call_runtime import ServiceCallRuntime
 from ros2_dashboard_backend.service.runtime import ServiceRuntime
-from ros2_dashboard_backend.topic.alerts import build_alert_meta, build_alerts
+from ros2_dashboard_backend.topic.alerts import (
+    build_alert_meta,
+    build_alerts,
+    retain_alerts,
+)
 from ros2_dashboard_backend.topic.runtime import TopicRuntime
 
 
@@ -32,6 +36,8 @@ class RosMonitor:
         self._node: Node | None = None
         self._thread: Thread | None = None
         self._lock = Lock()
+        self._retained_alerts: dict[str, dict[str, Any]] = {}
+        self._alert_history: list[dict[str, Any]] = []
         self._action_runtime = ActionRuntime(
             config=self._config,
             lock=self._lock,
@@ -109,6 +115,9 @@ class RosMonitor:
         self._service_call_runtime.clear()
         self._receive_runtime.clear()
         self._node_runtime.clear()
+        with self._lock:
+            self._retained_alerts = {}
+            self._alert_history = []
 
     def snapshot(self) -> dict[str, Any]:
         """RosMonitor coordinator에서 cache snapshot을 반환하는 함수입니다."""
@@ -376,8 +385,8 @@ class RosMonitor:
     def alerts(self) -> dict[str, Any]:
         """RosMonitor coordinator에서 Alert 항목을 조립하는 함수입니다."""
         detected_at = time()
-        services = self._service_runtime.alert_snapshot()
-        actions = self._action_runtime.snapshot()['actions']
+        services = self.service_snapshot(include_hidden=True)['services']
+        actions = self.action_snapshot()['actions']
         topics, subscriptions = self._topic_runtime.alert_snapshot()
         node_snapshot = self._node_runtime.snapshot()
         nodes = node_snapshot['nodes']
@@ -406,10 +415,33 @@ class RosMonitor:
                 detected_at=detected_at,
             ),
         )
+        with self._lock:
+            alerts = retain_alerts(
+                alert_history=self._alert_history,
+                current_alerts=alerts,
+                history_limit=50,
+                retained_alerts=self._retained_alerts,
+                retained_codes={
+                    'topic_message_missing',
+                    'topic_stale',
+                    'topic_disconnected',
+                    'service_active_check_timeout',
+                    'service_active_check_error',
+                    'service_active_check_failed',
+                    'service_disconnected',
+                    'action_disconnected',
+                    'node_stale',
+                },
+                detected_at=detected_at,
+            )
+            alert_history = [
+                alert.copy() for alert in self._alert_history
+            ]
 
         return {
             'success': True,
             'data': alerts,
+            'history': alert_history,
             'meta': build_alert_meta(alerts),
             'message': 'ROS2 alerts fetched successfully',
         }
@@ -436,6 +468,7 @@ class RosMonitor:
             'error_count': sum(
                 1 for topic in topics
                 if topic.get('status') in ('error', 'critical')
+                or topic.get('status') == 'disconnected'
             ),
             'deep_monitoring_count': sum(
                 1 for topic in topics
@@ -443,7 +476,7 @@ class RosMonitor:
             ),
             'stale_count': sum(
                 1 for topic in topics
-                if topic.get('status') == 'stale'
+                if topic.get('status') in ('stale', 'disconnected')
             ),
         }
 
@@ -512,7 +545,7 @@ class RosMonitor:
             'error_count': int(meta.get('error_count') or 0),
             'stale_count': sum(
                 1 for node in nodes
-                if node.get('status') == 'stale'
+                if node.get('status') in ('stale', 'disconnected')
             ),
         }
 

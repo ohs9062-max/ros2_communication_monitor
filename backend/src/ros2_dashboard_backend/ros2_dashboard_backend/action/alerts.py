@@ -23,6 +23,25 @@ def build_action_alerts(
     """Action 모니터링에서 Action 실행 또는 상태를 처리하는 함수입니다."""
     alerts = []
     for action in actions:
+        if (
+            action.get('status') == 'disconnected'
+            and action.get('allowlisted') is True
+        ):
+            alerts.append(
+                _build_alert(
+                    action=action,
+                    detected_at=detected_at,
+                    level=ALERT_LEVEL_ERROR,
+                    code='action_disconnected',
+                    message=(
+                        'Action connection lost; it is no longer visible '
+                        'in the ROS2 graph.'
+                    ),
+                    last_received_at=action.get('last_seen_at'),
+                ),
+            )
+            continue
+
         runtime = action.get('runtime', {})
         last_goal_status = runtime.get('last_goal_status')
         if last_goal_status == GOAL_STATUS_ABORTED:

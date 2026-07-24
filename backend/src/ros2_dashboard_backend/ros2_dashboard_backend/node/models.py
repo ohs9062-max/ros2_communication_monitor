@@ -7,6 +7,7 @@ from typing import Any
 
 NODE_STATUS_ACTIVE = 'active'
 NODE_STATUS_STALE = 'stale'
+NODE_STATUS_DISCONNECTED = 'disconnected'
 NODE_STATUS_INACTIVE = 'inactive'
 NODE_STATUS_UNKNOWN = 'unknown'
 
@@ -62,7 +63,9 @@ def node_meta(
         'count': len(nodes),
         'active_count': _status_count(nodes, NODE_STATUS_ACTIVE),
         'warning_count': _status_count(nodes, NODE_STATUS_STALE),
-        'error_count': _status_count(nodes, NODE_STATUS_UNKNOWN),
+        'error_count': (
+            _status_count(nodes, NODE_STATUS_DISCONNECTED)
+        ),
         'publisher_count': sum(
             node.get('publisher_count', 0) for node in nodes
         ),

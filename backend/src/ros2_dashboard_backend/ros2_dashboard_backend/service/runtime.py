@@ -7,6 +7,10 @@ from time import time
 from typing import Any, Callable
 
 from ros2_dashboard_backend.config_loader import MonitorConfig
+from ros2_dashboard_backend.resource_state import (
+    disconnected_resource,
+    mark_graph_present,
+)
 from ros2_dashboard_backend.service.active_check_runtime import (
     ServiceActiveCheckRuntime,
 )
@@ -92,6 +96,11 @@ class ServiceRuntime:
         services = []
         updated_at = time()
         active_check_cache = self._active_checks.cache_snapshot()
+        with self._lock:
+            previous_services = {
+                (service.get('name'), service.get('type')): service.copy()
+                for service in self._services
+            }
 
         for name, types in node.get_service_names_and_types():
             if not is_service_included(
@@ -102,19 +111,34 @@ class ServiceRuntime:
                 continue
 
             service_type = types[0] if types else None
+            service = build_service_item(
+                name=name,
+                service_type=service_type,
+                server_count=node.count_services(name),
+                client_count=self._client_count(name),
+                supported_type=is_supported_type(service_type),
+                updated_at=updated_at,
+                active_check_config=(
+                    self._config.services_active_check
+                ),
+                active_check_allowlist=self._active_checks.allowlist,
+                active_check_cache=active_check_cache,
+            )
+            mark_graph_present(service, observed_at=updated_at)
+            services.append(service)
+
+        current_keys = {
+            (service.get('name'), service.get('type'))
+            for service in services
+        }
+        for key, cached in previous_services.items():
+            if key in current_keys:
+                continue
             services.append(
-                build_service_item(
-                    name=name,
-                    service_type=service_type,
-                    server_count=node.count_services(name),
-                    client_count=self._client_count(name),
-                    supported_type=is_supported_type(service_type),
-                    updated_at=updated_at,
-                    active_check_config=(
-                        self._config.services_active_check
-                    ),
-                    active_check_allowlist=self._active_checks.allowlist,
-                    active_check_cache=active_check_cache,
+                disconnected_resource(
+                    cached,
+                    detected_at=updated_at,
+                    count_fields=('server_count', 'client_count'),
                 ),
             )
 

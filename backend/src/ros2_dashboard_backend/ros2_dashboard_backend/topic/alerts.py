@@ -33,6 +33,8 @@ COMMAND_TOPIC_NAMES = {
     '/cmd_vel_smoothed',
 }
 
+ALERT_RESOLVED_RETENTION_SEC = 60.0
+
 
 def build_alerts(
     *,
@@ -63,19 +65,103 @@ def build_alerts(
     return list(alerts_by_id.values())
 
 
+def retain_alerts(
+    *,
+    alert_history: list[dict[str, Any]] | None = None,
+    current_alerts: list[dict[str, Any]],
+    history_limit: int = 50,
+    retained_alerts: dict[str, dict[str, Any]],
+    retained_codes: set[str],
+    detected_at: float,
+    resolved_retention_sec: float = ALERT_RESOLVED_RETENTION_SEC,
+) -> list[dict[str, Any]]:
+    """상태 기반 Alert를 해결 시각부터 일정 시간 메모리에 유지합니다."""
+    current_by_id = {
+        alert['id']: alert
+        for alert in current_alerts
+        if alert.get('code') in retained_codes
+    }
+    passthrough = [
+        alert for alert in current_alerts
+        if alert.get('code') not in retained_codes
+    ]
+    visible = []
+
+    for alert_id, alert in current_by_id.items():
+        cached = retained_alerts.get(alert_id, {})
+        active_alert = {
+            **alert,
+            'active': True,
+            'alert_state': 'active',
+            'first_detected_at': cached.get(
+                'first_detected_at',
+                detected_at,
+            ),
+            'last_detected_at': detected_at,
+            'resolved_at': None,
+        }
+        retained_alerts[alert_id] = active_alert
+        visible.append(active_alert.copy())
+
+    for alert_id, cached in list(retained_alerts.items()):
+        if alert_id in current_by_id:
+            continue
+
+        was_resolved = cached.get('alert_state') == 'resolved'
+        resolved_at = cached.get('resolved_at') or detected_at
+        if detected_at - float(resolved_at) >= resolved_retention_sec:
+            retained_alerts.pop(alert_id, None)
+            continue
+
+        resolved_alert = {
+            **cached,
+            'active': False,
+            'alert_state': 'resolved',
+            'resolved_at': resolved_at,
+        }
+        retained_alerts[alert_id] = resolved_alert
+        visible.append(resolved_alert.copy())
+        if alert_history is not None and not was_resolved:
+            alert_history.insert(
+                0,
+                {
+                    **resolved_alert,
+                    'origin_id': alert_id,
+                    'id': f'{alert_id}:resolved:{resolved_at}',
+                },
+            )
+            del alert_history[history_limit:]
+
+    return passthrough + visible
+
+
 def build_alert_meta(alerts: list[dict[str, Any]]) -> dict[str, int]:
     """Topic 모니터링에서 Alert 항목을 조립하는 함수입니다."""
+    active_alerts = [
+        alert for alert in alerts
+        if alert.get('alert_state') != 'resolved'
+    ]
     return {
         'count': len(alerts),
-        'info_count': sum(1 for alert in alerts if alert['level'] == 'info'),
+        'active_count': len(active_alerts),
+        'resolved_count': len(alerts) - len(active_alerts),
+        'info_count': sum(
+            1 for alert in active_alerts if alert['level'] == 'info'
+        ),
         'warning_count': sum(
-            1 for alert in alerts if alert['level'] == ALERT_LEVEL_WARNING
+            1
+            for alert in active_alerts
+            if alert['level'] == ALERT_LEVEL_WARNING
         ),
         'error_count': sum(
-            1 for alert in alerts if alert['level'] == ALERT_LEVEL_ERROR
+            1
+            for alert in active_alerts
+            if alert['level'] == ALERT_LEVEL_ERROR
         ),
         'critical_count': sum(
-            1 for alert in alerts if alert['level'] == ALERT_LEVEL_CRITICAL
+            1
+            for alert in active_alerts
+            if alert['level'] == ALERT_LEVEL_CRITICAL
         ),
     }
 
@@ -94,8 +180,29 @@ def _topic_alerts(
     if name in COMMAND_TOPIC_NAMES:
         return []
 
-    if name not in REQUIRED_STREAM_TOPIC_NAMES:
+    if (
+        name not in REQUIRED_STREAM_TOPIC_NAMES
+        and topic.get('registered_interface_type') is not True
+    ):
         return []
+
+    if topic.get('status') == 'disconnected':
+        return [
+            _alert(
+                level=ALERT_LEVEL_ERROR,
+                source='topic',
+                name=name,
+                code='topic_disconnected',
+                status='disconnected',
+                message=(
+                    'Topic connection lost; it is no longer visible '
+                    'in the ROS2 graph.'
+                ),
+                last_received_at=topic.get('last_seen_at'),
+                age_sec=None,
+                detected_at=detected_at,
+            ),
+        ]
 
     if publisher_count > 0 and subscription is not None:
         return _topic_message_alerts(

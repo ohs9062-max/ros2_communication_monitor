@@ -297,6 +297,7 @@ function statusTone(status) {
     [
       'error',
       'critical',
+      'disconnected',
       'failed',
       'aborted',
       'timeout',

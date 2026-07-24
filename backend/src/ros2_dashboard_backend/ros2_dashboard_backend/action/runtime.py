@@ -27,6 +27,10 @@ from ros2_dashboard_backend.action.subscriptions import (
     update_status_runtime,
 )
 from ros2_dashboard_backend.config_loader import MonitorConfig
+from ros2_dashboard_backend.resource_state import (
+    disconnected_resource,
+    mark_graph_present,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -91,6 +95,11 @@ class ActionRuntime:
         updated_at = time()
         action_names_and_types = self._action_names_and_types()
         server_counts, client_counts = self._action_count_maps()
+        with self._lock:
+            previous_actions = {
+                (action.get('name'), action.get('type')): action.copy()
+                for action in self._actions
+            }
 
         for name, types in action_names_and_types:
             if not is_action_included(
@@ -107,20 +116,35 @@ class ActionRuntime:
                 action_type=action_type,
             )
             runtime = self._runtime_snapshot(name)
+            action = build_action_item(
+                name=name,
+                action_type=action_type,
+                server_count=server_counts.get(name, 0),
+                client_count=client_counts.get(name, 0),
+                updated_at=updated_at,
+                status_supported=capabilities['status_supported'],
+                feedback_supported=capabilities['feedback_supported'],
+                feedback_reason=capabilities['feedback_reason'],
+                result_supported=capabilities['result_supported'],
+                result_policy=capabilities['result_policy'],
+                result_reason=capabilities['result_reason'],
+                runtime=runtime,
+            )
+            mark_graph_present(action, observed_at=updated_at)
+            actions.append(action)
+
+        current_keys = {
+            (action.get('name'), action.get('type'))
+            for action in actions
+        }
+        for key, cached in previous_actions.items():
+            if key in current_keys:
+                continue
             actions.append(
-                build_action_item(
-                    name=name,
-                    action_type=action_type,
-                    server_count=server_counts.get(name, 0),
-                    client_count=client_counts.get(name, 0),
-                    updated_at=updated_at,
-                    status_supported=capabilities['status_supported'],
-                    feedback_supported=capabilities['feedback_supported'],
-                    feedback_reason=capabilities['feedback_reason'],
-                    result_supported=capabilities['result_supported'],
-                    result_policy=capabilities['result_policy'],
-                    result_reason=capabilities['result_reason'],
-                    runtime=runtime,
+                disconnected_resource(
+                    cached,
+                    detected_at=updated_at,
+                    count_fields=('server_count', 'client_count'),
                 ),
             )
 
@@ -131,9 +155,12 @@ class ActionRuntime:
             self._last_updated = updated_at
 
         self._cleanup_disappeared_subscriptions(
-            {action['name'] for action in actions},
+            {name for name, _types in action_names_and_types},
         )
-        self._result_runtime.update(actions)
+        self._result_runtime.update([
+            action for action in actions
+            if action.get('graph_present') is True
+        ])
         return actions
 
     def monitor_subscriber_count(self, topic_name: str) -> int:

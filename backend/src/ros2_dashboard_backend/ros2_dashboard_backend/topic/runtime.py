@@ -10,6 +10,10 @@ from typing import Any, Callable
 from rclpy.qos import QoSProfile, qos_profile_sensor_data
 
 from ros2_dashboard_backend.config_loader import MonitorConfig
+from ros2_dashboard_backend.resource_state import (
+    disconnected_resource,
+    mark_graph_present,
+)
 from ros2_dashboard_backend.topic.discovery import build_topic_item
 from ros2_dashboard_backend.topic.filters import (
     is_supported_type,
@@ -127,6 +131,11 @@ class TopicRuntime:
         updated_at = time()
         topic_names_and_types = node.get_topic_names_and_types()
         externally_present_topic_names = set()
+        with self._lock:
+            previous_topics = {
+                topic['name']: topic.copy()
+                for topic in self._topics
+            }
 
         for name, types in topic_names_and_types:
             if not self._is_topic_included(name):
@@ -134,6 +143,9 @@ class TopicRuntime:
 
             topic_type = types[0] if types else None
             supported_type = self._is_supported_type(topic_type)
+            registered_interface_type = (
+                topic_type in self._config.topics_registered_types
+            )
             deep_monitoring = self._auto_subscribe_topic(
                 name,
                 topic_type,
@@ -151,17 +163,49 @@ class TopicRuntime:
             )
             if publisher_count > 0 or external_subscriber_count > 0:
                 externally_present_topic_names.add(name)
+            topic = build_topic_item(
+                name=name,
+                types=list(types),
+                publisher_count=publisher_count,
+                raw_subscriber_count=raw_subscriber_count,
+                monitor_subscriber_count=monitor_subscriber_count,
+                external_subscriber_count=external_subscriber_count,
+                updated_at=updated_at,
+                supported_type=supported_type,
+                registered_interface_type=registered_interface_type,
+                deep_monitoring=deep_monitoring,
+            )
+            if publisher_count > 0 or external_subscriber_count > 0:
+                mark_graph_present(topic, observed_at=updated_at)
+            elif name in previous_topics:
+                topic = disconnected_resource(
+                    previous_topics[name],
+                    detected_at=updated_at,
+                    count_fields=(
+                        'publisher_count',
+                        'subscriber_count',
+                        'raw_subscriber_count',
+                        'monitor_subscriber_count',
+                        'external_subscriber_count',
+                    ),
+                )
+            topics.append(topic)
+
+        current_names = {topic['name'] for topic in topics}
+        for name, cached in previous_topics.items():
+            if name in current_names:
+                continue
             topics.append(
-                build_topic_item(
-                    name=name,
-                    types=list(types),
-                    publisher_count=publisher_count,
-                    raw_subscriber_count=raw_subscriber_count,
-                    monitor_subscriber_count=monitor_subscriber_count,
-                    external_subscriber_count=external_subscriber_count,
-                    updated_at=updated_at,
-                    supported_type=supported_type,
-                    deep_monitoring=deep_monitoring,
+                disconnected_resource(
+                    cached,
+                    detected_at=updated_at,
+                    count_fields=(
+                        'publisher_count',
+                        'subscriber_count',
+                        'raw_subscriber_count',
+                        'monitor_subscriber_count',
+                        'external_subscriber_count',
+                    ),
                 ),
             )
 
@@ -276,6 +320,9 @@ class TopicRuntime:
             for topic in self._topics:
                 if topic.get('name') != name:
                     continue
+
+                if topic.get('graph_present') is False:
+                    return None
 
                 topic_types = topic.get('types')
                 if isinstance(topic_types, list) and topic_types:

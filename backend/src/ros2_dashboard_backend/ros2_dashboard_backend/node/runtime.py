@@ -13,10 +13,13 @@ from rclpy.action.graph import (
 
 from ros2_dashboard_backend.node.discovery import (
     build_node_item,
-    stale_node_item,
 )
 from ros2_dashboard_backend.node.filters import is_node_included
 from ros2_dashboard_backend.node.models import node_meta
+from ros2_dashboard_backend.resource_state import (
+    disconnected_resource,
+    mark_graph_present,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -125,19 +128,28 @@ class NodeRuntime:
                 ),
                 updated_at=updated_at,
             )
-            next_nodes[item['full_name']] = item
+            next_nodes[item['full_name']] = mark_graph_present(
+                item,
+                observed_at=updated_at,
+            )
 
         with self._lock:
             for full_name, cached_node in self._nodes.items():
                 if full_name in next_nodes:
                     continue
 
-                last_seen_at = cached_node.get('last_seen_at') or 0.0
-                if updated_at - last_seen_at <= self._stale_timeout_sec:
-                    next_nodes[full_name] = stale_node_item(
-                        cached_node=cached_node,
-                        updated_at=updated_at,
-                    )
+                next_nodes[full_name] = disconnected_resource(
+                    cached_node,
+                    detected_at=updated_at,
+                    count_fields=(
+                        'publisher_count',
+                        'subscriber_count',
+                        'service_server_count',
+                        'service_client_count',
+                        'action_server_count',
+                        'action_client_count',
+                    ),
+                )
 
             self._nodes = next_nodes
             self._last_updated = updated_at

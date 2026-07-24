@@ -71,6 +71,7 @@ class MonitorConfig:
     topics_include: tuple[str, ...] = ()
     topics_exclude: tuple[str, ...] = DEFAULT_TOPIC_EXCLUDES
     topics_supported_types: tuple[str, ...] = DEFAULT_SUPPORTED_TOPIC_TYPES
+    topics_registered_types: tuple[str, ...] = ()
     services_include: tuple[str, ...] = ()
     services_exclude: tuple[str, ...] = ()
     services_active_check: ServiceActiveCheckConfig = field(
@@ -227,6 +228,7 @@ def _monitor_config(
             )
             + registered_message_types,
         )),
+        topics_registered_types=tuple(dict.fromkeys(registered_message_types)),
         services_include=_config_string_tuple(services, 'include'),
         services_exclude=_config_string_tuple(services, 'exclude'),
         services_active_check=_service_active_check_config(

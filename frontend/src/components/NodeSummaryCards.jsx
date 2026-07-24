@@ -3,7 +3,7 @@ import { SummaryCard } from './SummaryCard.jsx'
 export function NodeSummaryCards({ activeNodes = [], meta = {}, nodes = [] }) {
   const total = meta.count ?? nodes.length
   const active = meta.active_count ?? countByStatus(nodes, 'active')
-  const stale = countByStatus(nodes, 'stale')
+  const disconnected = countByStatus(nodes, 'disconnected')
 
   return (
     <div className="summary-grid node-summary-grid">
@@ -12,8 +12,8 @@ export function NodeSummaryCards({ activeNodes = [], meta = {}, nodes = [] }) {
       <SummaryCard label="실행 중" value={active} tone="good" />
       <SummaryCard
         label="종료 감지"
-        tone={stale ? 'warn' : 'default'}
-        value={stale}
+        tone={disconnected ? 'bad' : 'default'}
+        value={disconnected}
       />
       <SummaryCard
         label="발행 연결"

@@ -1,20 +1,49 @@
+import { useState } from 'react'
+
 import { StatusBadge } from './StatusBadge.jsx'
 
 export function AlertsPreview({
   alerts,
+  collapsedItems = 3,
+  collapsible = false,
   emptyMessage = '현재 Alert가 없습니다',
   error,
+  maxItems = 5,
   onAlertClick,
   title = '최근 Alert',
 }) {
-  const items = (alerts ?? []).slice(0, 5)
-  const tone = alertTone(items)
+  const [expanded, setExpanded] = useState(false)
+  const recentItems = (alerts ?? []).slice(0, maxItems)
+  const items =
+    collapsible && !expanded
+      ? recentItems.slice(0, collapsedItems)
+      : recentItems
+  const tone = alertTone(recentItems)
 
   return (
-    <section className={`alerts-preview ${tone}`}>
+    <section
+      className={[
+        'alerts-preview',
+        tone,
+        collapsible ? 'collapsible' : '',
+        expanded ? 'expanded' : 'collapsed',
+      ].filter(Boolean).join(' ')}
+    >
       <div className="section-heading">
         <h2>{title}</h2>
-        {error && <span className="error-text">{error}</span>}
+        <div className="alerts-preview-heading-actions">
+          {error && <span className="error-text">{error}</span>}
+          {collapsible && recentItems.length > collapsedItems && (
+            <button
+              aria-expanded={expanded}
+              className="alerts-preview-toggle"
+              onClick={() => setExpanded((current) => !current)}
+              type="button"
+            >
+              {expanded ? '접기' : `펼치기 (${recentItems.length})`}
+            </button>
+          )}
+        </div>
       </div>
       {!items.length ? (
         <div className="empty-state compact">{emptyMessage}</div>
@@ -27,7 +56,13 @@ export function AlertsPreview({
               onClick={() => onAlertClick?.(alert)}
               type="button"
             >
-              <StatusBadge value={alert.level} />
+              <StatusBadge
+                value={
+                  alert.alert_state === 'resolved'
+                    ? 'resolved'
+                    : alert.level
+                }
+              />
               <div>
                 <strong>{alert.name}</strong>
                 <p>{alert.message}</p>
@@ -42,12 +77,15 @@ export function AlertsPreview({
 }
 
 function alertTone(alerts) {
-  if (!alerts.length) {
+  const activeAlerts = alerts.filter(
+    (alert) => alert.alert_state !== 'resolved',
+  )
+  if (!activeAlerts.length) {
     return 'empty'
   }
 
   if (
-    alerts.some((alert) =>
+    activeAlerts.some((alert) =>
       ['error', 'critical'].includes(String(alert.level || '').toLowerCase()),
     )
   ) {

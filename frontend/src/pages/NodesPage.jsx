@@ -9,7 +9,7 @@ const NODE_FILTERS = [
   { id: 'primary', label: '주요 항목' },
   { id: 'all', label: '전체' },
   { id: 'active', label: '실행 중' },
-  { id: 'stale', label: '종료 감지' },
+  { id: 'disconnected', label: '종료 감지' },
   { id: 'hidden', label: '숨김 포함' },
 ]
 

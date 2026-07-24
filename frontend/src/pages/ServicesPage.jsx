@@ -40,6 +40,7 @@ const ACTIVE_CHECK_STATUSES = new Set([
 
 const ISSUE_SERVICE_STATUSES = new Set([
   'waiting_server',
+  'disconnected',
   'error',
   'failed',
   'timeout',

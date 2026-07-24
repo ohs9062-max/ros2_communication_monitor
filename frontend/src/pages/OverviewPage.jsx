@@ -121,7 +121,10 @@ export function OverviewPage({
       <section className="overview-preview-grid">
         <AlertsPreview
           alerts={alertItems}
+          collapsedItems={3}
+          collapsible
           error={alerts.error}
+          maxItems={10}
           onAlertClick={openAlert}
         />
         <PreviewCard
@@ -383,7 +386,9 @@ function getNodeSummary(nodes, meta = {}) {
   const total = meta.count ?? nodes.length
   const active = meta.active_count ?? countNodesByStatus(nodes, 'active')
   const warning = meta.warning_count ?? countNodesByStatus(nodes, 'stale')
-  const error = meta.error_count ?? countNodesByStatus(nodes, 'unknown')
+  const error = meta.error_count ?? (
+    countNodesByStatus(nodes, 'disconnected')
+  )
   const inactive = Math.max(total - active - warning - error, 0)
   const pubSub =
     (meta.publisher_count ?? sumNodeCount(nodes, 'publisher_count')) +

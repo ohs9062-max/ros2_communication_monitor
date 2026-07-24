@@ -115,6 +115,7 @@ function nodeStatusLabel(status) {
   const labels = {
     active: '실행 중',
     stale: '종료 감지',
+    disconnected: '종료 감지',
     inactive: '비활성',
     unknown: '알 수 없음',
   }

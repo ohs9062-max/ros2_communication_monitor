@@ -1,5 +1,204 @@
-{
-  "success": false,
-  "accepted": false,
-  "error": "Failed to create action client: Type support not from this implementation. Got:\n    Could not load library librths_interfaces__rosidl_typesupport_fastrtps_c.so: dlopen error: librths_interfaces__rosidl_typesupport_fastrtps_c.so: cannot open shared object file: No such file or directory, at ./src/shared_library.c:99, at ./src/type_support_dispatch.hpp:81\n    Handle's typesupport identifier (rosidl_typesupport_c) is not supported by this library, at ./src/type_support_dispatch.hpp:116\nwhile fetching it, at ./src/rmw_client.cpp:125, at ./src/rcl/client.c:146"
-}
+냉정하게 평가하면, 이 프로젝트는 “기능이 풍부한 고급 프로토타입”에는 도달했지만 “안정적인 배포 제품” 단계는 아닙니다.
+
+종합 평점은 100점 만점에 64점입니다.
+
+| 평가 영역 | 점수 | 판단 |
+|---|---:|---|
+| 기능 범위 | 85 | Topic/Service/Action/Node/Interface Lab까지 상당히 넓음 |
+| 구조 설계 | 72 | Backend 책임 분리는 양호하지만 Frontend와 일부 Runtime이 비대함 |
+| 정확성 | 67 | 주요 필터와 Runtime 정책이 개선됐으나 화면별 기준 불일치가 남음 |
+| 테스트 | 45 | 테스트 수는 있지만 핵심 Runtime과 Frontend가 거의 보호되지 않음 |
+| 운영 안정성 | 48 | Runtime 장애 감지, health, reload, 동시성 문제가 남음 |
+| 문서·저장소 위생 | 52 | 문서는 많지만 중복·임시 파일·배포 메타데이터 문제가 큼 |
+| 제품 완성도 | 55 | 로컬 개발 도구로는 유용하지만 제품 배포 준비는 부족 |
+
+## 가장 중요한 문제
+
+### 1. Backend가 죽어도 `/health`는 정상이라고 응답할 수 있음 — 심각
+
+[main.py](/home/hs/rang/ros2_dashboard/backend/src/ros2_dashboard_backend/ros2_dashboard_backend/main.py:44)의 `/health`는 ROS Node, spin thread, 마지막 Graph 갱신 시각을 확인하지 않고 항상 `running`을 반환합니다.
+
+[ros_monitor.py](/home/hs/rang/ros2_dashboard/backend/src/ros2_dashboard_backend/ros2_dashboard_backend/ros_monitor.py:531)의 `_update_graph()`는 Runtime 하나에서 예외가 발생하면 이후 갱신이 중단될 수 있고, spin thread 예외도 UI health에는 반영되지 않습니다.
+
+현재 UI의 “백엔드 연결됨”은 실제로는 다음만 뜻합니다.
+
+```text
+FastAPI HTTP 응답 가능
+≠
+ROS2 Runtime 정상
+```
+
+최우선 개선 대상입니다.
+
+### 2. 핵심 테스트 커버리지가 너무 낮음 — 심각
+
+전체 Backend coverage는 36%였습니다.
+
+특히 다음 핵심 파일들이 사실상 0%입니다.
+
+- `ros_monitor.py`
+- `action/runtime.py`
+- `action/result_runtime.py`
+- `node/runtime.py`
+- `service/runtime.py`
+- 모든 FastAPI router
+- `websocket_manager.py`
+- `main.py`
+
+53개 테스트가 모두 통과하지만, 대부분 Interface Lab 관리·변환 로직에 집중돼 있습니다. ROS Graph 변화, Runtime 종료·재시작, WebSocket 복구, API 응답 계약은 충분히 검증되지 않습니다.
+
+Frontend는 테스트 스크립트와 테스트 파일 자체가 없습니다. 최근 반복됐던 `Maximum update depth`, 선택 상태 경쟁, 이전 WebSocket `onclose` 문제를 자동으로 막아줄 장치가 없습니다.
+
+### 3. “통일된 주요 항목 정책”이 아직 실제로 통일되지 않음 — 높음
+
+[primaryFilters.js](/home/hs/rang/ros2_dashboard/frontend/src/utils/primaryFilters.js:1)에는 Topic과 Action만 공통 주요 판정이 있고 Service 공통 함수는 없습니다.
+
+[ServicesPage.jsx](/home/hs/rang/ros2_dashboard/frontend/src/pages/ServicesPage.jsx:260)는 자체 `isPrimaryService()`를 사용하지만, [OverviewPage.jsx](/home/hs/rang/ros2_dashboard/frontend/src/pages/OverviewPage.jsx:26)는 등록 Service만 집계합니다. Visualization은 다시 별도 조건을 사용합니다.
+
+따라서 동일한 Service가 다음처럼 보일 수 있습니다.
+
+```text
+Services 주요 항목: 포함
+Overview 주요 Service: 제외
+Visualization: 다른 조건으로 포함 또는 제외
+```
+
+문서 정책과 실제 구현이 어긋납니다.
+
+### 4. Frontend에 로봇·패키지 이름 하드코딩이 여전히 많음 — 높음
+
+다음 값들이 Frontend에 직접 들어 있습니다.
+
+- `/cmd_vel`, `/odom`, `/scan`
+- Nav2 Node 이름 다수
+- `/RobotControl`, `/cmd_service`
+- `can_interfaces/srv/`
+- `rths_interfaces/srv/`
+
+관련 위치:
+
+- [primaryFilters.js](/home/hs/rang/ros2_dashboard/frontend/src/utils/primaryFilters.js:1)
+- [nodeFilters.js](/home/hs/rang/ros2_dashboard/frontend/src/utils/nodeFilters.js:1)
+- [ServicesPage.jsx](/home/hs/rang/ros2_dashboard/frontend/src/pages/ServicesPage.jsx:17)
+
+이는 “ROS 이름에 의존하지 않는다”는 프로젝트 핵심 목표와 충돌합니다. 기존 기본값 유지라는 이유는 이해하지만, 제품 평가에서는 확장성 결함입니다.
+
+### 5. Topic Hz polling이 Topic 수에 비례해 폭증함 — 높음
+
+[useTopicDashboard.js](/home/hs/rang/ros2_dashboard/frontend/src/hooks/useTopicDashboard.js:107)은 상세 감시 Topic마다 `/ros/topics/hz` 요청을 1초마다 병렬 실행합니다.
+
+```text
+상세 Topic 10개  → 약 10 requests/sec
+상세 Topic 100개 → 약 100 requests/sec
+```
+
+ROS Graph가 커지면 Backend와 브라우저 모두 불필요한 부하를 받습니다. Backend Topic snapshot에 Hz를 포함하거나 bulk Hz endpoint를 제공하는 방향이 필요합니다.
+
+### 6. Interface 패키지 registry에 동시성 보호가 없음 — 높음
+
+[packages.py](/home/hs/rang/ros2_dashboard/backend/src/ros2_dashboard_backend/ros2_dashboard_backend/interface_lab/management/packages.py:35)의 `PACKAGE_LOCK`은 `None`이며 실제 사용되지 않습니다.
+
+업로드·삭제·import 갱신이 동시에 일어나면 다음 순서로 변경이 유실될 수 있습니다.
+
+```text
+요청 A가 YAML 읽음
+요청 B가 같은 YAML 읽음
+A 저장
+B가 이전 snapshot 기반으로 저장
+→ A 변경 유실
+```
+
+파일 저장 자체는 atomic replace를 사용하지만 read-modify-write 전체가 잠기지 않았습니다.
+
+### 7. Frontend 핵심 컴포넌트가 지나치게 큼 — 중간 이상
+
+- `InterfaceUploadControl.jsx`: 2,602줄, 약 105KB
+- `InterfaceLabPage.jsx`: 1,954줄, 약 71KB
+- `graphTransform.js`: 690줄
+- Backend registry: 822줄
+
+특히 Interface Lab은 상태, API 실행, schema form, history, 등록 UI가 한 파일에 지나치게 결합돼 있습니다. 최근 무한 렌더링 문제가 반복된 것도 이 복잡도와 무관하지 않습니다.
+
+전체 구조 개편은 위험하지만, 신규 기능을 계속 추가하기 전에 역할 단위 분리가 필요합니다.
+
+### 8. 제품 메타데이터가 미완성 — 중간
+
+[package.xml](/home/hs/rang/ros2_dashboard/backend/src/ros2_dashboard_backend/package.xml:5)에 다음이 남아 있습니다.
+
+- 버전 `0.0.0`
+- `TODO: Package description`
+- `TODO: License declaration`
+
+Frontend도 `0.0.0`이며, 루트 README와 LICENSE가 없습니다. `frontend/README.md`는 아직 Vite 기본 템플릿입니다.
+
+외부 평가에서는 매우 직접적인 감점 요소입니다.
+
+### 9. Electron 프로젝트라고 문서화했지만 Electron 구현이 없음 — 중간
+
+AGENTS와 docs에서는 Electron Desktop App이라고 정의하지만:
+
+- Electron dependency 없음
+- main/preload process 없음
+- Electron build/package script 없음
+
+현재 실체는 React + Vite 웹 UI입니다. Electron이 향후 계획이라면 문서에서 “현재 구현”과 “목표”를 구분해야 합니다.
+
+### 10. 저장소 위생이 좋지 않음 — 중간
+
+추적 중인 불필요하거나 환경 종속적인 항목이 많습니다.
+
+- `AGENTS_ohs.md`
+- `error.txt`
+- `ㅇㅇ.txt`
+- `backend/backend_pid.txt`
+- 거의 완전히 중복된 `docs/docs2/`
+- 절대 경로가 들어간 Interface registry와 apply status
+- 의미를 알기 어려운 커밋 메시지: `asd`, `ㄷㅅㅌㄹ`, `이제 수정안해`
+
+특히 YAML에 `/home/hs/...` 절대 경로가 커밋돼 있어 다른 환경에서 신뢰성이 떨어집니다.
+
+## 잘된 부분
+
+냉정하게 보더라도 강점은 분명합니다.
+
+- ROS2 CLI 파싱 없이 Graph API를 사용한 방향이 정확함
+- Topic/Service/Action/Node Runtime 책임 분리가 대체로 잘돼 있음
+- Service Call과 Action Goal을 사용자 명시 실행으로 제한한 안전 정책이 좋음
+- Interface zip 경로 검증, 크기·파일 수 제한 등 업로드 방어가 비교적 꼼꼼함
+- custom msg/srv/action 변환과 import/apply 흐름이 깊이 구현돼 있음
+- Topic 종료 후 자기 Subscription을 제거하는 최근 수정 방향이 정확함
+- Frontend lint와 production build가 통과함
+- Backend Python 테스트 53개가 빠르게 통과함
+- 문서의 기능 흐름 설명 자체는 상당히 풍부함
+
+## 실제 검증 결과
+
+- Frontend lint: 통과
+- Frontend production build: 통과
+- 번들 경고: JS 589KB, gzip 170KB
+- Backend Python: `53 passed`
+- Backend coverage: `36%`
+- `colcon test`: 57개 중 2개 실패
+- 실패 원인: `rths_interfaces/package.xml` schema 외부 URL 로딩 실패
+- Frontend 자동 테스트: 없음
+- 작업 트리: 검증 후 깨끗한 상태
+
+`colcon test` 실패는 XML 내용 오류로 확정할 수 없고, 현재 환경에서 외부 schema를 가져오지 못한 영향입니다. 하지만 오프라인 환경에서 테스트가 재현되지 않는다는 사실 자체는 CI 준비도 문제입니다.
+
+## 권장 개선 순서
+
+1. `/health`에 ROS Runtime 상태, spin thread 생존, 마지막 성공 갱신 시각 추가
+2. `_update_graph()` Runtime별 예외 격리와 오류 상태 저장
+3. ROS Monitor·Router·WebSocket 통합 테스트 추가
+4. Frontend 주요 필터를 완전히 공통화하고 Service 불일치 제거
+5. Topic별 1초 Hz 요청을 bulk 또는 snapshot 기반으로 변경
+6. Frontend 상태 hook 테스트와 무한 렌더링 회귀 테스트 추가
+7. package registry read-modify-write lock 추가
+8. Interface Lab 대형 컴포넌트를 기능 단위로 점진 분리
+9. 하드코딩된 로봇 이름·패키지 prefix 제거 또는 config 이동
+10. README, LICENSE, 버전, CI, 저장소 임시 파일 정리
+11. Electron을 실제 구현하거나 문서에서 현재 지원이라고 표현하지 않기
+
+최종 판단은 다음과 같습니다.
+
+> 개인 개발·연구·시연용으로는 상당히 높은 완성도입니다. 하지만 평가관이 “다른 사람이 설치하고 장기간 운영할 수 있는 제품인가?”를 묻는다면 아직 아니라고 판단합니다. 핵심 기능은 충분하므로 이제 기능 추가보다 Runtime health, 테스트, 정책 일관성, 저장소 정리가 우선입니다.

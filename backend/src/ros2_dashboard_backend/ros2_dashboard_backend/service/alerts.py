@@ -48,6 +48,27 @@ def build_service_alerts(
         if service.get('hidden_by_default') is True:
             continue
 
+        if (
+            service.get('status') == 'disconnected'
+            and service.get('allowlisted') is True
+        ):
+            alerts.append({
+                'id': f'service:{service["name"]}:service_disconnected',
+                'level': 'error',
+                'source': 'service',
+                'name': service['name'],
+                'code': 'service_disconnected',
+                'message': (
+                    'Service connection lost; it is no longer visible '
+                    'in the ROS2 graph.'
+                ),
+                'status': 'disconnected',
+                'last_received_at': service.get('last_seen_at'),
+                'age_sec': None,
+                'detected_at': detected_at,
+            })
+            continue
+
         active_check_alert = _build_active_check_alert(
             service=service,
             detected_at=detected_at,

@@ -36,7 +36,7 @@ export function isPrimaryNode(
   }
 
   return (
-    node.status === 'stale' ||
+    node.status === 'disconnected' ||
     PRIMARY_NODE_NAMES.has(fullName) ||
     nodeUsesRegisteredInterface(node, { actions, services, topics })
   )

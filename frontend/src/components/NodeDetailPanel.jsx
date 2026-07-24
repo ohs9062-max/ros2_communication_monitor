@@ -23,8 +23,8 @@ export function NodeDetailPanel({ node }) {
       <h2>{node.full_name}</h2>
       <p className="muted">{node.namespace ?? '/'}</p>
 
-      {node.status === 'stale' ? (
-        <p className="notice-text warning">
+      {node.status === 'disconnected' ? (
+        <p className="notice-text error">
           이 Node는 이전에 발견되었지만 현재 ROS2 Graph에서 사라진 상태입니다.
           프로세스 종료, 통신 끊김, namespace 변경 가능성을 확인하세요.
         </p>
@@ -158,8 +158,8 @@ function statusTone(status) {
   if (value === 'active') {
     return 'good'
   }
-  if (value === 'stale') {
-    return 'warn'
+  if (value === 'disconnected') {
+    return 'bad'
   }
   if (value === 'error' || value === 'critical') {
     return 'bad'

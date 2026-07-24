@@ -7,6 +7,7 @@ SERVICE_STATUS_ACTIVE = 'active'
 SERVICE_STATUS_WAITING_SERVER = 'waiting_server'
 SERVICE_STATUS_INACTIVE = 'inactive'
 SERVICE_STATUS_UNKNOWN = 'unknown'
+SERVICE_STATUS_DISCONNECTED = 'disconnected'
 
 SERVICE_CATEGORY_USER = 'user'
 SERVICE_CATEGORY_PARAMETER = 'parameter'
@@ -109,7 +110,7 @@ def service_meta(
         'error_count': sum(
             1 for service in services
             if (
-                service.get('status') == SERVICE_STATUS_UNKNOWN
+                service.get('status') == SERVICE_STATUS_DISCONNECTED
                 and service.get('hidden_by_default') is not True
             )
         ),

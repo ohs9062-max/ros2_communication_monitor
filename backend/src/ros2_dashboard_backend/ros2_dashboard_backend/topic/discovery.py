@@ -17,6 +17,7 @@ def build_topic_item(
     external_subscriber_count: int,
     updated_at: float,
     supported_type: bool,
+    registered_interface_type: bool,
     deep_monitoring: bool,
 ) -> dict[str, Any]:
     """Topic 모니터링에서 public API 응답 항목을 조립하는 함수입니다."""
@@ -37,5 +38,6 @@ def build_topic_item(
         'reason': reason,
         'last_updated': updated_at,
         'supported_type': supported_type,
+        'registered_interface_type': registered_interface_type,
         'deep_monitoring': deep_monitoring,
     }

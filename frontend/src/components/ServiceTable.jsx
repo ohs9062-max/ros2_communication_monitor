@@ -17,16 +17,11 @@ const SERVICE_SORT_COLUMNS = {
     defaultDirection: 'desc',
     value: (service) => service.client_count,
   },
-  active_check: { value: (service) => activeCheckLabel(service) },
   callable: { value: (service) => (service.callable ? 1 : 0), defaultDirection: 'desc' },
   last_call: { value: (service) => service.last_call_summary?.last_called_at, defaultDirection: 'desc' },
   response_time: {
     defaultDirection: 'desc',
-    value: (service) => service.active_check?.last_response_time_ms,
-  },
-  last_checked: {
-    defaultDirection: 'desc',
-    value: (service) => service.active_check?.last_checked_at,
+    value: (service) => service.last_call_summary?.last_response_time_ms,
   },
   hidden: {
     defaultDirection: 'desc',
@@ -64,19 +59,16 @@ export function ServiceTable({
             <SortableHeader columnKey="category" label="분류" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="server_count" label="서버" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="client_count" label="클라이언트" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="active_check" label="응답 측정" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="callable" label="호출 가능" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="last_call" label="마지막 호출" onSort={onSort} sort={sort} />
             <th>마지막 요청</th>
             <th>마지막 응답</th>
-            <SortableHeader columnKey="response_time" label="응답 시간" onSort={onSort} sort={sort} />
-            <SortableHeader columnKey="last_checked" label="마지막 측정" onSort={onSort} sort={sort} />
+            <SortableHeader columnKey="response_time" label="호출 응답 시간" onSort={onSort} sort={sort} />
             <SortableHeader columnKey="hidden" label="숨김" onSort={onSort} sort={sort} />
           </tr>
         </thead>
         <tbody>
           {sortedServices.map((service) => {
-            const activeCheck = service.active_check ?? {}
             const summary = service.last_call_summary
             const selected = service.name === selectedServiceName
             return (
@@ -96,15 +88,11 @@ export function ServiceTable({
                 </td>
                 <td>{service.server_count ?? 0}</td>
                 <td>{service.client_count ?? 0}</td>
-                <td>
-                  <ActiveCheckBadge service={service} />
-                </td>
                 <td>{service.callable ? '예' : service.allowlisted ? '등록됨' : '아니오'}</td>
                 <td>{formatRelativeTime(summary?.last_called_at)}</td>
                 <td><PreviewText value={summary?.last_request_preview} /></td>
                 <td><PreviewText value={summary?.last_response_preview ?? summary?.last_error} /></td>
-                <td>{formatMs(summary?.last_response_time_ms ?? activeCheck.last_response_time_ms)}</td>
-                <td>{formatRelativeTime(activeCheck.last_checked_at)}</td>
+                <td>{formatMs(summary?.last_response_time_ms)}</td>
                 <td>{service.hidden_by_default ? '예' : '아니오'}</td>
               </tr>
             )
@@ -115,34 +103,8 @@ export function ServiceTable({
   )
 }
 
-function ActiveCheckBadge({ service }) {
-  const summary = service.last_call_summary
-  if (summary?.error_type === 'validation_error') {
-    return <StatusBadge label="검증 실패" value="validation_error" />
-  }
-  if (summary?.sent_to_server === false) {
-    return <StatusBadge label="서버 미전송" value="not_sent" />
-  }
-  if (summary?.success === true) {
-    return <StatusBadge label="마지막 응답 있음" value="success" />
-  }
-  if (service.active_check_supported === false) {
-    return <StatusBadge label="상태만 표시" value="not_supported" />
-  }
-
-  return <StatusBadge value={service.active_check?.last_status ?? 'unknown'} />
-}
-
 function PreviewText({ value }) {
   if (value === undefined || value === null || value === '') return <span className="muted">-</span>
   const text = typeof value === 'string' ? value : JSON.stringify(value)
   return <code className="table-preview-text">{text}</code>
-}
-
-function activeCheckLabel(service) {
-  if (service.active_check_supported === false) {
-    return 'not_supported'
-  }
-
-  return service.active_check?.last_status ?? 'unknown'
 }

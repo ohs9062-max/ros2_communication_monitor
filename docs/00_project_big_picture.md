@@ -27,7 +27,6 @@ Vite + React 웹앱
 
 - Backend는 Python, FastAPI, `rclpy`로 구성된다.
 - Frontend는 Vite + React 기반 순수 웹앱이다.
-- Electron 실행 계층은 현재 프로젝트에 없다.
 - React Flow는 관계를 분석하지 않는다. Frontend가 만든 `nodes`와 `edges`를 화면에 그린다.
 
 ## YAML 등록 Interface가 연결되는 곳

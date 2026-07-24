@@ -8,7 +8,6 @@ import { matchesServiceStatusFilter } from '../utils/status.js'
 
 const SERVICE_FILTERS = [
   { id: 'primary', label: '주요 항목' },
-  { id: 'active_check', label: '응답 측정' },
   { id: 'issues', label: '대기/오류' },
   { id: 'all', label: '전체' },
   { id: 'internal', label: '내부/관리 포함' },
@@ -31,19 +30,10 @@ const IMPORTANT_SERVICE_NAMES = new Set([
   '/RobotControl',
 ])
 
-const ACTIVE_CHECK_STATUSES = new Set([
-  'success',
-  'failed',
-  'timeout',
-  'error',
-])
-
 const ISSUE_SERVICE_STATUSES = new Set([
   'waiting_server',
   'disconnected',
   'error',
-  'failed',
-  'timeout',
 ])
 
 const LIFECYCLE_SERVICE_SUFFIXES = [
@@ -113,7 +103,6 @@ export function ServicesPage({ dashboard }) {
         service.type,
         service.category,
         service.status,
-        service.active_check?.last_status,
       ]
       const matchesSearch =
         !normalizedSearch ||
@@ -172,9 +161,9 @@ export function ServicesPage({ dashboard }) {
             <div>
               <h2>Service 상세</h2>
               <p className="muted">
-                기본 화면은 응답 측정 대상, 사용자 Service, 대기/오류 상태처럼
-                먼저 확인해야 하는 Service만 표시합니다. 전체 목록은 '전체'
-                또는 '내부/관리 포함'에서 확인할 수 있습니다.
+                기본 화면은 등록된 주요 Service와 대기/오류 상태처럼 먼저
+                확인해야 하는 Service만 표시합니다. 실제 요청/응답 확인은
+                Interface Lab에서 사용자가 직접 호출한 기록을 사용합니다.
               </p>
             </div>
             {loading && <span className="muted">로딩 중</span>}
@@ -261,9 +250,6 @@ function findMonitorRow(name) {
 function isPrimaryService(service) {
   return (
     isRegisteredService(service) ||
-    service.active_check_supported === true ||
-    hasActiveCheckResult(service) ||
-    hasResponseTime(service) ||
     isIssueService(service) ||
     isCustomService(service)
   )
@@ -275,9 +261,6 @@ function matchesServiceFilter(service, filter) {
   }
   if (filter === 'all' || filter === 'internal') {
     return true
-  }
-  if (filter === 'active_check') {
-    return service.active_check_supported === true || hasActiveCheckResult(service)
   }
   if (filter === 'issues') {
     return isIssueService(service)
@@ -293,15 +276,15 @@ function getServiceUiSummary(services, primaryServices, meta) {
   const hiddenNotFetched = services.length < total ? (meta.hidden_count ?? 0) : 0
 
   return {
-    activeCheckCount: services.filter((service) =>
-      service.active_check_supported === true || hasActiveCheckResult(service),
+    activeCount: services.filter(
+      (service) => service.status === 'active',
     ).length,
     internalManagementCount: services.filter(isInternalOrManagementService).length +
       hiddenNotFetched,
     issueCount: services.filter(isIssueService).length,
     primaryCount: primaryServices.length,
-    statusOnlyCount: services.filter(
-      (service) => service.active_check_supported === false,
+    waitingCount: services.filter(
+      (service) => service.status === 'waiting_server',
     ).length,
     total,
   }
@@ -309,23 +292,7 @@ function getServiceUiSummary(services, primaryServices, meta) {
 
 function isIssueService(service) {
   const status = String(service.status || 'unknown').toLowerCase()
-  const activeCheckStatus = activeCheckStatusOf(service)
-  return (
-    ISSUE_SERVICE_STATUSES.has(status) ||
-    ['failed', 'timeout', 'error', 'type_mismatch'].includes(activeCheckStatus)
-  )
-}
-
-function hasActiveCheckResult(service) {
-  return ACTIVE_CHECK_STATUSES.has(activeCheckStatusOf(service))
-}
-
-function hasResponseTime(service) {
-  return service.active_check?.last_response_time_ms != null
-}
-
-function activeCheckStatusOf(service) {
-  return String(service.active_check?.last_status ?? '').toLowerCase()
+  return ISSUE_SERVICE_STATUSES.has(status)
 }
 
 function isCustomService(service) {

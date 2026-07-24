@@ -4,34 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ros2_dashboard_backend.service.active_check import (
-    ACTIVE_CHECK_STATUS_ERROR,
-    ACTIVE_CHECK_STATUS_FAILED,
-    ACTIVE_CHECK_STATUS_TIMEOUT,
-    ALERT_CODE_ACTIVE_CHECK_ERROR,
-    ALERT_CODE_ACTIVE_CHECK_FAILED,
-    ALERT_CODE_ACTIVE_CHECK_TIMEOUT,
-)
 from ros2_dashboard_backend.service.models import SERVICE_CATEGORY_USER
-
-
-ACTIVE_CHECK_ALERTS = {
-    ACTIVE_CHECK_STATUS_TIMEOUT: (
-        'warning',
-        ALERT_CODE_ACTIVE_CHECK_TIMEOUT,
-        'Service active check timed out.',
-    ),
-    ACTIVE_CHECK_STATUS_ERROR: (
-        'error',
-        ALERT_CODE_ACTIVE_CHECK_ERROR,
-        'Service active check failed with an error.',
-    ),
-    ACTIVE_CHECK_STATUS_FAILED: (
-        'error',
-        ALERT_CODE_ACTIVE_CHECK_FAILED,
-        'Service active check response reported failure.',
-    ),
-}
 
 
 def build_service_alerts(
@@ -69,41 +42,4 @@ def build_service_alerts(
             })
             continue
 
-        active_check_alert = _build_active_check_alert(
-            service=service,
-            detected_at=detected_at,
-        )
-        if active_check_alert is not None:
-            alerts.append(active_check_alert)
-
     return alerts
-
-
-def _build_active_check_alert(
-    *,
-    service: dict[str, Any],
-    detected_at: float,
-) -> dict[str, Any] | None:
-    if service.get('active_check_supported') is not True:
-        return None
-
-    active_check = service.get('active_check', {})
-    status = active_check.get('last_status')
-    alert_config = ACTIVE_CHECK_ALERTS.get(status)
-    if alert_config is None:
-        return None
-
-    level, code, message = alert_config
-    name = service['name']
-    return {
-        'id': f'service:{name}:{code}',
-        'level': level,
-        'source': 'service',
-        'name': name,
-        'code': code,
-        'message': message,
-        'status': status,
-        'last_received_at': active_check.get('last_checked_at'),
-        'age_sec': None,
-        'detected_at': detected_at,
-    }

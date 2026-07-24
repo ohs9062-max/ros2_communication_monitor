@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { formatTime } from '../utils/format.js'
+import { formatRelativeTime } from '../utils/format.js'
 import { nextSortState, sortRows } from '../utils/sort.js'
 import { SortableHeader } from './SortableHeader.jsx'
 import { StatusBadge } from './StatusBadge.jsx'
@@ -35,7 +35,8 @@ const TOPIC_SORT_COLUMNS = {
   },
   last_updated: {
     defaultDirection: 'desc',
-    value: (topic) => topic.last_updated,
+    value: (topic, context) =>
+      topicLastCheckedAt(topic, context.hzByTopic[topic.name]?.data),
   },
 }
 
@@ -85,6 +86,7 @@ export function TopicTable({
           {sortedTopics.map((topic) => {
             const selected = topic.name === selectedTopicName
             const hz = hzByTopic[topic.name]
+            const hzData = hz?.data
             const missing = isMissingTopic(topic, hz)
             return (
               <tr
@@ -109,11 +111,13 @@ export function TopicTable({
                     0}
                 </td>
                 <td>
-                  <HzBadge hzData={hz?.data} topic={topic} />
+                  <HzBadge hzData={hzData} topic={topic} />
                 </td>
                 <td>{topic.deep_monitoring ? '예' : '아니오'}</td>
                 <td><PreviewText value={topic.last_message_preview} /></td>
-                <td>{formatTime(topic.last_updated)}</td>
+                <td>
+                  {formatRelativeTime(topicLastCheckedAt(topic, hzData))}
+                </td>
               </tr>
             )
           })}
@@ -167,6 +171,14 @@ function hzLabel(hzData, state) {
 
   const hz = Number(hzData?.hz ?? 0)
   return `${hz.toFixed(2)} Hz`
+}
+
+function topicLastCheckedAt(topic, hzData) {
+  if (topic.deep_monitoring) {
+    return hzData?.last_received_at ?? topic.last_received_at
+  }
+
+  return topic.last_updated
 }
 
 function isMissingTopic(topic, hzEntry) {

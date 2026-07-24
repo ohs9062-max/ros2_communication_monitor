@@ -425,9 +425,6 @@ class RosMonitor:
                     'topic_message_missing',
                     'topic_stale',
                     'topic_disconnected',
-                    'service_active_check_timeout',
-                    'service_active_check_error',
-                    'service_active_check_failed',
                     'service_disconnected',
                     'action_disconnected',
                     'node_stale',
@@ -485,23 +482,11 @@ class RosMonitor:
         services: list[dict[str, Any]],
         meta: dict[str, Any],
     ) -> dict[str, int]:
-        active_check_problem_count = sum(
-            int(meta.get(key) or 0)
-            for key in (
-                'active_check_failed_count',
-                'active_check_timeout_count',
-                'active_check_error_count',
-            )
-        )
         return {
             'count': int(meta.get('count') or meta.get('visible_count') or 0),
             'active_count': int(meta.get('active_count') or 0),
             'warning_count': int(meta.get('warning_count') or 0),
             'error_count': int(meta.get('error_count') or 0),
-            'active_check_supported_count': int(
-                meta.get('active_check_supported_count') or 0,
-            ),
-            'active_check_problem_count': active_check_problem_count,
             'callable_count': sum(1 for service in services if service.get('callable') is True),
             'last_call_count': sum(1 for service in services if service.get('last_call_summary')),
         }
@@ -564,6 +549,8 @@ class RosMonitor:
     def _update_graph(self) -> None:
         self._node_runtime.update()
         self._topic_runtime.update()
-        services = self._service_runtime.update()
+        self._service_runtime.update()
         self._action_runtime.update()
-        self._service_runtime.update_active_checks(services)
+        # Service 자동 호출은 의도적으로 비활성화합니다.
+        # 생존 상태는 Graph로 관찰하고 실제 요청/응답은 Interface Lab의
+        # 사용자 명시 Call 기록으로만 확인합니다.

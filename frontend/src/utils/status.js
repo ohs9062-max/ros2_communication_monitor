@@ -61,9 +61,6 @@ export function getServiceSummary(services, meta = {}) {
   const error = meta.error_count ?? (
     countServicesByStatus(services, 'disconnected')
   )
-  const activeCheckSupported =
-    meta.active_check_supported_count ??
-    services.filter((service) => service.active_check_supported === true).length
   const inactive = Math.max(total - active - warning - error, 0)
 
   return {
@@ -72,7 +69,6 @@ export function getServiceSummary(services, meta = {}) {
     warning,
     error,
     inactive,
-    activeCheckSupported,
   }
 }
 
@@ -181,10 +177,7 @@ export function matchesServiceStatusFilter(service, filter) {
     return ERROR_STATUSES.has(status)
   }
   if (filter === 'unsupported') {
-    return (
-      service.active_check_supported === false ||
-      service.supported_type === false
-    )
+    return service.supported_type === false
   }
   return status === filter
 }

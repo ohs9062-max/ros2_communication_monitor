@@ -1,4 +1,8 @@
-import { formatAge, formatNumber, formatTime } from '../utils/format.js'
+import {
+  formatAge,
+  formatNumber,
+  formatRelativeTime,
+} from '../utils/format.js'
 import { ConnectionNodeList } from './ConnectionNodeList.jsx'
 import { DetailSection } from './DetailSection.jsx'
 import { KeyValueTable } from './KeyValueTable.jsx'
@@ -45,7 +49,10 @@ export function TopicDetailPanel({ topic, latest, hz, participants }) {
         <DetailLine label="타입" value={topic.types?.[0] ?? '-'} />
         <DetailLine label="상태" tone={statusTone(topic.status)} value={topic.status ?? '-'} />
         <DetailLine label="상태 이유" value={topic.reason ?? '-'} />
-        <DetailLine label="마지막 갱신" value={formatTime(topic.last_updated)} />
+        <DetailLine
+          label="마지막 확인"
+          value={formatRelativeTime(topic.last_updated)}
+        />
       </DetailSection>
 
       <DetailSection collapsible title="연결 정보">
@@ -119,7 +126,11 @@ export function TopicDetailPanel({ topic, latest, hz, participants }) {
         </div>
         <div className="detail-line">
           <span>마지막 수신</span>
-          <strong>{formatTime(latestData?.last_received_at ?? topic.last_received_at)}</strong>
+          <strong>
+            {formatRelativeTime(
+              latestData?.last_received_at ?? topic.last_received_at,
+            )}
+          </strong>
         </div>
         <div className="detail-line">
           <span>상세 감시</span>

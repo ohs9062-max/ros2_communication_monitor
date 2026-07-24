@@ -14,7 +14,6 @@ export function ServiceDetailPanel({ participants, service }) {
     )
   }
 
-  const activeCheck = service.active_check ?? {}
   const callSummary = service.last_call_summary
 
   return (
@@ -26,13 +25,6 @@ export function ServiceDetailPanel({ participants, service }) {
       <h2>{service.name}</h2>
       <p className="muted">{service.type ?? '-'}</p>
 
-      {service.active_check_supported === false && (
-        <p className="notice-text">
-          상태만 표시합니다. 이 Service는 안전 호출 목록에 등록되어 있지 않아
-          호출 결과와 응답 시간을 측정하지 않습니다. 목록과 서버 상태만
-          모니터링합니다.
-        </p>
-      )}
       {service.hidden_by_default === true && (
         <p className="notice-text">
           이 Service는 ROS2 내부/파라미터/Action 내부 Service로 기본 화면에서는
@@ -75,16 +67,15 @@ export function ServiceDetailPanel({ participants, service }) {
         />
       </DetailSection>
 
-      <DetailSection collapsible title="실행/측정 정보">
-        <DetailLine
-          label="측정 지원"
-          tone={service.active_check_supported ? 'good' : 'muted'}
-          value={service.active_check_supported ? '예' : '아니오 (상태만 표시)'}
-        />
+      <DetailSection collapsible title="사용자 Service Call">
         <DetailLine
           label="호출 가능"
           tone={service.callable ? 'good' : service.allowlisted ? 'warn' : 'muted'}
           value={service.callable ? '예' : service.allowlisted ? '등록됨' : '아니오'}
+        />
+        <DetailLine
+          label="마지막 호출"
+          value={formatRelativeTime(callSummary?.last_called_at)}
         />
         <DetailLine
           label="마지막 호출 상태"
@@ -106,22 +97,10 @@ export function ServiceDetailPanel({ participants, service }) {
           </p>
         )}
         <DetailLine
-          label="마지막 상태"
-          tone={statusTone(activeCheck.last_status)}
-          value={activeCheck.last_status ?? '-'}
+          label="호출 응답 시간"
+          value={formatMs(callSummary?.last_response_time_ms)}
         />
-        <DetailLine
-          label="응답 시간"
-          value={formatMs(activeCheck.last_response_time_ms)}
-        />
-        <DetailLine label="제한 시간" value={activeCheck.timeout_sec ?? '-'} />
-        <DetailLine
-          label="마지막 측정"
-          value={formatRelativeTime(activeCheck.last_checked_at)}
-        />
-        <DetailLine label="오류 메시지" value={activeCheck.error_message ?? '-'} />
         <DetailLine label="마지막 호출 오류" value={callSummary?.last_error ?? '-'} />
-        <DetailLine label="측정 이유" value={activeCheck.reason ?? '-'} />
         <DetailLine label="호출 수" value={service.call_count ?? 0} />
         <DetailLine label="성공/실패" value={`${service.success_count ?? 0}/${service.failure_count ?? 0}`} />
       </DetailSection>
@@ -149,14 +128,6 @@ export function ServiceDetailPanel({ participants, service }) {
             {callSummary?.history
               ? JSON.stringify(callSummary.history, null, 2)
               : '데이터 없음'}
-          </pre>
-        </details>
-        <details>
-          <summary>응답 원본 Preview JSON</summary>
-          <pre className="preview-json">
-            {activeCheck.response_preview
-              ? JSON.stringify(activeCheck.response_preview, null, 2)
-              : '미리보기 없음'}
           </pre>
         </details>
       </DetailSection>

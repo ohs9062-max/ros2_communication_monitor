@@ -147,10 +147,6 @@ function KindSpecificDetails({ data }) {
       <>
         <DetailLine label="서버 수" value={entity.server_count} />
         <DetailLine label="클라이언트 수" value={entity.client_count} />
-        <DetailLine
-          label="응답 측정"
-          value={entity.active_check?.last_status}
-        />
         <p className="detail-help-text">
           요청자 Node는 요청을 보내고, 응답자 Node는 요청을 받아 응답합니다.
         </p>

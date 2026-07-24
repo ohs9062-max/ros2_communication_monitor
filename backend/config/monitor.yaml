@@ -34,23 +34,15 @@ services:
   exclude_prefixes: []
 
   active_check:
-    enabled: true
+    # 정책 메모:
+    # Service 상태는 ROS2 Graph의 Server 존재 여부로 관찰하고,
+    # 실제 요청/응답 확인은 Interface Lab의 사용자 명시 Call로 수행합니다.
+    # 일반 Service의 주기적 자동 호출은 상태 변경이나 장비 동작을
+    # 유발할 수 있으므로 사용하지 않습니다.
+    enabled: false
     interval_sec: 5.0
     default_timeout_sec: 2.0
-    allowlist:
-      - name: /add_two_ints
-        type: example_interfaces/srv/AddTwoInts
-        timeout_sec: 2.0
-        request:
-          a: 1
-          b: 2
-        success_field: null
-
-      - name: /health_check
-        type: std_srvs/srv/Trigger
-        timeout_sec: 2.0
-        request: {}
-        success_field: success
+    allowlist: []
 
 nodes:
   include_names: []
